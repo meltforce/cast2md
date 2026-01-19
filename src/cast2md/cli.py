@@ -307,5 +307,18 @@ def cmd_status():
     click.echo(f"  Whisper device: {settings.whisper_device}")
 
 
+@cli.command("serve")
+@click.option("--host", "-h", default="0.0.0.0", help="Host to bind to")
+@click.option("--port", "-p", default=8000, help="Port to bind to")
+@click.option("--reload", "-r", is_flag=True, help="Enable auto-reload for development")
+def cmd_serve(host: str, port: int, reload: bool):
+    """Start the web server."""
+    click.echo(f"Starting cast2md web server on http://{host}:{port}")
+    click.echo("Press Ctrl+C to stop")
+
+    from cast2md.main import run_server
+    run_server(host=host, port=port, reload=reload)
+
+
 if __name__ == "__main__":
     cli()

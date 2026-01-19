@@ -1,0 +1,183 @@
+"""Feed API endpoints."""
+
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, HttpUrl
+
+from cast2md.db.connection import get_db
+from cast2md.db.models import Feed
+from cast2md.db.repository import EpisodeRepository, FeedRepository
+from cast2md.feed.discovery import discover_new_episodes, validate_feed_url
+
+router = APIRouter(prefix="/api/feeds", tags=["feeds"])
+
+
+class FeedCreate(BaseModel):
+    """Request model for creating a feed."""
+
+    url: HttpUrl
+
+
+class FeedUpdate(BaseModel):
+    """Request model for updating a feed."""
+
+    title: str | None = None
+    enabled: bool | None = None
+
+
+class FeedResponse(BaseModel):
+    """Response model for a feed."""
+
+    id: int
+    url: str
+    title: str
+    description: str | None
+    image_url: str | None
+    last_polled: str | None
+    episode_count: int = 0
+    created_at: str
+    updated_at: str
+
+    @classmethod
+    def from_feed(cls, feed: Feed, episode_count: int = 0) -> "FeedResponse":
+        return cls(
+            id=feed.id,
+            url=feed.url,
+            title=feed.title,
+            description=feed.description,
+            image_url=feed.image_url,
+            last_polled=feed.last_polled.isoformat() if feed.last_polled else None,
+            episode_count=episode_count,
+            created_at=feed.created_at.isoformat(),
+            updated_at=feed.updated_at.isoformat(),
+        )
+
+
+class FeedListResponse(BaseModel):
+    """Response model for feed list."""
+
+    feeds: list[FeedResponse]
+
+
+class MessageResponse(BaseModel):
+    """Generic message response."""
+
+    message: str
+
+
+class PollResponse(BaseModel):
+    """Response for poll operation."""
+
+    new_episodes: int
+    message: str
+
+
+@router.get("", response_model=FeedListResponse)
+def list_feeds():
+    """List all feeds."""
+    with get_db() as conn:
+        feed_repo = FeedRepository(conn)
+        episode_repo = EpisodeRepository(conn)
+        feeds = feed_repo.get_all()
+
+        response_feeds = []
+        for feed in feeds:
+            episodes = episode_repo.get_by_feed(feed.id, limit=10000)
+            response_feeds.append(FeedResponse.from_feed(feed, len(episodes)))
+
+    return FeedListResponse(feeds=response_feeds)
+
+
+@router.post("", response_model=FeedResponse, status_code=201)
+def create_feed(feed_data: FeedCreate):
+    """Add a new feed."""
+    url = str(feed_data.url)
+
+    # Validate feed
+    is_valid, message, parsed = validate_feed_url(url)
+    if not is_valid:
+        raise HTTPException(status_code=400, detail=message)
+
+    with get_db() as conn:
+        repo = FeedRepository(conn)
+
+        # Check for duplicates
+        existing = repo.get_by_url(url)
+        if existing:
+            raise HTTPException(status_code=409, detail="Feed already exists")
+
+        feed = repo.create(
+            url=url,
+            title=parsed.title,
+            description=parsed.description,
+            image_url=parsed.image_url,
+        )
+
+    return FeedResponse.from_feed(feed)
+
+
+@router.get("/{feed_id}", response_model=FeedResponse)
+def get_feed(feed_id: int):
+    """Get a feed by ID."""
+    with get_db() as conn:
+        feed_repo = FeedRepository(conn)
+        episode_repo = EpisodeRepository(conn)
+
+        feed = feed_repo.get_by_id(feed_id)
+        if not feed:
+            raise HTTPException(status_code=404, detail="Feed not found")
+
+        episodes = episode_repo.get_by_feed(feed_id, limit=10000)
+
+    return FeedResponse.from_feed(feed, len(episodes))
+
+
+@router.patch("/{feed_id}", response_model=FeedResponse)
+def update_feed(feed_id: int, feed_data: FeedUpdate):
+    """Update a feed."""
+    with get_db() as conn:
+        repo = FeedRepository(conn)
+        feed = repo.get_by_id(feed_id)
+
+        if not feed:
+            raise HTTPException(status_code=404, detail="Feed not found")
+
+        # For now, we don't have update methods in repository
+        # This would need to be added for full CRUD support
+        raise HTTPException(status_code=501, detail="Update not implemented yet")
+
+
+@router.delete("/{feed_id}", response_model=MessageResponse)
+def delete_feed(feed_id: int):
+    """Delete a feed and its episodes."""
+    with get_db() as conn:
+        repo = FeedRepository(conn)
+
+        feed = repo.get_by_id(feed_id)
+        if not feed:
+            raise HTTPException(status_code=404, detail="Feed not found")
+
+        deleted = repo.delete(feed_id)
+        if not deleted:
+            raise HTTPException(status_code=500, detail="Failed to delete feed")
+
+    return MessageResponse(message=f"Feed '{feed.title}' deleted")
+
+
+@router.post("/{feed_id}/refresh", response_model=PollResponse)
+def refresh_feed(feed_id: int):
+    """Poll a feed for new episodes."""
+    with get_db() as conn:
+        repo = FeedRepository(conn)
+        feed = repo.get_by_id(feed_id)
+
+    if not feed:
+        raise HTTPException(status_code=404, detail="Feed not found")
+
+    try:
+        new_count = discover_new_episodes(feed)
+        return PollResponse(
+            new_episodes=new_count,
+            message=f"Discovered {new_count} new episodes",
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to poll feed: {e}")

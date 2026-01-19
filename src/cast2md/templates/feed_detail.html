@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+
+{% block title %}{{ feed.title }} - cast2md{% endblock %}
+
+{% block content %}
+<hgroup>
+    <h1>{{ feed.title }}</h1>
+    <p>{{ feed.description[:200] + '...' if feed.description and feed.description|length > 200 else feed.description or 'No description' }}</p>
+</hgroup>
+
+<p>
+    <a href="/">&larr; Back to feeds</a>
+    &nbsp;|&nbsp;
+    <strong>{{ total }}</strong> episodes
+    &nbsp;|&nbsp;
+    Last polled: {{ feed.last_polled.strftime('%Y-%m-%d %H:%M') if feed.last_polled else 'Never' }}
+    &nbsp;|&nbsp;
+    <button class="outline" style="padding: 0.25rem 0.5rem; font-size: 0.875rem;" onclick="refreshFeed({{ feed.id }})">Refresh Feed</button>
+</p>
+
+<table>
+    <thead>
+        <tr>
+            <th>Episode</th>
+            <th>Published</th>
+            <th>Status</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for episode in episodes %}
+        <tr>
+            <td>
+                <a href="/episodes/{{ episode.id }}" class="truncate" style="display: block;">
+                    {{ episode.title }}
+                </a>
+            </td>
+            <td>{{ episode.published_at.strftime('%Y-%m-%d') if episode.published_at else 'Unknown' }}</td>
+            <td>
+                <span class="status-badge status-{{ episode.status.value }}">{{ episode.status.value }}</span>
+            </td>
+            <td class="actions">
+                {% if episode.status.value == 'pending' %}
+                    <button class="outline" onclick="downloadEpisode({{ episode.id }})">Download</button>
+                {% elif episode.status.value == 'downloaded' %}
+                    <button class="outline" onclick="transcribeEpisode({{ episode.id }})">Transcribe</button>
+                {% elif episode.status.value == 'completed' and episode.transcript_path %}
+                    <a href="/episodes/{{ episode.id }}" class="outline" role="button">View</a>
+                {% elif episode.status.value == 'failed' %}
+                    <button class="outline secondary" onclick="retryEpisode({{ episode.id }})">Retry</button>
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+{% if total_pages > 1 %}
+<nav>
+    <ul>
+        {% if page > 1 %}
+        <li><a href="?page={{ page - 1 }}">&larr; Previous</a></li>
+        {% endif %}
+    </ul>
+    <ul>
+        <li>Page {{ page }} of {{ total_pages }}</li>
+    </ul>
+    <ul>
+        {% if page < total_pages %}
+        <li><a href="?page={{ page + 1 }}">Next &rarr;</a></li>
+        {% endif %}
+    </ul>
+</nav>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function refreshFeed(feedId) {
+    try {
+        const response = await fetch(`/api/feeds/${feedId}/refresh`, {method: 'POST'});
+        const data = await response.json();
+
+        if (response.ok) {
+            alert(data.message);
+            window.location.reload();
+        } else {
+            alert('Error: ' + data.detail);
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
+
+async function downloadEpisode(episodeId) {
+    try {
+        const response = await fetch(`/api/episodes/${episodeId}/download`, {method: 'POST'});
+        const data = await response.json();
+
+        if (response.ok) {
+            alert(data.message);
+            window.location.reload();
+        } else {
+            alert('Error: ' + data.detail);
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
+
+async function transcribeEpisode(episodeId) {
+    if (!confirm('Start transcription? This may take several minutes.')) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/episodes/${episodeId}/transcribe`, {method: 'POST'});
+        const data = await response.json();
+
+        if (response.ok) {
+            alert(data.message);
+            window.location.reload();
+        } else {
+            alert('Error: ' + data.detail);
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
+
+async function retryEpisode(episodeId) {
+    // For now, just try download again
+    await downloadEpisode(episodeId);
+}
+</script>
+{% endblock %}
