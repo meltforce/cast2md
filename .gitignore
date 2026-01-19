@@ -84,3 +84,6 @@ models/
 
 # Screenshots
 screenshots/
+
+# Claude Code
+.claude/
