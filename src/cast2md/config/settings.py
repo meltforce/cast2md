@@ -33,6 +33,11 @@ class Settings(BaseSettings):
     max_retry_attempts: int = 3
     request_timeout: int = 30
 
+    # Notifications (ntfy)
+    ntfy_enabled: bool = False
+    ntfy_url: str = "https://ntfy.sh"
+    ntfy_topic: str = ""  # Required if enabled
+
     def ensure_directories(self) -> None:
         """Create required directories if they don't exist."""
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
@@ -74,6 +79,8 @@ def _apply_db_overrides() -> None:
                     try:
                         if field_type == int:
                             setattr(_settings, key, int(value))
+                        elif field_type == bool:
+                            setattr(_settings, key, value.lower() in ("true", "1", "yes"))
                         elif field_type == Path:
                             setattr(_settings, key, Path(value))
                         else:

@@ -10,6 +10,11 @@ from cast2md.db.connection import get_db
 from cast2md.db.models import EpisodeStatus, JobStatus, JobType
 from cast2md.db.repository import EpisodeRepository, FeedRepository, JobRepository
 from cast2md.download.downloader import download_episode
+from cast2md.notifications.ntfy import (
+    notify_download_failed,
+    notify_transcription_complete,
+    notify_transcription_failed,
+)
 from cast2md.transcription.service import transcribe_episode
 
 logger = logging.getLogger(__name__)
@@ -170,6 +175,9 @@ class WorkerManager:
                 job_repo = JobRepository(conn)
                 job_repo.mark_failed(job_id, str(e))
 
+            # Send failure notification
+            notify_download_failed(episode.title, feed.title, str(e))
+
     def _process_transcribe_job(self, job_id: int, episode_id: int):
         """Process a transcription job."""
         logger.info(f"Processing transcription job {job_id} for episode {episode_id}")
@@ -205,11 +213,17 @@ class WorkerManager:
                 job_repo.mark_completed(job_id)
                 logger.info(f"Transcription job {job_id} completed")
 
+            # Send success notification
+            notify_transcription_complete(episode.title, feed.title)
+
         except Exception as e:
             logger.error(f"Transcription job {job_id} failed: {e}")
             with get_db() as conn:
                 job_repo = JobRepository(conn)
                 job_repo.mark_failed(job_id, str(e))
+
+            # Send failure notification
+            notify_transcription_failed(episode.title, feed.title, str(e))
 
     def _queue_transcription(self, conn, episode_id: int):
         """Queue a transcription job for an episode."""

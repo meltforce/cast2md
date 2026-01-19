@@ -3,9 +3,10 @@
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from cast2md.config.settings import get_settings
+from cast2md.config.settings import get_settings, reload_settings
 from cast2md.db.connection import get_db
 from cast2md.db.repository import SettingsRepository, WhisperModelRepository
+from cast2md.notifications.ntfy import send_notification, NotificationType
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
@@ -21,14 +22,12 @@ def _get_configurable_settings() -> dict:
 
     model_options = [m.id for m in models]
 
+    # Order matters for UI layout (2 items per row)
+    # Row 1: Whisper Model, Whisper Backend
+    # Row 2: Download Workers (single)
+    # Row 3: Storage Path, Temp Download Path
+    # Row 4+: Notification settings
     return {
-        "max_concurrent_downloads": {
-            "type": "int",
-            "label": "Download Workers",
-            "description": "Number of concurrent download workers (requires restart)",
-            "min": 1,
-            "max": 10,
-        },
         "whisper_model": {
             "type": "select",
             "label": "Whisper Model",
@@ -41,6 +40,14 @@ def _get_configurable_settings() -> dict:
             "description": "Transcription backend (requires restart)",
             "options": ["auto", "faster-whisper", "mlx"],
         },
+        "max_concurrent_downloads": {
+            "type": "int",
+            "label": "Download Workers",
+            "description": "Number of concurrent download workers (requires restart)",
+            "min": 1,
+            "max": 10,
+            "full_width": True,
+        },
         "storage_path": {
             "type": "path",
             "label": "Storage Path",
@@ -50,6 +57,22 @@ def _get_configurable_settings() -> dict:
             "type": "path",
             "label": "Temp Download Path",
             "description": "Path for temporary downloads",
+        },
+        "ntfy_enabled": {
+            "type": "bool",
+            "label": "Enable Notifications",
+            "description": "Send notifications via ntfy on completion/failure",
+            "full_width": True,
+        },
+        "ntfy_url": {
+            "type": "text",
+            "label": "ntfy Server URL",
+            "description": "ntfy server URL (default: https://ntfy.sh)",
+        },
+        "ntfy_topic": {
+            "type": "text",
+            "label": "ntfy Topic",
+            "description": "Topic name for notifications (required if enabled)",
         },
     }
 
@@ -134,6 +157,9 @@ def update_settings(request: UpdateSettingsRequest):
             elif meta["type"] == "select":
                 if value not in meta["options"]:
                     continue
+            elif meta["type"] == "bool":
+                # Normalize boolean values
+                value = "true" if value.lower() in ("true", "1", "yes") else "false"
 
             repo.set(key, str(value))
 
@@ -257,3 +283,31 @@ def reset_models():
         count = repo.seed_defaults()
 
     return MessageResponse(message=f"Models reset to {count} defaults.")
+
+
+@router.post("/notifications/test", response_model=MessageResponse)
+def test_notification():
+    """Send a test notification to verify ntfy configuration."""
+    # Reload settings to pick up any recent changes
+    reload_settings()
+
+    settings = get_settings()
+
+    if not settings.ntfy_enabled:
+        return MessageResponse(message="Notifications are disabled. Enable them in settings first.")
+
+    if not settings.ntfy_topic:
+        return MessageResponse(message="No ntfy topic configured. Set a topic in settings first.")
+
+    success = send_notification(
+        NotificationType.TRANSCRIPTION_COMPLETE,
+        title="Test Notification",
+        message="If you see this, notifications are working!",
+        priority=3,
+        tags=["white_check_mark", "test_tube"],
+    )
+
+    if success:
+        return MessageResponse(message="Test notification sent successfully!")
+    else:
+        return MessageResponse(message="Failed to send notification. Check server logs for details.")

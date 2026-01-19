@@ -20,6 +20,7 @@
         <div style="display: flex; gap: 1rem; margin-top: 1rem;">
             <button type="submit">Save Settings</button>
             <button type="button" class="secondary" onclick="resetAllSettings()">Reset to Defaults</button>
+            <button type="button" class="outline" onclick="testNotification()">Test Notification</button>
         </div>
     </form>
 
@@ -123,10 +124,15 @@ async function loadSettings() {
         fieldsContainer.innerHTML = '';
 
         const entries = Object.entries(currentSettings);
-        let html = '<div class="grid">';
+        let html = '';
+        let inGrid = false;
+        let gridCount = 0;
 
         entries.forEach(([key, info], index) => {
             let inputHtml = '';
+            const isBool = info.type === 'bool';
+            const isChecked = info.value === true || info.value === 'true' || info.value === '1';
+            const isFullWidth = info.full_width === true;
 
             if (info.type === 'int') {
                 inputHtml = `<input type="number" name="${key}" id="${key}"
@@ -136,25 +142,50 @@ async function loadSettings() {
                     `<option value="${opt}" ${info.value === opt ? 'selected' : ''}>${opt}</option>`
                 ).join('');
                 inputHtml = `<select name="${key}" id="${key}">${options}</select>`;
+            } else if (info.type === 'bool') {
+                inputHtml = `<input type="checkbox" name="${key}" id="${key}" value="true" ${isChecked ? 'checked' : ''} role="switch">`;
             } else {
-                inputHtml = `<input type="text" name="${key}" id="${key}" value="${info.value}">`;
+                inputHtml = `<input type="text" name="${key}" id="${key}" value="${info.value || ''}">`;
+            }
+
+            // Handle full-width items - close current grid if open
+            if (isFullWidth && inGrid) {
+                html += '</div>';
+                inGrid = false;
+                gridCount = 0;
+            }
+
+            // Start a new grid if needed for non-full-width items
+            if (!isFullWidth && !inGrid) {
+                html += '<div class="grid">';
+                inGrid = true;
+                gridCount = 0;
             }
 
             html += `
-                <label>
-                    ${info.label}
-                    ${inputHtml}
-                    <small>${info.description}</small>
+                <label${isBool ? ' style="display: flex; align-items: center; gap: 0.5rem;"' : ''}>
+                    ${isBool ? inputHtml + ' ' + info.label : info.label + inputHtml}
+                    ${isBool ? '' : '<small>' + info.description + '</small>'}
                 </label>
+                ${isBool ? '<small style="margin-top: -0.75rem; margin-bottom: 0.5rem;">' + info.description + '</small>' : ''}
             `;
 
-            // Close grid and start new one every 2 items
-            if ((index + 1) % 2 === 0 && index < entries.length - 1) {
-                html += '</div><div class="grid">';
+            if (!isFullWidth) {
+                gridCount++;
+                // Close grid after 2 items
+                if (gridCount === 2) {
+                    html += '</div>';
+                    inGrid = false;
+                    gridCount = 0;
+                }
             }
         });
 
-        html += '</div>';
+        // Close any open grid
+        if (inGrid) {
+            html += '</div>';
+        }
+
         fieldsContainer.innerHTML = html;
 
         // Populate current values table
@@ -191,8 +222,16 @@ document.getElementById('settingsForm').addEventListener('submit', async (e) => 
     const formData = new FormData(e.target);
     const settings = {};
 
-    for (const [key, value] of formData.entries()) {
-        settings[key] = value;
+    // Handle all fields, including unchecked checkboxes
+    for (const [key, info] of Object.entries(currentSettings)) {
+        if (info.type === 'bool') {
+            settings[key] = formData.has(key) ? 'true' : 'false';
+        } else {
+            const value = formData.get(key);
+            if (value !== null) {
+                settings[key] = value;
+            }
+        }
     }
 
     try {
@@ -249,6 +288,16 @@ async function resetAllSettings() {
         } else {
             alert('Error: ' + data.detail);
         }
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
+
+async function testNotification() {
+    try {
+        const response = await fetch('/api/settings/notifications/test', {method: 'POST'});
+        const data = await response.json();
+        alert(data.message);
     } catch (error) {
         alert('Error: ' + error.message);
     }
