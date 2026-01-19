@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+
+{% block title %}{{ episode.title }} - cast2md{% endblock %}
+
+{% block content %}
+<hgroup>
+    <h1>{{ episode.title }}</h1>
+    <p>From <a href="/feeds/{{ feed.id }}">{{ feed.title }}</a></p>
+</hgroup>
+
+<div class="episode-meta">
+    <span class="status-badge status-{{ episode.status.value }}">{{ episode.status.value }}</span>
+    &nbsp;|&nbsp;
+    Published: {{ episode.published_at.strftime('%Y-%m-%d %H:%M') if episode.published_at else 'Unknown' }}
+    {% if episode.duration_seconds %}
+    &nbsp;|&nbsp;
+    Duration: {{ '%d:%02d' % (episode.duration_seconds // 60, episode.duration_seconds % 60) }}
+    {% endif %}
+</div>
+
+{% if episode.description %}
+<details>
+    <summary>Description</summary>
+    <p>{{ episode.description }}</p>
+</details>
+{% endif %}
+
+<article>
+    <header>
+        <h3>Actions</h3>
+    </header>
+
+    <div class="actions" style="gap: 1rem;">
+        {% if episode.status.value == 'pending' %}
+            <button onclick="downloadEpisode({{ episode.id }})">Download Audio</button>
+        {% elif episode.status.value == 'downloaded' %}
+            <button onclick="transcribeEpisode({{ episode.id }})">Transcribe</button>
+            <button onclick="transcribeEpisode({{ episode.id }}, true)">Transcribe with Timestamps</button>
+        {% elif episode.status.value == 'failed' %}
+            <button onclick="downloadEpisode({{ episode.id }})" class="secondary">Retry Download</button>
+        {% endif %}
+
+        {% if episode.audio_path %}
+            <a href="{{ episode.audio_url }}" target="_blank" role="button" class="outline">Download Original</a>
+        {% endif %}
+    </div>
+
+    {% if episode.error_message %}
+    <footer>
+        <details open>
+            <summary>Error Details</summary>
+            <pre>{{ episode.error_message }}</pre>
+        </details>
+    </footer>
+    {% endif %}
+</article>
+
+{% if transcript_content %}
+<article>
+    <header>
+        <h3>Transcript</h3>
+    </header>
+    <pre class="transcript">{{ transcript_content }}</pre>
+</article>
+{% endif %}
+
+<p><a href="/feeds/{{ feed.id }}">&larr; Back to {{ feed.title }}</a></p>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function downloadEpisode(episodeId) {
+    try {
+        const response = await fetch(`/api/episodes/${episodeId}/download`, {method: 'POST'});
+        const data = await response.json();
+
+        if (response.ok) {
+            alert(data.message);
+            window.location.reload();
+        } else {
+            alert('Error: ' + data.detail);
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
+
+async function transcribeEpisode(episodeId, withTimestamps = false) {
+    if (!confirm('Start transcription? This may take several minutes.')) {
+        return;
+    }
+
+    try {
+        const url = `/api/episodes/${episodeId}/transcribe` + (withTimestamps ? '?timestamps=true' : '');
+        const response = await fetch(url, {method: 'POST'});
+        const data = await response.json();
+
+        if (response.ok) {
+            alert(data.message);
+            window.location.reload();
+        } else {
+            alert('Error: ' + data.detail);
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
+</script>
+{% endblock %}

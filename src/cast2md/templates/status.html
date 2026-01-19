@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+
+{% block title %}Status - cast2md{% endblock %}
+
+{% block content %}
+<hgroup>
+    <h1>System Status</h1>
+    <p>Overview of episode processing</p>
+</hgroup>
+
+<div class="stats-grid">
+    <div class="stat-card">
+        <h3>{{ feed_count }}</h3>
+        <p>Feeds</p>
+    </div>
+    <div class="stat-card">
+        <h3>{{ status_counts.get('pending', 0) }}</h3>
+        <p>Pending</p>
+    </div>
+    <div class="stat-card">
+        <h3>{{ status_counts.get('downloading', 0) + status_counts.get('transcribing', 0) }}</h3>
+        <p>Processing</p>
+    </div>
+    <div class="stat-card">
+        <h3>{{ status_counts.get('completed', 0) }}</h3>
+        <p>Completed</p>
+    </div>
+    <div class="stat-card">
+        <h3>{{ status_counts.get('failed', 0) }}</h3>
+        <p>Failed</p>
+    </div>
+</div>
+
+{% if downloading %}
+<article>
+    <header><h3>Currently Downloading</h3></header>
+    <table>
+        <thead>
+            <tr><th>Episode</th><th>Actions</th></tr>
+        </thead>
+        <tbody>
+            {% for ep in downloading %}
+            <tr>
+                <td><a href="/episodes/{{ ep.id }}">{{ ep.title }}</a></td>
+                <td><span class="status-badge status-downloading">downloading</span></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</article>
+{% endif %}
+
+{% if transcribing %}
+<article>
+    <header><h3>Currently Transcribing</h3></header>
+    <table>
+        <thead>
+            <tr><th>Episode</th><th>Actions</th></tr>
+        </thead>
+        <tbody>
+            {% for ep in transcribing %}
+            <tr>
+                <td><a href="/episodes/{{ ep.id }}">{{ ep.title }}</a></td>
+                <td><span class="status-badge status-transcribing">transcribing</span></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</article>
+{% endif %}
+
+{% if downloaded %}
+<article>
+    <header><h3>Ready for Transcription ({{ downloaded|length }})</h3></header>
+    <table>
+        <thead>
+            <tr><th>Episode</th><th>Actions</th></tr>
+        </thead>
+        <tbody>
+            {% for ep in downloaded %}
+            <tr>
+                <td><a href="/episodes/{{ ep.id }}">{{ ep.title }}</a></td>
+                <td>
+                    <button class="outline" style="padding: 0.25rem 0.5rem; font-size: 0.875rem;"
+                            onclick="transcribeEpisode({{ ep.id }})">Transcribe</button>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</article>
+{% endif %}
+
+{% if failed %}
+<article>
+    <header><h3>Failed ({{ failed|length }})</h3></header>
+    <table>
+        <thead>
+            <tr><th>Episode</th><th>Error</th><th>Actions</th></tr>
+        </thead>
+        <tbody>
+            {% for ep in failed %}
+            <tr>
+                <td><a href="/episodes/{{ ep.id }}">{{ ep.title }}</a></td>
+                <td class="truncate">{{ ep.error_message or 'Unknown error' }}</td>
+                <td>
+                    <button class="outline secondary" style="padding: 0.25rem 0.5rem; font-size: 0.875rem;"
+                            onclick="retryEpisode({{ ep.id }})">Retry</button>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</article>
+{% endif %}
+
+{% if pending %}
+<article>
+    <header><h3>Pending Download (showing {{ pending|length }})</h3></header>
+    <table>
+        <thead>
+            <tr><th>Episode</th><th>Actions</th></tr>
+        </thead>
+        <tbody>
+            {% for ep in pending %}
+            <tr>
+                <td><a href="/episodes/{{ ep.id }}">{{ ep.title }}</a></td>
+                <td>
+                    <button class="outline" style="padding: 0.25rem 0.5rem; font-size: 0.875rem;"
+                            onclick="downloadEpisode({{ ep.id }})">Download</button>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</article>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function downloadEpisode(episodeId) {
+    try {
+        const response = await fetch(`/api/episodes/${episodeId}/download`, {method: 'POST'});
+        const data = await response.json();
+
+        if (response.ok) {
+            alert(data.message);
+            window.location.reload();
+        } else {
+            alert('Error: ' + data.detail);
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
+
+async function transcribeEpisode(episodeId) {
+    if (!confirm('Start transcription? This may take several minutes.')) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/episodes/${episodeId}/transcribe`, {method: 'POST'});
+        const data = await response.json();
+
+        if (response.ok) {
+            alert(data.message);
+            window.location.reload();
+        } else {
+            alert('Error: ' + data.detail);
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
+
+async function retryEpisode(episodeId) {
+    await downloadEpisode(episodeId);
+}
+</script>
+{% endblock %}

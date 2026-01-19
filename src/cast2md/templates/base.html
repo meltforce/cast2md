@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}cast2md{% endblock %}</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+    <style>
+        :root {
+            --pico-font-size: 16px;
+        }
+        nav {
+            margin-bottom: 2rem;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.25rem;
+            font-size: 0.75rem;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        .status-pending { background: #fef3c7; color: #92400e; }
+        .status-downloading { background: #dbeafe; color: #1e40af; }
+        .status-downloaded { background: #e0e7ff; color: #3730a3; }
+        .status-transcribing { background: #fce7f3; color: #9d174d; }
+        .status-completed { background: #d1fae5; color: #065f46; }
+        .status-failed { background: #fee2e2; color: #991b1b; }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        .stat-card {
+            text-align: center;
+            padding: 1rem;
+            background: var(--pico-card-background-color);
+            border-radius: 0.5rem;
+            border: 1px solid var(--pico-muted-border-color);
+        }
+        .stat-card h3 {
+            margin: 0;
+            font-size: 2rem;
+        }
+        .stat-card p {
+            margin: 0;
+            color: var(--pico-muted-color);
+            font-size: 0.875rem;
+        }
+        .truncate {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 300px;
+        }
+        .actions {
+            display: flex;
+            gap: 0.5rem;
+        }
+        .actions button, .actions a {
+            padding: 0.25rem 0.5rem;
+            font-size: 0.875rem;
+        }
+        pre.transcript {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            max-height: 600px;
+            overflow-y: auto;
+            background: var(--pico-card-background-color);
+            padding: 1rem;
+            border-radius: 0.5rem;
+        }
+        .episode-meta {
+            color: var(--pico-muted-color);
+            font-size: 0.875rem;
+            margin-bottom: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <nav class="container">
+        <ul>
+            <li><strong><a href="/">cast2md</a></strong></li>
+        </ul>
+        <ul>
+            <li><a href="/">Feeds</a></li>
+            <li><a href="/status">Status</a></li>
+            <li><a href="/api/docs" target="_blank">API</a></li>
+        </ul>
+    </nav>
+
+    <main class="container">
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer class="container">
+        <small>cast2md - Podcast Transcription Service</small>
+    </footer>
+
+    {% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,159 @@
+"""Web UI views."""
+
+from fastapi import APIRouter, Request
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
+
+from cast2md.db.connection import get_db
+from cast2md.db.models import EpisodeStatus
+from cast2md.db.repository import EpisodeRepository, FeedRepository
+
+router = APIRouter(tags=["web"])
+
+# Templates will be configured in main.py
+templates: Jinja2Templates = None
+
+
+def configure_templates(t: Jinja2Templates):
+    """Configure templates instance."""
+    global templates
+    templates = t
+
+
+@router.get("/", response_class=HTMLResponse)
+def index(request: Request):
+    """Home page - list all feeds."""
+    with get_db() as conn:
+        feed_repo = FeedRepository(conn)
+        episode_repo = EpisodeRepository(conn)
+
+        feeds = feed_repo.get_all()
+        status_counts = episode_repo.count_by_status()
+
+        # Add episode counts to feeds
+        feeds_with_counts = []
+        for feed in feeds:
+            episodes = episode_repo.get_by_feed(feed.id, limit=10000)
+            feeds_with_counts.append({
+                "feed": feed,
+                "episode_count": len(episodes),
+            })
+
+    total_episodes = sum(status_counts.values())
+
+    return templates.TemplateResponse(
+        "index.html",
+        {
+            "request": request,
+            "feeds": feeds_with_counts,
+            "status_counts": status_counts,
+            "total_episodes": total_episodes,
+        },
+    )
+
+
+@router.get("/feeds/{feed_id}", response_class=HTMLResponse)
+def feed_detail(request: Request, feed_id: int, page: int = 1, per_page: int = 20):
+    """Feed detail page - show episodes."""
+    with get_db() as conn:
+        feed_repo = FeedRepository(conn)
+        episode_repo = EpisodeRepository(conn)
+
+        feed = feed_repo.get_by_id(feed_id)
+        if not feed:
+            return templates.TemplateResponse(
+                "error.html",
+                {"request": request, "message": "Feed not found"},
+                status_code=404,
+            )
+
+        # Get paginated episodes
+        all_episodes = episode_repo.get_by_feed(feed_id, limit=10000)
+        total = len(all_episodes)
+
+        offset = (page - 1) * per_page
+        episodes = all_episodes[offset : offset + per_page]
+
+        total_pages = (total + per_page - 1) // per_page
+
+    return templates.TemplateResponse(
+        "feed_detail.html",
+        {
+            "request": request,
+            "feed": feed,
+            "episodes": episodes,
+            "page": page,
+            "per_page": per_page,
+            "total": total,
+            "total_pages": total_pages,
+        },
+    )
+
+
+@router.get("/episodes/{episode_id}", response_class=HTMLResponse)
+def episode_detail(request: Request, episode_id: int):
+    """Episode detail page."""
+    with get_db() as conn:
+        episode_repo = EpisodeRepository(conn)
+        feed_repo = FeedRepository(conn)
+
+        episode = episode_repo.get_by_id(episode_id)
+        if not episode:
+            return templates.TemplateResponse(
+                "error.html",
+                {"request": request, "message": "Episode not found"},
+                status_code=404,
+            )
+
+        feed = feed_repo.get_by_id(episode.feed_id)
+
+    # Read transcript content if available
+    transcript_content = None
+    if episode.transcript_path:
+        try:
+            from pathlib import Path
+            transcript_content = Path(episode.transcript_path).read_text()
+        except Exception:
+            pass
+
+    return templates.TemplateResponse(
+        "episode_detail.html",
+        {
+            "request": request,
+            "episode": episode,
+            "feed": feed,
+            "transcript_content": transcript_content,
+        },
+    )
+
+
+@router.get("/status", response_class=HTMLResponse)
+def status_page(request: Request):
+    """Status page showing episodes by status."""
+    with get_db() as conn:
+        episode_repo = EpisodeRepository(conn)
+        feed_repo = FeedRepository(conn)
+
+        status_counts = episode_repo.count_by_status()
+        feeds = feed_repo.get_all()
+
+        # Get recent episodes for each active status
+        pending = episode_repo.get_by_status(EpisodeStatus.PENDING, limit=10)
+        downloading = episode_repo.get_by_status(EpisodeStatus.DOWNLOADING, limit=10)
+        downloaded = episode_repo.get_by_status(EpisodeStatus.DOWNLOADED, limit=10)
+        transcribing = episode_repo.get_by_status(EpisodeStatus.TRANSCRIBING, limit=10)
+        failed = episode_repo.get_by_status(EpisodeStatus.FAILED, limit=10)
+
+    return templates.TemplateResponse(
+        "status.html",
+        {
+            "request": request,
+            "status_counts": status_counts,
+            "feed_count": len(feeds),
+            "pending": pending,
+            "downloading": downloading,
+            "downloaded": downloaded,
+            "transcribing": transcribing,
+            "failed": failed,
+        },
+    )

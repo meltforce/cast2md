@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+
+{% block title %}Feeds - cast2md{% endblock %}
+
+{% block content %}
+<hgroup>
+    <h1>Podcast Feeds</h1>
+    <p>Manage your podcast subscriptions</p>
+</hgroup>
+
+<div class="stats-grid">
+    <div class="stat-card">
+        <h3>{{ feeds|length }}</h3>
+        <p>Feeds</p>
+    </div>
+    <div class="stat-card">
+        <h3>{{ total_episodes }}</h3>
+        <p>Episodes</p>
+    </div>
+    <div class="stat-card">
+        <h3>{{ status_counts.get('completed', 0) }}</h3>
+        <p>Transcribed</p>
+    </div>
+    <div class="stat-card">
+        <h3>{{ status_counts.get('pending', 0) }}</h3>
+        <p>Pending</p>
+    </div>
+</div>
+
+<article>
+    <header>
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <h2 style="margin: 0;">Feeds</h2>
+            <button onclick="showAddFeedDialog()">Add Feed</button>
+        </div>
+    </header>
+
+    {% if feeds %}
+    <table>
+        <thead>
+            <tr>
+                <th>Podcast</th>
+                <th>Episodes</th>
+                <th>Last Polled</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in feeds %}
+            <tr>
+                <td>
+                    <a href="/feeds/{{ item.feed.id }}">{{ item.feed.title }}</a>
+                </td>
+                <td>{{ item.episode_count }}</td>
+                <td>
+                    {% if item.feed.last_polled %}
+                        {{ item.feed.last_polled.strftime('%Y-%m-%d %H:%M') }}
+                    {% else %}
+                        Never
+                    {% endif %}
+                </td>
+                <td class="actions">
+                    <button class="outline" onclick="refreshFeed({{ item.feed.id }})">Refresh</button>
+                    <button class="outline secondary" onclick="deleteFeed({{ item.feed.id }}, '{{ item.feed.title }}')">Delete</button>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p>No feeds yet. Add one to get started!</p>
+    {% endif %}
+</article>
+
+<dialog id="addFeedDialog">
+    <article>
+        <header>
+            <button aria-label="Close" rel="prev" onclick="document.getElementById('addFeedDialog').close()"></button>
+            <h3>Add Podcast Feed</h3>
+        </header>
+        <form id="addFeedForm" onsubmit="addFeed(event)">
+            <label for="feedUrl">
+                RSS Feed URL
+                <input type="url" id="feedUrl" name="url" placeholder="https://example.com/feed.xml" required>
+            </label>
+            <footer>
+                <button type="button" class="secondary" onclick="document.getElementById('addFeedDialog').close()">Cancel</button>
+                <button type="submit">Add Feed</button>
+            </footer>
+        </form>
+    </article>
+</dialog>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function showAddFeedDialog() {
+    document.getElementById('addFeedDialog').showModal();
+}
+
+async function addFeed(event) {
+    event.preventDefault();
+    const url = document.getElementById('feedUrl').value;
+
+    try {
+        const response = await fetch('/api/feeds', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({url: url})
+        });
+
+        if (response.ok) {
+            window.location.reload();
+        } else {
+            const data = await response.json();
+            alert('Error: ' + data.detail);
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
+
+async function refreshFeed(feedId) {
+    try {
+        const response = await fetch(`/api/feeds/${feedId}/refresh`, {method: 'POST'});
+        const data = await response.json();
+
+        if (response.ok) {
+            alert(data.message);
+            window.location.reload();
+        } else {
+            alert('Error: ' + data.detail);
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
+
+async function deleteFeed(feedId, title) {
+    if (!confirm(`Delete feed "${title}" and all its episodes?`)) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/feeds/${feedId}`, {method: 'DELETE'});
+
+        if (response.ok) {
+            window.location.reload();
+        } else {
+            const data = await response.json();
+            alert('Error: ' + data.detail);
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
+</script>
+{% endblock %}
