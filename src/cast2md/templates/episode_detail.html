@@ -32,12 +32,11 @@
 
     <div class="actions" style="gap: 1rem;">
         {% if episode.status.value == 'pending' %}
-            <button onclick="downloadEpisode({{ episode.id }})">Download Audio</button>
+            <button onclick="queueProcess({{ episode.id }})">Queue Download</button>
         {% elif episode.status.value == 'downloaded' %}
-            <button onclick="transcribeEpisode({{ episode.id }})">Transcribe</button>
-            <button onclick="transcribeEpisode({{ episode.id }}, true)">Transcribe with Timestamps</button>
+            <button onclick="queueTranscribe({{ episode.id }})">Queue Transcription</button>
         {% elif episode.status.value == 'failed' %}
-            <button onclick="downloadEpisode({{ episode.id }})" class="secondary">Retry Download</button>
+            <button onclick="queueProcess({{ episode.id }})" class="secondary">Retry</button>
         {% endif %}
 
         {% if episode.audio_path %}
@@ -69,9 +68,9 @@
 
 {% block scripts %}
 <script>
-async function downloadEpisode(episodeId) {
+async function queueProcess(episodeId) {
     try {
-        const response = await fetch(`/api/episodes/${episodeId}/download`, {method: 'POST'});
+        const response = await fetch(`/api/queue/episodes/${episodeId}/process`, {method: 'POST'});
         const data = await response.json();
 
         if (response.ok) {
@@ -85,14 +84,9 @@ async function downloadEpisode(episodeId) {
     }
 }
 
-async function transcribeEpisode(episodeId, withTimestamps = false) {
-    if (!confirm('Start transcription? This may take several minutes.')) {
-        return;
-    }
-
+async function queueTranscribe(episodeId) {
     try {
-        const url = `/api/episodes/${episodeId}/transcribe` + (withTimestamps ? '?timestamps=true' : '');
-        const response = await fetch(url, {method: 'POST'});
+        const response = await fetch(`/api/queue/episodes/${episodeId}/transcribe`, {method: 'POST'});
         const data = await response.json();
 
         if (response.ok) {

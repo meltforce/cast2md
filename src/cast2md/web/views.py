@@ -5,8 +5,9 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
 from cast2md.db.connection import get_db
-from cast2md.db.models import EpisodeStatus
-from cast2md.db.repository import EpisodeRepository, FeedRepository
+from cast2md.db.models import EpisodeStatus, JobType
+from cast2md.db.repository import EpisodeRepository, FeedRepository, JobRepository
+from cast2md.worker import get_worker_manager
 
 router = APIRouter(tags=["web"])
 
@@ -133,6 +134,7 @@ def status_page(request: Request):
     with get_db() as conn:
         episode_repo = EpisodeRepository(conn)
         feed_repo = FeedRepository(conn)
+        job_repo = JobRepository(conn)
 
         status_counts = episode_repo.count_by_status()
         feeds = feed_repo.get_all()
@@ -143,6 +145,41 @@ def status_page(request: Request):
         downloaded = episode_repo.get_by_status(EpisodeStatus.DOWNLOADED, limit=10)
         transcribing = episode_repo.get_by_status(EpisodeStatus.TRANSCRIBING, limit=10)
         failed = episode_repo.get_by_status(EpisodeStatus.FAILED, limit=10)
+
+        # Get queued jobs
+        queued_downloads = job_repo.get_queued_jobs(JobType.DOWNLOAD, limit=10)
+        queued_transcriptions = job_repo.get_queued_jobs(JobType.TRANSCRIBE, limit=10)
+        running_downloads = job_repo.get_running_jobs(JobType.DOWNLOAD)
+        running_transcriptions = job_repo.get_running_jobs(JobType.TRANSCRIBE)
+
+        # Get episode info for queued jobs
+        queued_download_episodes = []
+        for job in queued_downloads:
+            ep = episode_repo.get_by_id(job.episode_id)
+            if ep:
+                queued_download_episodes.append({"job": job, "episode": ep})
+
+        queued_transcribe_episodes = []
+        for job in queued_transcriptions:
+            ep = episode_repo.get_by_id(job.episode_id)
+            if ep:
+                queued_transcribe_episodes.append({"job": job, "episode": ep})
+
+        running_download_episodes = []
+        for job in running_downloads:
+            ep = episode_repo.get_by_id(job.episode_id)
+            if ep:
+                running_download_episodes.append({"job": job, "episode": ep})
+
+        running_transcribe_episodes = []
+        for job in running_transcriptions:
+            ep = episode_repo.get_by_id(job.episode_id)
+            if ep:
+                running_transcribe_episodes.append({"job": job, "episode": ep})
+
+    # Get worker status
+    worker_manager = get_worker_manager()
+    queue_status = worker_manager.get_status()
 
     return templates.TemplateResponse(
         "status.html",
@@ -155,5 +192,10 @@ def status_page(request: Request):
             "downloaded": downloaded,
             "transcribing": transcribing,
             "failed": failed,
+            "queue_status": queue_status,
+            "queued_downloads": queued_download_episodes,
+            "queued_transcriptions": queued_transcribe_episodes,
+            "running_downloads": running_download_episodes,
+            "running_transcriptions": running_transcribe_episodes,
         },
     )

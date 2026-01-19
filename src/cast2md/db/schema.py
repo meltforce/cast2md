@@ -38,6 +38,27 @@ CREATE INDEX IF NOT EXISTS idx_episode_feed_id ON episode(feed_id);
 CREATE INDEX IF NOT EXISTS idx_episode_status ON episode(status);
 CREATE INDEX IF NOT EXISTS idx_episode_published_at ON episode(published_at);
 CREATE INDEX IF NOT EXISTS idx_feed_url ON feed(url);
+
+-- Job queue table
+CREATE TABLE IF NOT EXISTS job_queue (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    episode_id INTEGER NOT NULL REFERENCES episode(id) ON DELETE CASCADE,
+    job_type TEXT NOT NULL,  -- 'download' or 'transcribe'
+    priority INTEGER DEFAULT 10,  -- Lower = higher priority (new=1, backfill=10)
+    status TEXT DEFAULT 'queued',  -- queued, running, completed, failed
+    attempts INTEGER DEFAULT 0,
+    max_attempts INTEGER DEFAULT 3,
+    scheduled_at TEXT DEFAULT (datetime('now')),
+    started_at TEXT,
+    completed_at TEXT,
+    next_retry_at TEXT,
+    error_message TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_job_queue_status_priority ON job_queue(status, priority);
+CREATE INDEX IF NOT EXISTS idx_job_queue_episode_id ON job_queue(episode_id);
+CREATE INDEX IF NOT EXISTS idx_job_queue_job_type ON job_queue(job_type);
 """
 
 

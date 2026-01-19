@@ -18,8 +18,12 @@
         <p>Pending</p>
     </div>
     <div class="stat-card">
-        <h3>{{ status_counts.get('downloading', 0) + status_counts.get('transcribing', 0) }}</h3>
-        <p>Processing</p>
+        <h3>{{ queue_status.download_queue.queued + queue_status.transcribe_queue.queued }}</h3>
+        <p>Queued</p>
+    </div>
+    <div class="stat-card">
+        <h3>{{ queue_status.download_queue.running + queue_status.transcribe_queue.running }}</h3>
+        <p>Running</p>
     </div>
     <div class="stat-card">
         <h3>{{ status_counts.get('completed', 0) }}</h3>
@@ -31,18 +35,49 @@
     </div>
 </div>
 
-{% if downloading %}
+<!-- Worker Status -->
 <article>
-    <header><h3>Currently Downloading</h3></header>
+    <header>
+        <h3>Workers
+            {% if queue_status.running %}
+            <span class="status-badge status-completed">Running</span>
+            {% else %}
+            <span class="status-badge status-failed">Stopped</span>
+            {% endif %}
+        </h3>
+    </header>
+    <div class="stats-grid">
+        <div class="stat-card">
+            <h3>{{ queue_status.download_workers }}</h3>
+            <p>Download Workers</p>
+        </div>
+        <div class="stat-card">
+            <h3>{{ queue_status.transcribe_workers }}</h3>
+            <p>Transcription Workers</p>
+        </div>
+    </div>
+</article>
+
+{% if running_downloads or running_transcriptions %}
+<article>
+    <header><h3>Currently Processing</h3></header>
     <table>
         <thead>
-            <tr><th>Episode</th><th>Actions</th></tr>
+            <tr><th>Episode</th><th>Task</th><th>Status</th></tr>
         </thead>
         <tbody>
-            {% for ep in downloading %}
+            {% for item in running_downloads %}
             <tr>
-                <td><a href="/episodes/{{ ep.id }}">{{ ep.title }}</a></td>
-                <td><span class="status-badge status-downloading">downloading</span></td>
+                <td><a href="/episodes/{{ item.episode.id }}">{{ item.episode.title }}</a></td>
+                <td>Download</td>
+                <td><span class="status-badge status-downloading">running</span></td>
+            </tr>
+            {% endfor %}
+            {% for item in running_transcriptions %}
+            <tr>
+                <td><a href="/episodes/{{ item.episode.id }}">{{ item.episode.title }}</a></td>
+                <td>Transcription</td>
+                <td><span class="status-badge status-transcribing">running</span></td>
             </tr>
             {% endfor %}
         </tbody>
@@ -50,18 +85,45 @@
 </article>
 {% endif %}
 
-{% if transcribing %}
+{% if queued_downloads %}
 <article>
-    <header><h3>Currently Transcribing</h3></header>
+    <header><h3>Download Queue ({{ queued_downloads|length }})</h3></header>
     <table>
         <thead>
-            <tr><th>Episode</th><th>Actions</th></tr>
+            <tr><th>Priority</th><th>Episode</th><th>Actions</th></tr>
         </thead>
         <tbody>
-            {% for ep in transcribing %}
+            {% for item in queued_downloads %}
             <tr>
-                <td><a href="/episodes/{{ ep.id }}">{{ ep.title }}</a></td>
-                <td><span class="status-badge status-transcribing">transcribing</span></td>
+                <td>{{ item.job.priority }}</td>
+                <td><a href="/episodes/{{ item.episode.id }}">{{ item.episode.title }}</a></td>
+                <td>
+                    <button class="outline secondary" style="padding: 0.25rem 0.5rem; font-size: 0.875rem;"
+                            onclick="cancelJob({{ item.job.id }})">Cancel</button>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</article>
+{% endif %}
+
+{% if queued_transcriptions %}
+<article>
+    <header><h3>Transcription Queue ({{ queued_transcriptions|length }})</h3></header>
+    <table>
+        <thead>
+            <tr><th>Priority</th><th>Episode</th><th>Actions</th></tr>
+        </thead>
+        <tbody>
+            {% for item in queued_transcriptions %}
+            <tr>
+                <td>{{ item.job.priority }}</td>
+                <td><a href="/episodes/{{ item.episode.id }}">{{ item.episode.title }}</a></td>
+                <td>
+                    <button class="outline secondary" style="padding: 0.25rem 0.5rem; font-size: 0.875rem;"
+                            onclick="cancelJob({{ item.job.id }})">Cancel</button>
+                </td>
             </tr>
             {% endfor %}
         </tbody>
@@ -82,7 +144,7 @@
                 <td><a href="/episodes/{{ ep.id }}">{{ ep.title }}</a></td>
                 <td>
                     <button class="outline" style="padding: 0.25rem 0.5rem; font-size: 0.875rem;"
-                            onclick="transcribeEpisode({{ ep.id }})">Transcribe</button>
+                            onclick="queueTranscribe({{ ep.id }})">Queue Transcription</button>
                 </td>
             </tr>
             {% endfor %}
@@ -105,7 +167,7 @@
                 <td class="truncate">{{ ep.error_message or 'Unknown error' }}</td>
                 <td>
                     <button class="outline secondary" style="padding: 0.25rem 0.5rem; font-size: 0.875rem;"
-                            onclick="retryEpisode({{ ep.id }})">Retry</button>
+                            onclick="queueProcess({{ ep.id }})">Retry</button>
                 </td>
             </tr>
             {% endfor %}
@@ -127,7 +189,7 @@
                 <td><a href="/episodes/{{ ep.id }}">{{ ep.title }}</a></td>
                 <td>
                     <button class="outline" style="padding: 0.25rem 0.5rem; font-size: 0.875rem;"
-                            onclick="downloadEpisode({{ ep.id }})">Download</button>
+                            onclick="queueProcess({{ ep.id }})">Queue Download</button>
                 </td>
             </tr>
             {% endfor %}
@@ -139,13 +201,12 @@
 
 {% block scripts %}
 <script>
-async function downloadEpisode(episodeId) {
+async function queueProcess(episodeId) {
     try {
-        const response = await fetch(`/api/episodes/${episodeId}/download`, {method: 'POST'});
+        const response = await fetch(`/api/queue/episodes/${episodeId}/process`, {method: 'POST'});
         const data = await response.json();
 
         if (response.ok) {
-            alert(data.message);
             window.location.reload();
         } else {
             alert('Error: ' + data.detail);
@@ -155,17 +216,31 @@ async function downloadEpisode(episodeId) {
     }
 }
 
-async function transcribeEpisode(episodeId) {
-    if (!confirm('Start transcription? This may take several minutes.')) {
+async function queueTranscribe(episodeId) {
+    try {
+        const response = await fetch(`/api/queue/episodes/${episodeId}/transcribe`, {method: 'POST'});
+        const data = await response.json();
+
+        if (response.ok) {
+            window.location.reload();
+        } else {
+            alert('Error: ' + data.detail);
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
+
+async function cancelJob(jobId) {
+    if (!confirm('Cancel this job?')) {
         return;
     }
 
     try {
-        const response = await fetch(`/api/episodes/${episodeId}/transcribe`, {method: 'POST'});
+        const response = await fetch(`/api/queue/${jobId}`, {method: 'DELETE'});
         const data = await response.json();
 
         if (response.ok) {
-            alert(data.message);
             window.location.reload();
         } else {
             alert('Error: ' + data.detail);
@@ -175,8 +250,9 @@ async function transcribeEpisode(episodeId) {
     }
 }
 
-async function retryEpisode(episodeId) {
-    await downloadEpisode(episodeId);
-}
+// Auto-refresh every 10 seconds if there are running jobs
+{% if running_downloads or running_transcriptions or queued_downloads or queued_transcriptions %}
+setTimeout(() => window.location.reload(), 10000);
+{% endif %}
 </script>
 {% endblock %}

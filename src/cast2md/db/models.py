@@ -17,6 +17,22 @@ class EpisodeStatus(str, Enum):
     FAILED = "failed"
 
 
+class JobType(str, Enum):
+    """Job type for queue."""
+
+    DOWNLOAD = "download"
+    TRANSCRIBE = "transcribe"
+
+
+class JobStatus(str, Enum):
+    """Job status in queue."""
+
+    QUEUED = "queued"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
 @dataclass
 class Feed:
     """Podcast feed model."""
@@ -84,4 +100,42 @@ class Episode:
             error_message=row[12],
             created_at=datetime.fromisoformat(row[13]),
             updated_at=datetime.fromisoformat(row[14]),
+        )
+
+
+@dataclass
+class Job:
+    """Job queue entry."""
+
+    id: Optional[int]
+    episode_id: int
+    job_type: JobType
+    priority: int
+    status: JobStatus
+    attempts: int
+    max_attempts: int
+    scheduled_at: datetime
+    started_at: Optional[datetime]
+    completed_at: Optional[datetime]
+    next_retry_at: Optional[datetime]
+    error_message: Optional[str]
+    created_at: datetime
+
+    @classmethod
+    def from_row(cls, row: tuple) -> "Job":
+        """Create Job from database row."""
+        return cls(
+            id=row[0],
+            episode_id=row[1],
+            job_type=JobType(row[2]),
+            priority=row[3],
+            status=JobStatus(row[4]),
+            attempts=row[5],
+            max_attempts=row[6],
+            scheduled_at=datetime.fromisoformat(row[7]) if row[7] else datetime.utcnow(),
+            started_at=datetime.fromisoformat(row[8]) if row[8] else None,
+            completed_at=datetime.fromisoformat(row[9]) if row[9] else None,
+            next_retry_at=datetime.fromisoformat(row[10]) if row[10] else None,
+            error_message=row[11],
+            created_at=datetime.fromisoformat(row[12]),
         )
