@@ -119,19 +119,29 @@ def extract_transcript_url(entry: dict) -> str | None:
         Transcript URL or None if not found.
     """
     # Check for podcast:transcript namespace
-    # Feedparser stores these in various ways depending on namespace handling
-    transcripts = entry.get("podcast_transcript", [])
-    if isinstance(transcripts, list):
-        for transcript in transcripts:
-            url = transcript.get("url")
-            if url:
-                # Prefer SRT or VTT formats
-                t_type = transcript.get("type", "")
-                if "srt" in t_type or "vtt" in t_type or "text" in t_type:
-                    return url
-        # Return first if no preferred format
-        if transcripts and transcripts[0].get("url"):
-            return transcripts[0]["url"]
+    # Feedparser returns a dict for single transcript, list for multiple
+    transcripts = entry.get("podcast_transcript")
+    if transcripts is None:
+        return None
+
+    # Normalize to list
+    if isinstance(transcripts, dict):
+        transcripts = [transcripts]
+
+    if not isinstance(transcripts, list):
+        return None
+
+    for transcript in transcripts:
+        url = transcript.get("url")
+        if url:
+            # Prefer SRT or VTT formats
+            t_type = transcript.get("type", "")
+            if "srt" in t_type or "vtt" in t_type or "text" in t_type:
+                return url
+
+    # Return first if no preferred format found
+    if transcripts and transcripts[0].get("url"):
+        return transcripts[0]["url"]
 
     return None
 
