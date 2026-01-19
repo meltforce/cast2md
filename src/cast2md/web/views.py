@@ -49,10 +49,9 @@ def index(request: Request):
         # Add episode counts to feeds
         feeds_with_counts = []
         for feed in feeds:
-            episodes = episode_repo.get_by_feed(feed.id, limit=10000)
             feeds_with_counts.append({
                 "feed": feed,
-                "episode_count": len(episodes),
+                "episode_count": episode_repo.count_by_feed(feed.id),
             })
 
     total_episodes = sum(status_counts.values())
@@ -84,11 +83,10 @@ def feed_detail(request: Request, feed_id: int, page: int = 1, per_page: int = 2
             )
 
         # Get paginated episodes
-        all_episodes = episode_repo.get_by_feed(feed_id, limit=10000)
-        total = len(all_episodes)
-
+        total = episode_repo.count_by_feed(feed_id)
         offset = (page - 1) * per_page
-        episodes = all_episodes[offset : offset + per_page]
+        episodes = episode_repo.get_by_feed(feed_id, limit=per_page + offset)
+        episodes = episodes[offset : offset + per_page]
 
         total_pages = (total + per_page - 1) // per_page
 

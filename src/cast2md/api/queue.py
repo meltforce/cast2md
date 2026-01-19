@@ -1,4 +1,11 @@
-"""Queue management API endpoints."""
+"""Queue management API endpoints.
+
+Priority System:
+- Lower number = higher priority (processed first)
+- 1: High priority (auto-queued new episodes from feed discovery)
+- 10: Default/normal priority (manually queued episodes)
+- Jobs are processed in priority order, then by scheduled time (FIFO within same priority)
+"""
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -358,7 +365,8 @@ def batch_queue_feed(feed_id: int, request: BatchQueueRequest | None = None):
         episode_repo = EpisodeRepository(conn)
         job_repo = JobRepository(conn)
 
-        # Get all pending episodes for this feed
+        # Get all episodes for this feed and filter for pending
+        # TODO: Add get_by_feed_and_status() for more efficient querying
         episodes = episode_repo.get_by_feed(feed_id, limit=10000)
         pending = [e for e in episodes if e.status == EpisodeStatus.PENDING]
 
@@ -403,6 +411,7 @@ def batch_queue_all(request: BatchQueueRequest | None = None):
         skipped = 0
 
         for feed in feeds:
+            # TODO: Add get_by_feed_and_status() for more efficient querying
             episodes = episode_repo.get_by_feed(feed.id, limit=10000)
             pending = [e for e in episodes if e.status == EpisodeStatus.PENDING]
 
@@ -431,7 +440,7 @@ def batch_cancel_queued():
     with get_db() as conn:
         job_repo = JobRepository(conn)
 
-        # Get all queued jobs
+        # Get all queued jobs (high limit to ensure we get all pending jobs)
         queued_jobs = job_repo.get_queued_jobs(limit=10000)
 
         cancelled = 0
@@ -519,6 +528,7 @@ def batch_queue_by_range(request: BatchQueueByRangeRequest):
         job_repo = JobRepository(conn)
 
         # Get all episodes for the feed (ordered by published_at DESC)
+        # High limit needed to support position-based and date-based range filtering
         all_episodes = episode_repo.get_by_feed(request.feed_id, limit=10000)
 
         # Filter by position range if specified

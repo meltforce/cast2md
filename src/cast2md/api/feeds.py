@@ -88,8 +88,8 @@ def list_feeds():
 
         response_feeds = []
         for feed in feeds:
-            episodes = episode_repo.get_by_feed(feed.id, limit=10000)
-            response_feeds.append(FeedResponse.from_feed(feed, len(episodes)))
+            episode_count = episode_repo.count_by_feed(feed.id)
+            response_feeds.append(FeedResponse.from_feed(feed, episode_count))
 
     return FeedListResponse(feeds=response_feeds)
 
@@ -125,7 +125,7 @@ def create_feed(feed_data: FeedCreate):
 
     with get_db() as conn:
         episode_repo = EpisodeRepository(conn)
-        episode_count = len(episode_repo.get_by_feed(feed.id, limit=10000))
+        episode_count = episode_repo.count_by_feed(feed.id)
 
     return FeedResponse.from_feed(feed, episode_count)
 
@@ -141,9 +141,9 @@ def get_feed(feed_id: int):
         if not feed:
             raise HTTPException(status_code=404, detail="Feed not found")
 
-        episodes = episode_repo.get_by_feed(feed_id, limit=10000)
+        episode_count = episode_repo.count_by_feed(feed_id)
 
-    return FeedResponse.from_feed(feed, len(episodes))
+    return FeedResponse.from_feed(feed, episode_count)
 
 
 @router.patch("/{feed_id}", response_model=FeedResponse)
@@ -221,6 +221,9 @@ def export_feed_transcripts(feed_id: int, format: str = "md"):
         if not feed:
             raise HTTPException(status_code=404, detail="Feed not found")
 
+        # Fetch all episodes to filter for those with transcripts
+        # Note: For feeds with many episodes, consider adding a repository method
+        # to query only completed episodes directly
         episodes = episode_repo.get_by_feed(feed_id, limit=10000)
 
     # Filter episodes with transcripts

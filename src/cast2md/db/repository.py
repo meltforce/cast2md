@@ -204,6 +204,14 @@ class EpisodeRepository:
         )
         return cursor.fetchone() is not None
 
+    def count_by_feed(self, feed_id: int) -> int:
+        """Count total episodes for a feed."""
+        cursor = self.conn.execute(
+            "SELECT COUNT(*) FROM episode WHERE feed_id = ?",
+            (feed_id,),
+        )
+        return cursor.fetchone()[0]
+
     def count_by_status(self) -> dict[str, int]:
         """Count episodes by status."""
         cursor = self.conn.execute(
