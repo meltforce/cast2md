@@ -79,15 +79,12 @@ def list_episodes(feed_id: int, limit: int = 50, offset: int = 0):
         if not feed:
             raise HTTPException(status_code=404, detail="Feed not found")
 
-        # Get all episodes (we'll implement pagination later)
+        # Get episodes with pagination
         episodes = episode_repo.get_by_feed(feed_id, limit=limit + offset)
-
-        # Apply offset
         episodes = episodes[offset : offset + limit]
 
-        # Get total count
-        all_episodes = episode_repo.get_by_feed(feed_id, limit=10000)
-        total = len(all_episodes)
+        # Get total count using COUNT(*)
+        total = episode_repo.count_by_feed(feed_id)
 
     return EpisodeListResponse(
         episodes=[EpisodeResponse.from_episode(ep) for ep in episodes],

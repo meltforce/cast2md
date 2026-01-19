@@ -92,7 +92,7 @@ async def download_file(url: str, dest_path: Path, temp_path: Path) -> None:
                 pool=30.0,
             ),
             headers={
-                "User-Agent": "cast2md/0.1.0 (Podcast Transcription Service)"
+                "User-Agent": settings.user_agent
             },
         ) as response:
             response.raise_for_status()
@@ -143,7 +143,7 @@ def download_file_sync(url: str, dest_path: Path, temp_path: Path) -> None:
                 pool=30.0,
             ),
             headers={
-                "User-Agent": "cast2md/0.1.0 (Podcast Transcription Service)"
+                "User-Agent": settings.user_agent
             },
         ) as response:
             response.raise_for_status()

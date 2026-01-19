@@ -33,6 +33,9 @@ class Settings(BaseSettings):
     max_retry_attempts: int = 3
     request_timeout: int = 30
 
+    # HTTP client settings
+    user_agent: str = "cast2md/0.1.0 (Podcast Transcription Service)"
+
     # Notifications (ntfy)
     ntfy_enabled: bool = False
     ntfy_url: str = "https://ntfy.sh"

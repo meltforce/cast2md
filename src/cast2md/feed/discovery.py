@@ -41,7 +41,7 @@ async def fetch_feed(url: str) -> str:
             url,
             follow_redirects=True,
             headers={
-                "User-Agent": "cast2md/0.1.0 (Podcast Transcription Service)"
+                "User-Agent": settings.user_agent
             },
         )
         response.raise_for_status()
@@ -67,7 +67,7 @@ def fetch_feed_sync(url: str) -> str:
             url,
             follow_redirects=True,
             headers={
-                "User-Agent": "cast2md/0.1.0 (Podcast Transcription Service)"
+                "User-Agent": settings.user_agent
             },
         )
         response.raise_for_status()
