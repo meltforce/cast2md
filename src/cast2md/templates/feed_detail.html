@@ -17,6 +17,8 @@
     Last polled: {{ feed.last_polled.strftime('%Y-%m-%d %H:%M') if feed.last_polled else 'Never' }}
     &nbsp;|&nbsp;
     <button class="outline" style="padding: 0.25rem 0.5rem; font-size: 0.875rem;" onclick="refreshFeed({{ feed.id }})">Refresh Feed</button>
+    &nbsp;
+    <button class="outline" style="padding: 0.25rem 0.5rem; font-size: 0.875rem;" onclick="queueAllPending({{ feed.id }})">Queue All Pending</button>
 </p>
 
 <table>
@@ -132,6 +134,26 @@ async function transcribeEpisode(episodeId) {
 async function retryEpisode(episodeId) {
     // For now, just try download again
     await downloadEpisode(episodeId);
+}
+
+async function queueAllPending(feedId) {
+    if (!confirm('Queue all pending episodes for processing?')) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/queue/batch/feed/${feedId}/process`, {method: 'POST'});
+        const data = await response.json();
+
+        if (response.ok) {
+            alert(data.message);
+            window.location.reload();
+        } else {
+            alert('Error: ' + data.detail);
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
 }
 </script>
 {% endblock %}
