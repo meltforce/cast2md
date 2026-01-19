@@ -1,0 +1,15 @@
+[Unit]
+Description=cast2md Podcast Transcription Service
+After=network.target remote-fs.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/cast2md
+ExecStart=/opt/cast2md/.venv/bin/python -m cast2md serve --host 0.0.0.0 --port 8000
+Restart=always
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
