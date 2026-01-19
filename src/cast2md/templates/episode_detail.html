@@ -56,8 +56,15 @@
 
 {% if transcript_content %}
 <article>
-    <header>
-        <h3>Transcript</h3>
+    <header style="display: flex; justify-content: space-between; align-items: center;">
+        <h3 style="margin: 0;">Transcript</h3>
+        <div style="display: flex; gap: 0.5rem;">
+            <a href="/api/episodes/{{ episode.id }}/transcript?format=md" role="button" class="outline secondary" style="padding: 0.25rem 0.5rem; font-size: 0.875rem;">MD</a>
+            <a href="/api/episodes/{{ episode.id }}/transcript?format=txt" role="button" class="outline secondary" style="padding: 0.25rem 0.5rem; font-size: 0.875rem;">TXT</a>
+            <a href="/api/episodes/{{ episode.id }}/transcript?format=srt" role="button" class="outline secondary" style="padding: 0.25rem 0.5rem; font-size: 0.875rem;">SRT</a>
+            <a href="/api/episodes/{{ episode.id }}/transcript?format=vtt" role="button" class="outline secondary" style="padding: 0.25rem 0.5rem; font-size: 0.875rem;">VTT</a>
+            <a href="/api/episodes/{{ episode.id }}/transcript?format=json" role="button" class="outline secondary" style="padding: 0.25rem 0.5rem; font-size: 0.875rem;">JSON</a>
+        </div>
     </header>
     <pre class="transcript">{{ transcript_content }}</pre>
 </article>

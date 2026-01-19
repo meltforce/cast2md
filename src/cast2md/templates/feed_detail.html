@@ -41,6 +41,22 @@
     </div>
 </article>
 
+<article style="margin-bottom: 1rem; padding: 1rem; background: var(--card-background-color);">
+    <div style="display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;">
+        <strong>Export Transcripts:</strong>
+        <div style="display: flex; align-items: center; gap: 0.5rem;">
+            <select id="exportFormat" style="padding: 0.25rem 0.5rem; margin: 0; width: auto;">
+                <option value="md">Markdown (.md)</option>
+                <option value="txt">Plain Text (.txt)</option>
+                <option value="srt">SRT Subtitles (.srt)</option>
+                <option value="vtt">WebVTT (.vtt)</option>
+                <option value="json">JSON (.json)</option>
+            </select>
+            <a id="exportLink" href="/api/feeds/{{ feed.id }}/export?format=md" role="button" class="outline" style="padding: 0.25rem 0.5rem; font-size: 0.875rem; margin: 0;">Download All (ZIP)</a>
+        </div>
+    </div>
+</article>
+
 <table>
     <thead>
         <tr>
@@ -104,6 +120,12 @@
 
 {% block scripts %}
 <script>
+// Update export link when format changes
+document.getElementById('exportFormat').addEventListener('change', function() {
+    const format = this.value;
+    document.getElementById('exportLink').href = `/api/feeds/{{ feed.id }}/export?format=${format}`;
+});
+
 async function refreshFeed(feedId) {
     try {
         const response = await fetch(`/api/feeds/${feedId}/refresh`, {method: 'POST'});

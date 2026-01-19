@@ -3,12 +3,14 @@
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel
 
 from cast2md.db.connection import get_db
 from cast2md.db.models import Episode, EpisodeStatus
 from cast2md.db.repository import EpisodeRepository, FeedRepository
 from cast2md.download.downloader import download_episode
+from cast2md.export.formats import export_transcript
 from cast2md.transcription.service import transcribe_episode
 
 router = APIRouter(prefix="/api", tags=["episodes"])
@@ -195,4 +197,48 @@ def list_episodes_by_status(status: str, limit: int = 100):
     return EpisodeListResponse(
         episodes=[EpisodeResponse.from_episode(ep) for ep in episodes],
         total=len(episodes),
+    )
+
+
+@router.get("/episodes/{episode_id}/transcript")
+def get_transcript(episode_id: int, format: str = "md"):
+    """Download transcript in specified format.
+
+    Supported formats:
+    - md: Markdown (original format)
+    - txt: Plain text (no timestamps)
+    - srt: SRT subtitles
+    - vtt: WebVTT subtitles
+    - json: JSON with segments
+    """
+    valid_formats = ["md", "txt", "srt", "vtt", "json"]
+    if format not in valid_formats:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid format. Valid options: {valid_formats}",
+        )
+
+    with get_db() as conn:
+        repo = EpisodeRepository(conn)
+        episode = repo.get_by_id(episode_id)
+
+    if not episode:
+        raise HTTPException(status_code=404, detail="Episode not found")
+
+    if not episode.transcript_path:
+        raise HTTPException(status_code=404, detail="Transcript not available")
+
+    transcript_path = Path(episode.transcript_path)
+    if not transcript_path.exists():
+        raise HTTPException(status_code=404, detail="Transcript file not found")
+
+    try:
+        content, filename, content_type = export_transcript(transcript_path, format)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Export failed: {e}")
+
+    return PlainTextResponse(
+        content=content,
+        media_type=content_type,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
