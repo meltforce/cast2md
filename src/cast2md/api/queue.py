@@ -329,3 +329,118 @@ def get_job(job_id: int):
         raise HTTPException(status_code=404, detail="Job not found")
 
     return _job_to_response(job)
+
+
+# Batch operations
+
+class BatchQueueRequest(BaseModel):
+    """Request for batch queue operations."""
+
+    priority: int = 10
+
+
+class BatchQueueResponse(BaseModel):
+    """Response for batch queue operations."""
+
+    queued: int
+    skipped: int
+    message: str
+
+
+@router.post("/batch/feed/{feed_id}/process", response_model=BatchQueueResponse)
+def batch_queue_feed(feed_id: int, request: BatchQueueRequest | None = None):
+    """Queue all pending episodes from a feed for processing."""
+    from cast2md.db.models import EpisodeStatus
+
+    priority = request.priority if request else 10
+
+    with get_db() as conn:
+        episode_repo = EpisodeRepository(conn)
+        job_repo = JobRepository(conn)
+
+        # Get all pending episodes for this feed
+        episodes = episode_repo.get_by_feed(feed_id, limit=10000)
+        pending = [e for e in episodes if e.status == EpisodeStatus.PENDING]
+
+        queued = 0
+        skipped = 0
+
+        for episode in pending:
+            # Skip if already has pending job
+            if job_repo.has_pending_job(episode.id, JobType.DOWNLOAD):
+                skipped += 1
+                continue
+
+            job_repo.create(
+                episode_id=episode.id,
+                job_type=JobType.DOWNLOAD,
+                priority=priority,
+            )
+            queued += 1
+
+    return BatchQueueResponse(
+        queued=queued,
+        skipped=skipped,
+        message=f"Queued {queued} episodes for processing ({skipped} skipped)",
+    )
+
+
+@router.post("/batch/all/process", response_model=BatchQueueResponse)
+def batch_queue_all(request: BatchQueueRequest | None = None):
+    """Queue all pending episodes across all feeds for processing."""
+    from cast2md.db.models import EpisodeStatus
+    from cast2md.db.repository import FeedRepository
+
+    priority = request.priority if request else 10
+
+    with get_db() as conn:
+        feed_repo = FeedRepository(conn)
+        episode_repo = EpisodeRepository(conn)
+        job_repo = JobRepository(conn)
+
+        feeds = feed_repo.get_all()
+        queued = 0
+        skipped = 0
+
+        for feed in feeds:
+            episodes = episode_repo.get_by_feed(feed.id, limit=10000)
+            pending = [e for e in episodes if e.status == EpisodeStatus.PENDING]
+
+            for episode in pending:
+                if job_repo.has_pending_job(episode.id, JobType.DOWNLOAD):
+                    skipped += 1
+                    continue
+
+                job_repo.create(
+                    episode_id=episode.id,
+                    job_type=JobType.DOWNLOAD,
+                    priority=priority,
+                )
+                queued += 1
+
+    return BatchQueueResponse(
+        queued=queued,
+        skipped=skipped,
+        message=f"Queued {queued} episodes for processing ({skipped} skipped)",
+    )
+
+
+@router.delete("/batch/queued", response_model=BatchQueueResponse)
+def batch_cancel_queued():
+    """Cancel all queued jobs."""
+    with get_db() as conn:
+        job_repo = JobRepository(conn)
+
+        # Get all queued jobs
+        queued_jobs = job_repo.get_queued_jobs(limit=10000)
+
+        cancelled = 0
+        for job in queued_jobs:
+            if job_repo.cancel_queued(job.id):
+                cancelled += 1
+
+    return BatchQueueResponse(
+        queued=0,
+        skipped=0,
+        message=f"Cancelled {cancelled} queued jobs",
+    )

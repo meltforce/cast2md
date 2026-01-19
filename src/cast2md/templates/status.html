@@ -8,6 +8,11 @@
     <p>Overview of episode processing</p>
 </hgroup>
 
+<div style="margin-bottom: 1rem;">
+    <button onclick="queueAllPending()">Queue All Pending</button>
+    <button class="secondary" onclick="cancelAllQueued()">Cancel All Queued</button>
+</div>
+
 <div class="stats-grid">
     <div class="stat-card">
         <h3>{{ feed_count }}</h3>
@@ -276,6 +281,46 @@ async function cancelJob(jobId) {
         const data = await response.json();
 
         if (response.ok) {
+            window.location.reload();
+        } else {
+            alert('Error: ' + data.detail);
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
+
+async function queueAllPending() {
+    if (!confirm('Queue all pending episodes for processing?')) {
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/queue/batch/all/process', {method: 'POST'});
+        const data = await response.json();
+
+        if (response.ok) {
+            alert(data.message);
+            window.location.reload();
+        } else {
+            alert('Error: ' + data.detail);
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
+
+async function cancelAllQueued() {
+    if (!confirm('Cancel all queued jobs?')) {
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/queue/batch/queued', {method: 'DELETE'});
+        const data = await response.json();
+
+        if (response.ok) {
+            alert(data.message);
             window.location.reload();
         } else {
             alert('Error: ' + data.detail);
