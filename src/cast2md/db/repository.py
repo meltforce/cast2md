@@ -1,6 +1,7 @@
 """Repository classes for database operations."""
 
 import sqlite3
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Optional
 
@@ -455,3 +456,170 @@ class JobRepository:
         )
         self.conn.commit()
         return cursor.rowcount
+
+
+class SettingsRepository:
+    """Repository for runtime settings overrides."""
+
+    def __init__(self, conn: sqlite3.Connection):
+        self.conn = conn
+
+    def get(self, key: str) -> Optional[str]:
+        """Get a setting value by key."""
+        cursor = self.conn.execute(
+            "SELECT value FROM settings WHERE key = ?",
+            (key,),
+        )
+        row = cursor.fetchone()
+        return row[0] if row else None
+
+    def get_all(self) -> dict[str, str]:
+        """Get all settings as a dictionary."""
+        cursor = self.conn.execute("SELECT key, value FROM settings")
+        return dict(cursor.fetchall())
+
+    def set(self, key: str, value: str) -> None:
+        """Set a setting value (insert or update)."""
+        now = datetime.utcnow().isoformat()
+        self.conn.execute(
+            """
+            INSERT INTO settings (key, value, updated_at)
+            VALUES (?, ?, ?)
+            ON CONFLICT(key) DO UPDATE SET value = ?, updated_at = ?
+            """,
+            (key, value, now, value, now),
+        )
+        self.conn.commit()
+
+    def delete(self, key: str) -> bool:
+        """Delete a setting (revert to default)."""
+        cursor = self.conn.execute("DELETE FROM settings WHERE key = ?", (key,))
+        self.conn.commit()
+        return cursor.rowcount > 0
+
+    def set_many(self, settings: dict[str, str]) -> None:
+        """Set multiple settings at once."""
+        now = datetime.utcnow().isoformat()
+        for key, value in settings.items():
+            self.conn.execute(
+                """
+                INSERT INTO settings (key, value, updated_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(key) DO UPDATE SET value = ?, updated_at = ?
+                """,
+                (key, value, now, value, now),
+            )
+        self.conn.commit()
+
+
+@dataclass
+class WhisperModel:
+    """A whisper model configuration."""
+
+    id: str
+    backend: str
+    hf_repo: Optional[str]
+    description: Optional[str]
+    size_mb: Optional[int]
+    is_enabled: bool
+
+    @classmethod
+    def from_row(cls, row) -> "WhisperModel":
+        """Create from database row."""
+        return cls(
+            id=row[0],
+            backend=row[1],
+            hf_repo=row[2],
+            description=row[3],
+            size_mb=row[4],
+            is_enabled=bool(row[5]),
+        )
+
+
+class WhisperModelRepository:
+    """Repository for whisper model configurations."""
+
+    def __init__(self, conn: sqlite3.Connection):
+        self.conn = conn
+
+    def get_all(self, enabled_only: bool = True) -> list[WhisperModel]:
+        """Get all models."""
+        if enabled_only:
+            cursor = self.conn.execute(
+                "SELECT id, backend, hf_repo, description, size_mb, is_enabled FROM whisper_models WHERE is_enabled = 1 ORDER BY id"
+            )
+        else:
+            cursor = self.conn.execute(
+                "SELECT id, backend, hf_repo, description, size_mb, is_enabled FROM whisper_models ORDER BY id"
+            )
+        return [WhisperModel.from_row(row) for row in cursor.fetchall()]
+
+    def get_by_id(self, model_id: str) -> Optional[WhisperModel]:
+        """Get a model by ID."""
+        cursor = self.conn.execute(
+            "SELECT id, backend, hf_repo, description, size_mb, is_enabled FROM whisper_models WHERE id = ?",
+            (model_id,),
+        )
+        row = cursor.fetchone()
+        return WhisperModel.from_row(row) if row else None
+
+    def upsert(
+        self,
+        model_id: str,
+        backend: str,
+        hf_repo: Optional[str] = None,
+        description: Optional[str] = None,
+        size_mb: Optional[int] = None,
+        is_enabled: bool = True,
+    ) -> None:
+        """Insert or update a model."""
+        now = datetime.utcnow().isoformat()
+        self.conn.execute(
+            """
+            INSERT INTO whisper_models (id, backend, hf_repo, description, size_mb, is_enabled, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+                backend = ?, hf_repo = ?, description = ?, size_mb = ?, is_enabled = ?
+            """,
+            (model_id, backend, hf_repo, description, size_mb, int(is_enabled), now,
+             backend, hf_repo, description, size_mb, int(is_enabled)),
+        )
+        self.conn.commit()
+
+    def delete(self, model_id: str) -> bool:
+        """Delete a model."""
+        cursor = self.conn.execute("DELETE FROM whisper_models WHERE id = ?", (model_id,))
+        self.conn.commit()
+        return cursor.rowcount > 0
+
+    def seed_defaults(self) -> int:
+        """Seed the default models if table is empty."""
+        cursor = self.conn.execute("SELECT COUNT(*) FROM whisper_models")
+        if cursor.fetchone()[0] > 0:
+            return 0
+
+        default_models = [
+            ("tiny", "both", "mlx-community/whisper-tiny", "Fastest, least accurate", 75),
+            ("tiny.en", "both", "mlx-community/whisper-tiny.en-mlx", "English-only tiny", 75),
+            ("base", "both", "mlx-community/whisper-base-mlx", "Fast, good accuracy", 142),
+            ("base.en", "both", "mlx-community/whisper-base.en-mlx", "English-only base", 142),
+            ("small", "both", "mlx-community/whisper-small-mlx", "Balanced speed/accuracy", 466),
+            ("small.en", "both", "mlx-community/whisper-small.en-mlx", "English-only small", 466),
+            ("medium", "both", "mlx-community/whisper-medium-mlx", "High accuracy", 1500),
+            ("medium.en", "both", "mlx-community/whisper-medium.en-mlx", "English-only medium", 1500),
+            ("large-v2", "both", "mlx-community/whisper-large-v2-mlx", "Previous best accuracy", 3000),
+            ("large-v3", "both", "mlx-community/whisper-large-v3-mlx", "Best accuracy", 3000),
+            ("large-v3-turbo", "both", "mlx-community/whisper-large-v3-turbo", "Fast large model", 1600),
+        ]
+
+        now = datetime.utcnow().isoformat()
+        for model_id, backend, hf_repo, description, size_mb in default_models:
+            self.conn.execute(
+                """
+                INSERT INTO whisper_models (id, backend, hf_repo, description, size_mb, is_enabled, created_at)
+                VALUES (?, ?, ?, ?, ?, 1, ?)
+                """,
+                (model_id, backend, hf_repo, description, size_mb, now),
+            )
+        self.conn.commit()
+        return len(default_models)

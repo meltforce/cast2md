@@ -216,13 +216,16 @@ class TranscriptionService:
 
         model_name = self.model["model"]
 
-        # mlx-whisper uses HuggingFace model names (most need -mlx suffix)
+        # mlx-whisper uses HuggingFace model names
         model_map = {
             "tiny": "mlx-community/whisper-tiny",
+            "tiny.en": "mlx-community/whisper-tiny.en-mlx",
             "base": "mlx-community/whisper-base-mlx",
+            "base.en": "mlx-community/whisper-base.en-mlx",
             "small": "mlx-community/whisper-small-mlx",
+            "small.en": "mlx-community/whisper-small.en-mlx",
             "medium": "mlx-community/whisper-medium-mlx",
-            "large": "mlx-community/whisper-large-v3-mlx",
+            "medium.en": "mlx-community/whisper-medium.en-mlx",
             "large-v2": "mlx-community/whisper-large-v2-mlx",
             "large-v3": "mlx-community/whisper-large-v3-mlx",
             "large-v3-turbo": "mlx-community/whisper-large-v3-turbo",
