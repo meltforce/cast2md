@@ -1,0 +1,363 @@
+{% extends "base.html" %}
+
+{% block title %}Settings - cast2md{% endblock %}
+
+{% block content %}
+<hgroup>
+    <h1>Settings</h1>
+    <p>Configure worker counts and storage paths</p>
+</hgroup>
+
+<article>
+    <header>
+        <h3>Configuration</h3>
+    </header>
+
+    <form id="settingsForm">
+        <!-- Form fields will be populated dynamically -->
+        <div id="settingsFields"></div>
+
+        <div style="display: flex; gap: 1rem; margin-top: 1rem;">
+            <button type="submit">Save Settings</button>
+            <button type="button" class="secondary" onclick="resetAllSettings()">Reset to Defaults</button>
+        </div>
+    </form>
+
+    <footer>
+        <small>Note: Some settings require a server restart to take effect.</small>
+    </footer>
+</article>
+
+<article>
+    <header>
+        <h3>Current Values</h3>
+    </header>
+    <table id="currentSettings">
+        <thead>
+            <tr>
+                <th>Setting</th>
+                <th>Value</th>
+                <th>Source</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            <!-- Populated by JavaScript -->
+        </tbody>
+    </table>
+</article>
+
+<article>
+    <header>
+        <h3>Whisper Models</h3>
+    </header>
+
+    <table id="modelsTable">
+        <thead>
+            <tr>
+                <th>Model ID</th>
+                <th>Backend</th>
+                <th>Description</th>
+                <th>Size</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            <!-- Populated by JavaScript -->
+        </tbody>
+    </table>
+
+    <details style="margin-top: 1rem;">
+        <summary>Add Custom Model</summary>
+        <form id="addModelForm" style="margin-top: 1rem;">
+            <div class="grid">
+                <label>
+                    Model ID
+                    <input type="text" name="id" required placeholder="e.g., distil-large-v3">
+                </label>
+                <label>
+                    Backend
+                    <select name="backend">
+                        <option value="both">both</option>
+                        <option value="faster-whisper">faster-whisper</option>
+                        <option value="mlx">mlx</option>
+                    </select>
+                </label>
+            </div>
+            <div class="grid">
+                <label>
+                    HuggingFace Repo (for mlx)
+                    <input type="text" name="hf_repo" placeholder="e.g., mlx-community/whisper-...">
+                </label>
+                <label>
+                    Size (MB)
+                    <input type="number" name="size_mb" placeholder="optional">
+                </label>
+            </div>
+            <label>
+                Description
+                <input type="text" name="description" placeholder="optional">
+            </label>
+            <button type="submit">Add Model</button>
+        </form>
+    </details>
+
+    <div style="margin-top: 1rem;">
+        <button class="secondary outline" onclick="resetModels()">Reset to Default Models</button>
+    </div>
+</article>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let currentSettings = {};
+
+async function loadSettings() {
+    try {
+        const response = await fetch('/api/settings');
+        const data = await response.json();
+        currentSettings = data.settings;
+
+        // Build form fields dynamically
+        const fieldsContainer = document.getElementById('settingsFields');
+        fieldsContainer.innerHTML = '';
+
+        const entries = Object.entries(currentSettings);
+        let html = '<div class="grid">';
+
+        entries.forEach(([key, info], index) => {
+            let inputHtml = '';
+
+            if (info.type === 'int') {
+                inputHtml = `<input type="number" name="${key}" id="${key}"
+                    min="${info.min || ''}" max="${info.max || ''}" value="${info.value}">`;
+            } else if (info.type === 'select') {
+                const options = info.options.map(opt =>
+                    `<option value="${opt}" ${info.value === opt ? 'selected' : ''}>${opt}</option>`
+                ).join('');
+                inputHtml = `<select name="${key}" id="${key}">${options}</select>`;
+            } else {
+                inputHtml = `<input type="text" name="${key}" id="${key}" value="${info.value}">`;
+            }
+
+            html += `
+                <label>
+                    ${info.label}
+                    ${inputHtml}
+                    <small>${info.description}</small>
+                </label>
+            `;
+
+            // Close grid and start new one every 2 items
+            if ((index + 1) % 2 === 0 && index < entries.length - 1) {
+                html += '</div><div class="grid">';
+            }
+        });
+
+        html += '</div>';
+        fieldsContainer.innerHTML = html;
+
+        // Populate current values table
+        const tbody = document.querySelector('#currentSettings tbody');
+        tbody.innerHTML = '';
+
+        for (const [key, info] of Object.entries(currentSettings)) {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td>
+                    <strong>${info.label}</strong><br>
+                    <small>${info.description}</small>
+                </td>
+                <td><code>${info.value}</code></td>
+                <td>
+                    <span class="status-badge ${info.source === 'database' ? 'status-completed' : 'status-pending'}">
+                        ${info.source}
+                    </span>
+                </td>
+                <td>
+                    ${info.has_override ? `<button class="outline secondary" style="padding: 0.25rem 0.5rem; font-size: 0.875rem;" onclick="resetSetting('${key}')">Reset</button>` : ''}
+                </td>
+            `;
+            tbody.appendChild(row);
+        }
+    } catch (error) {
+        alert('Error loading settings: ' + error.message);
+    }
+}
+
+document.getElementById('settingsForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const formData = new FormData(e.target);
+    const settings = {};
+
+    for (const [key, value] of formData.entries()) {
+        settings[key] = value;
+    }
+
+    try {
+        const response = await fetch('/api/settings', {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({settings})
+        });
+        const data = await response.json();
+
+        if (response.ok) {
+            alert(data.message);
+            loadSettings();
+        } else {
+            alert('Error: ' + data.detail);
+        }
+    } catch (error) {
+        alert('Error saving settings: ' + error.message);
+    }
+});
+
+async function resetSetting(key) {
+    if (!confirm(`Reset '${currentSettings[key]?.label || key}' to default?`)) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/settings/${key}`, {method: 'DELETE'});
+        const data = await response.json();
+
+        if (response.ok) {
+            alert(data.message);
+            loadSettings();
+        } else {
+            alert('Error: ' + data.detail);
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
+
+async function resetAllSettings() {
+    if (!confirm('Reset all settings to defaults?')) {
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/settings', {method: 'DELETE'});
+        const data = await response.json();
+
+        if (response.ok) {
+            alert(data.message);
+            loadSettings();
+        } else {
+            alert('Error: ' + data.detail);
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
+
+// Models management
+async function loadModels() {
+    try {
+        const response = await fetch('/api/settings/models');
+        const data = await response.json();
+
+        const tbody = document.querySelector('#modelsTable tbody');
+        tbody.innerHTML = '';
+
+        for (const model of data.models) {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td><code>${model.id}</code></td>
+                <td>${model.backend}</td>
+                <td>${model.description || '-'}</td>
+                <td>${model.size_mb ? model.size_mb + ' MB' : '-'}</td>
+                <td>
+                    <button class="outline secondary" style="padding: 0.25rem 0.5rem; font-size: 0.875rem;"
+                            onclick="deleteModel('${model.id}')">Delete</button>
+                </td>
+            `;
+            tbody.appendChild(row);
+        }
+    } catch (error) {
+        console.error('Error loading models:', error);
+    }
+}
+
+document.getElementById('addModelForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const formData = new FormData(e.target);
+    const model = {
+        id: formData.get('id'),
+        backend: formData.get('backend'),
+        hf_repo: formData.get('hf_repo') || null,
+        description: formData.get('description') || null,
+        size_mb: formData.get('size_mb') ? parseInt(formData.get('size_mb')) : null,
+    };
+
+    try {
+        const response = await fetch('/api/settings/models', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(model)
+        });
+        const data = await response.json();
+
+        if (response.ok) {
+            alert(data.message);
+            e.target.reset();
+            loadModels();
+            loadSettings(); // Refresh settings to update model dropdown
+        } else {
+            alert('Error: ' + data.detail);
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+});
+
+async function deleteModel(modelId) {
+    if (!confirm(`Delete model '${modelId}'?`)) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/settings/models/${modelId}`, {method: 'DELETE'});
+        const data = await response.json();
+
+        if (response.ok) {
+            alert(data.message);
+            loadModels();
+            loadSettings();
+        } else {
+            alert('Error: ' + data.detail);
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
+
+async function resetModels() {
+    if (!confirm('Reset to default models? This will remove all custom models.')) {
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/settings/models/reset', {method: 'POST'});
+        const data = await response.json();
+
+        if (response.ok) {
+            alert(data.message);
+            loadModels();
+            loadSettings();
+        } else {
+            alert('Error: ' + data.detail);
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
+
+// Load settings and models on page load
+loadSettings();
+loadModels();
+</script>
+{% endblock %}

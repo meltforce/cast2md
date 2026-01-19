@@ -59,6 +59,24 @@ CREATE TABLE IF NOT EXISTS job_queue (
 CREATE INDEX IF NOT EXISTS idx_job_queue_status_priority ON job_queue(status, priority);
 CREATE INDEX IF NOT EXISTS idx_job_queue_episode_id ON job_queue(episode_id);
 CREATE INDEX IF NOT EXISTS idx_job_queue_job_type ON job_queue(job_type);
+
+-- Settings table for runtime configuration overrides
+CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Available whisper models
+CREATE TABLE IF NOT EXISTS whisper_models (
+    id TEXT PRIMARY KEY,  -- e.g., "base", "large-v3"
+    backend TEXT NOT NULL,  -- "faster-whisper", "mlx", "both"
+    hf_repo TEXT,  -- HuggingFace repo for mlx models
+    description TEXT,
+    size_mb INTEGER,
+    is_enabled INTEGER DEFAULT 1,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
 """
 
 

@@ -1,6 +1,5 @@
 """Application settings using Pydantic BaseSettings."""
 
-from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
@@ -41,7 +40,54 @@ class Settings(BaseSettings):
         self.temp_download_path.mkdir(parents=True, exist_ok=True)
 
 
-@lru_cache
+# Cached settings instance
+_settings: Settings | None = None
+
+
 def get_settings() -> Settings:
-    """Get cached settings instance."""
-    return Settings()
+    """Get settings instance, applying database overrides if available."""
+    global _settings
+    if _settings is None:
+        _settings = Settings()
+        _apply_db_overrides()
+    return _settings
+
+
+def _apply_db_overrides() -> None:
+    """Apply settings overrides from database (if available)."""
+    global _settings
+    if _settings is None:
+        return
+
+    try:
+        # Only import here to avoid circular imports
+        from cast2md.db.connection import get_db
+        from cast2md.db.repository import SettingsRepository
+
+        with get_db() as conn:
+            repo = SettingsRepository(conn)
+            overrides = repo.get_all()
+
+            for key, value in overrides.items():
+                if hasattr(_settings, key):
+                    field_type = type(getattr(_settings, key))
+                    try:
+                        if field_type == int:
+                            setattr(_settings, key, int(value))
+                        elif field_type == Path:
+                            setattr(_settings, key, Path(value))
+                        else:
+                            setattr(_settings, key, value)
+                    except (ValueError, TypeError):
+                        pass  # Skip invalid values
+    except Exception:
+        # Database might not be initialized yet
+        pass
+
+
+def reload_settings() -> Settings:
+    """Force reload of settings (clears cache and reapplies db overrides)."""
+    global _settings
+    _settings = Settings()
+    _apply_db_overrides()
+    return _settings

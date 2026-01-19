@@ -214,3 +214,12 @@ def status_page(request: Request):
             "running_transcriptions": running_transcribe_episodes,
         },
     )
+
+
+@router.get("/settings", response_class=HTMLResponse)
+def settings_page(request: Request):
+    """Settings page."""
+    return templates.TemplateResponse(
+        "settings.html",
+        {"request": request},
+    )

@@ -97,6 +97,8 @@ def get_audio_path(podcast_name: str, episode_title: str,
                    published_at: datetime | None, audio_url: str) -> Path:
     """Get the full path for storing an episode's audio file.
 
+    Structure: {storage_path}/audio/{podcast_name}/{filename}
+
     Args:
         podcast_name: Name of the podcast.
         episode_title: Episode title.
@@ -110,12 +112,14 @@ def get_audio_path(podcast_name: str, episode_title: str,
     safe_podcast = sanitize_podcast_name(podcast_name)
     filename = episode_filename(episode_title, published_at, audio_url)
 
-    return settings.storage_path / safe_podcast / "audio" / filename
+    return settings.storage_path / "audio" / safe_podcast / filename
 
 
 def get_transcript_path(podcast_name: str, episode_title: str,
                         published_at: datetime | None) -> Path:
     """Get the full path for storing an episode's transcript.
+
+    Structure: {storage_path}/transcripts/{podcast_name}/{filename}
 
     Args:
         podcast_name: Name of the podcast.
@@ -137,11 +141,15 @@ def get_transcript_path(podcast_name: str, episode_title: str,
     safe_title = sanitize_filename(episode_title, max_length=80)
     filename = f"{date_str}_{safe_title}.md"
 
-    return settings.storage_path / safe_podcast / "transcripts" / filename
+    return settings.storage_path / "transcripts" / safe_podcast / filename
 
 
 def ensure_podcast_directories(podcast_name: str) -> tuple[Path, Path]:
     """Create the directory structure for a podcast.
+
+    Structure:
+        {storage_path}/audio/{podcast_name}/
+        {storage_path}/transcripts/{podcast_name}/
 
     Args:
         podcast_name: Name of the podcast.
@@ -152,8 +160,8 @@ def ensure_podcast_directories(podcast_name: str) -> tuple[Path, Path]:
     settings = get_settings()
     safe_podcast = sanitize_podcast_name(podcast_name)
 
-    audio_dir = settings.storage_path / safe_podcast / "audio"
-    transcripts_dir = settings.storage_path / safe_podcast / "transcripts"
+    audio_dir = settings.storage_path / "audio" / safe_podcast
+    transcripts_dir = settings.storage_path / "transcripts" / safe_podcast
 
     audio_dir.mkdir(parents=True, exist_ok=True)
     transcripts_dir.mkdir(parents=True, exist_ok=True)
