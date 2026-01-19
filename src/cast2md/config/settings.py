@@ -75,13 +75,14 @@ def _apply_db_overrides() -> None:
 
             for key, value in overrides.items():
                 if hasattr(_settings, key):
-                    field_type = type(getattr(_settings, key))
+                    current_value = getattr(_settings, key)
+                    field_type = type(current_value)
                     try:
                         if field_type == int:
                             setattr(_settings, key, int(value))
                         elif field_type == bool:
                             setattr(_settings, key, value.lower() in ("true", "1", "yes"))
-                        elif field_type == Path:
+                        elif isinstance(current_value, Path):
                             setattr(_settings, key, Path(value))
                         else:
                             setattr(_settings, key, value)
