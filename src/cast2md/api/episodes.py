@@ -110,7 +110,7 @@ def get_episode(episode_id: int):
 
 @router.post("/episodes/{episode_id}/download", response_model=MessageResponse)
 def trigger_download(episode_id: int):
-    """Trigger download for an episode."""
+    """Trigger download and transcription for an episode."""
     with get_db() as conn:
         episode_repo = EpisodeRepository(conn)
         feed_repo = FeedRepository(conn)
@@ -123,21 +123,54 @@ def trigger_download(episode_id: int):
         if not feed:
             raise HTTPException(status_code=404, detail="Feed not found")
 
-    # Check if already downloaded
-    if episode.audio_path and Path(episode.audio_path).exists():
+    # Check if already processed or in progress
+    if episode.status in (EpisodeStatus.DOWNLOADING, EpisodeStatus.TRANSCRIBING):
         return MessageResponse(
-            message="Episode already downloaded",
-            path=episode.audio_path,
+            message=f"Already in progress: {episode.status.value}",
+            path=None,
+        )
+
+    if episode.status == EpisodeStatus.COMPLETED:
+        return MessageResponse(
+            message="Already completed",
+            path=episode.transcript_path,
+        )
+
+    if episode.audio_path and Path(episode.audio_path).exists():
+        # Downloaded but not transcribed - just transcribe
+        transcript_path = transcribe_episode(episode, feed)
+        return MessageResponse(
+            message="Transcription completed",
+            path=str(transcript_path),
         )
 
     try:
         audio_path = download_episode(episode, feed)
-        return MessageResponse(
-            message="Download completed",
-            path=str(audio_path),
-        )
+
+        # Re-fetch episode to get updated status
+        with get_db() as conn:
+            episode_repo = EpisodeRepository(conn)
+            episode = episode_repo.get_by_id(episode_id)
+
+        # Only transcribe if not already done or in progress
+        if episode.status == EpisodeStatus.DOWNLOADED:
+            transcript_path = transcribe_episode(episode, feed)
+            return MessageResponse(
+                message="Download and transcription completed",
+                path=str(transcript_path),
+            )
+        elif episode.status == EpisodeStatus.COMPLETED:
+            return MessageResponse(
+                message="Already transcribed",
+                path=episode.transcript_path,
+            )
+        else:
+            return MessageResponse(
+                message=f"Download completed, status: {episode.status.value}",
+                path=str(audio_path),
+            )
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Download failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Processing failed: {e}")
 
 
 @router.post("/episodes/{episode_id}/transcribe", response_model=MessageResponse)
@@ -154,6 +187,19 @@ def trigger_transcribe(episode_id: int, timestamps: bool = False):
         feed = feed_repo.get_by_id(episode.feed_id)
         if not feed:
             raise HTTPException(status_code=404, detail="Feed not found")
+
+    # Check if already completed or in progress
+    if episode.status == EpisodeStatus.COMPLETED:
+        return MessageResponse(
+            message="Already transcribed",
+            path=episode.transcript_path,
+        )
+
+    if episode.status == EpisodeStatus.TRANSCRIBING:
+        return MessageResponse(
+            message="Transcription already in progress",
+            path=None,
+        )
 
     # Check if downloaded
     if not episode.audio_path:
