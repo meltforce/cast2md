@@ -1,11 +1,17 @@
 """Feed API endpoints."""
 
+import io
+import zipfile
+from pathlib import Path
+
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, HttpUrl
 
 from cast2md.db.connection import get_db
 from cast2md.db.models import Feed
 from cast2md.db.repository import EpisodeRepository, FeedRepository
+from cast2md.export.formats import export_transcript
 from cast2md.feed.discovery import discover_new_episodes, validate_feed_url
 
 router = APIRouter(prefix="/api/feeds", tags=["feeds"])
@@ -192,3 +198,65 @@ def refresh_feed(feed_id: int, auto_queue: bool = True):
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to poll feed: {e}")
+
+
+@router.get("/{feed_id}/export")
+def export_feed_transcripts(feed_id: int, format: str = "md"):
+    """Export all transcripts for a feed as a zip file.
+
+    Supported formats: md, txt, srt, vtt, json
+    """
+    valid_formats = ["md", "txt", "srt", "vtt", "json"]
+    if format not in valid_formats:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid format. Valid options: {valid_formats}",
+        )
+
+    with get_db() as conn:
+        feed_repo = FeedRepository(conn)
+        episode_repo = EpisodeRepository(conn)
+
+        feed = feed_repo.get_by_id(feed_id)
+        if not feed:
+            raise HTTPException(status_code=404, detail="Feed not found")
+
+        episodes = episode_repo.get_by_feed(feed_id, limit=10000)
+
+    # Filter episodes with transcripts
+    episodes_with_transcripts = [
+        ep for ep in episodes
+        if ep.transcript_path and Path(ep.transcript_path).exists()
+    ]
+
+    if not episodes_with_transcripts:
+        raise HTTPException(
+            status_code=404,
+            detail="No transcripts available for this feed",
+        )
+
+    # Create zip file in memory
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        for episode in episodes_with_transcripts:
+            transcript_path = Path(episode.transcript_path)
+            try:
+                content, filename, _ = export_transcript(transcript_path, format)
+                zf.writestr(filename, content)
+            except Exception:
+                # Skip failed exports
+                continue
+
+    zip_buffer.seek(0)
+
+    # Sanitize feed title for filename
+    safe_title = "".join(c if c.isalnum() or c in " -_" else "_" for c in feed.title)
+    safe_title = safe_title[:50].strip()
+
+    return StreamingResponse(
+        zip_buffer,
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="{safe_title}_transcripts.zip"'
+        },
+    )
