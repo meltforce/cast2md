@@ -10,11 +10,13 @@ from fastapi.templating import Jinja2Templates
 
 from cast2md.api.episodes import router as episodes_router
 from cast2md.api.feeds import router as feeds_router
+from cast2md.api.queue import router as queue_router
 from cast2md.api.system import router as system_router
 from cast2md.config.settings import get_settings
 from cast2md.db.connection import init_db
 from cast2md.scheduler import start_scheduler, stop_scheduler
 from cast2md.web.views import configure_templates, router as web_router
+from cast2md.worker import get_worker_manager
 
 # Configure logging
 logging.basicConfig(
@@ -40,10 +42,17 @@ async def lifespan(app: FastAPI):
     # Start scheduler
     start_scheduler(interval_minutes=60)
 
+    # Start workers
+    worker_manager = get_worker_manager()
+    worker_manager.start()
+    logger.info("Workers started")
+
     yield
 
     # Shutdown
     logger.info("Shutting down cast2md...")
+    worker_manager.stop()
+    logger.info("Workers stopped")
     stop_scheduler()
 
 
@@ -51,7 +60,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="cast2md",
     description="Podcast transcription service",
-    version="0.2.0",
+    version="0.3.0",
     lifespan=lifespan,
 )
 
@@ -68,6 +77,7 @@ if static_path.exists():
 # Include routers
 app.include_router(feeds_router)
 app.include_router(episodes_router)
+app.include_router(queue_router)
 app.include_router(system_router)
 app.include_router(web_router)
 
