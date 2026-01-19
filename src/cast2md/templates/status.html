@@ -50,10 +50,24 @@
         <div class="stat-card">
             <h3>{{ queue_status.download_workers }}</h3>
             <p>Download Workers</p>
+            {% for item in running_downloads %}
+            <small style="display:block; margin-top:0.5rem;">
+                <span class="status-badge status-downloading">DL</span>
+                <a href="/episodes/{{ item.episode.id }}">{{ item.episode.title[:30] }}{% if item.episode.title|length > 30 %}...{% endif %}</a>
+                <span class="elapsed" data-started="{{ item.job.started_at.isoformat() }}Z"></span>
+            </small>
+            {% endfor %}
         </div>
         <div class="stat-card">
             <h3>{{ queue_status.transcribe_workers }}</h3>
             <p>Transcription Workers</p>
+            {% for item in running_transcriptions %}
+            <small style="display:block; margin-top:0.5rem;">
+                <span class="status-badge status-transcribing">TX</span>
+                <a href="/episodes/{{ item.episode.id }}">{{ item.episode.title[:30] }}{% if item.episode.title|length > 30 %}...{% endif %}</a>
+                <span class="elapsed" data-started="{{ item.job.started_at.isoformat() }}Z"></span>
+            </small>
+            {% endfor %}
         </div>
     </div>
 </article>
@@ -201,6 +215,27 @@
 
 {% block scripts %}
 <script>
+// Update elapsed time displays
+function formatElapsed(seconds) {
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = Math.floor(seconds % 60);
+    if (h > 0) return `${h}h ${m}m ${s}s`;
+    if (m > 0) return `${m}m ${s}s`;
+    return `${s}s`;
+}
+
+function updateElapsedTimes() {
+    document.querySelectorAll('.elapsed').forEach(el => {
+        const started = new Date(el.dataset.started);
+        const elapsed = (Date.now() - started.getTime()) / 1000;
+        el.textContent = '(' + formatElapsed(elapsed) + ')';
+    });
+}
+
+updateElapsedTimes();
+setInterval(updateElapsedTimes, 1000);
+
 async function queueProcess(episodeId) {
     try {
         const response = await fetch(`/api/queue/episodes/${episodeId}/process`, {method: 'POST'});

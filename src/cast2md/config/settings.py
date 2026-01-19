@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     whisper_model: str = "base"
     whisper_device: Literal["cpu", "cuda", "auto"] = "auto"
     whisper_compute_type: Literal["int8", "float16", "float32"] = "int8"
+    whisper_backend: Literal["auto", "faster-whisper", "mlx"] = "auto"
 
     # Download settings
     max_concurrent_downloads: int = 2

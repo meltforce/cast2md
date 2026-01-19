@@ -68,6 +68,7 @@ class PollResponse(BaseModel):
     """Response for poll operation."""
 
     new_episodes: int
+    queued_episodes: int
     message: str
 
 
@@ -89,7 +90,7 @@ def list_feeds():
 
 @router.post("", response_model=FeedResponse, status_code=201)
 def create_feed(feed_data: FeedCreate):
-    """Add a new feed."""
+    """Add a new feed and auto-queue the latest episode."""
     url = str(feed_data.url)
 
     # Validate feed
@@ -99,6 +100,7 @@ def create_feed(feed_data: FeedCreate):
 
     with get_db() as conn:
         repo = FeedRepository(conn)
+        episode_repo = EpisodeRepository(conn)
 
         # Check for duplicates
         existing = repo.get_by_url(url)
@@ -112,7 +114,14 @@ def create_feed(feed_data: FeedCreate):
             image_url=parsed.image_url,
         )
 
-    return FeedResponse.from_feed(feed)
+    # Discover episodes and auto-queue only the latest one
+    result = discover_new_episodes(feed, auto_queue=True, queue_only_latest=True)
+
+    with get_db() as conn:
+        episode_repo = EpisodeRepository(conn)
+        episode_count = len(episode_repo.get_by_feed(feed.id, limit=10000))
+
+    return FeedResponse.from_feed(feed, episode_count)
 
 
 @router.get("/{feed_id}", response_model=FeedResponse)
@@ -164,8 +173,8 @@ def delete_feed(feed_id: int):
 
 
 @router.post("/{feed_id}/refresh", response_model=PollResponse)
-def refresh_feed(feed_id: int):
-    """Poll a feed for new episodes."""
+def refresh_feed(feed_id: int, auto_queue: bool = True):
+    """Poll a feed for new episodes and optionally auto-queue them."""
     with get_db() as conn:
         repo = FeedRepository(conn)
         feed = repo.get_by_id(feed_id)
@@ -174,10 +183,12 @@ def refresh_feed(feed_id: int):
         raise HTTPException(status_code=404, detail="Feed not found")
 
     try:
-        new_count = discover_new_episodes(feed)
+        result = discover_new_episodes(feed, auto_queue=auto_queue, queue_only_latest=False)
+        queued = len(result.new_episode_ids) if auto_queue else 0
         return PollResponse(
-            new_episodes=new_count,
-            message=f"Discovered {new_count} new episodes",
+            new_episodes=result.total_new,
+            queued_episodes=queued,
+            message=f"Discovered {result.total_new} new episodes, queued {queued} for processing",
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to poll feed: {e}")

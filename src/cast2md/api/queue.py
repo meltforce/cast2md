@@ -35,14 +35,34 @@ class JobListResponse(BaseModel):
     jobs: list[JobResponse]
 
 
+class JobInfo(BaseModel):
+    """Brief job info with episode name."""
+
+    job_id: int
+    episode_id: int
+    episode_title: str
+    priority: int
+
+
+class QueueDetails(BaseModel):
+    """Queue details with counts and job lists."""
+
+    queued: int
+    running: int
+    completed: int
+    failed: int
+    running_jobs: list[JobInfo]
+    queued_jobs: list[JobInfo]
+
+
 class QueueStatusResponse(BaseModel):
     """Response model for queue status."""
 
     running: bool
     download_workers: int
     transcribe_workers: int
-    download_queue: dict
-    transcribe_queue: dict
+    download_queue: QueueDetails
+    transcribe_queue: QueueDetails
 
 
 class MessageResponse(BaseModel):
@@ -94,11 +114,62 @@ def list_queue(job_type: str | None = None, limit: int = 100):
     return JobListResponse(jobs=[_job_to_response(j) for j in jobs])
 
 
+def _get_job_infos(jobs: list, episode_repo: EpisodeRepository) -> list[JobInfo]:
+    """Convert jobs to JobInfo with episode names."""
+    result = []
+    for job in jobs:
+        episode = episode_repo.get_by_id(job.episode_id)
+        if episode:
+            result.append(JobInfo(
+                job_id=job.id,
+                episode_id=job.episode_id,
+                episode_title=episode.title,
+                priority=job.priority,
+            ))
+    return result
+
+
 @router.get("/status", response_model=QueueStatusResponse)
 def get_queue_status():
     """Get queue and worker status."""
     manager = get_worker_manager()
-    return QueueStatusResponse(**manager.get_status())
+    status = manager.get_status()
+
+    with get_db() as conn:
+        job_repo = JobRepository(conn)
+        episode_repo = EpisodeRepository(conn)
+
+        # Get running and queued jobs with episode names
+        download_running = job_repo.get_running_jobs(JobType.DOWNLOAD)
+        download_queued = job_repo.get_queued_jobs(JobType.DOWNLOAD, limit=20)
+        transcribe_running = job_repo.get_running_jobs(JobType.TRANSCRIBE)
+        transcribe_queued = job_repo.get_queued_jobs(JobType.TRANSCRIBE, limit=20)
+
+        download_queue = QueueDetails(
+            queued=status["download_queue"]["queued"],
+            running=status["download_queue"]["running"],
+            completed=status["download_queue"]["completed"],
+            failed=status["download_queue"]["failed"],
+            running_jobs=_get_job_infos(download_running, episode_repo),
+            queued_jobs=_get_job_infos(download_queued, episode_repo),
+        )
+
+        transcribe_queue = QueueDetails(
+            queued=status["transcribe_queue"]["queued"],
+            running=status["transcribe_queue"]["running"],
+            completed=status["transcribe_queue"]["completed"],
+            failed=status["transcribe_queue"]["failed"],
+            running_jobs=_get_job_infos(transcribe_running, episode_repo),
+            queued_jobs=_get_job_infos(transcribe_queued, episode_repo),
+        )
+
+    return QueueStatusResponse(
+        running=status["running"],
+        download_workers=status["download_workers"],
+        transcribe_workers=status["transcribe_workers"],
+        download_queue=download_queue,
+        transcribe_queue=transcribe_queue,
+    )
 
 
 @router.post("/episodes/{episode_id}/download", response_model=MessageResponse)

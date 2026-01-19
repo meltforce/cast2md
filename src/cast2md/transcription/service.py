@@ -1,11 +1,15 @@
-"""Transcription service using faster-whisper."""
+"""Transcription service supporting faster-whisper and mlx-whisper backends."""
 
+import logging
+import platform
 import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
 from cast2md.config.settings import get_settings
+
+logger = logging.getLogger(__name__)
 from cast2md.db.connection import get_db
 from cast2md.db.models import Episode, EpisodeStatus, Feed
 from cast2md.db.repository import EpisodeRepository
@@ -89,6 +93,30 @@ class TranscriptResult:
         return f"{minutes:02d}:{secs:02d}"
 
 
+def _is_apple_silicon() -> bool:
+    """Check if running on Apple Silicon."""
+    return platform.system() == "Darwin" and platform.machine() == "arm64"
+
+
+def _get_backend() -> str:
+    """Determine which backend to use."""
+    settings = get_settings()
+    backend = settings.whisper_backend
+
+    if backend == "auto":
+        if _is_apple_silicon():
+            # Check if mlx-whisper is available
+            try:
+                import mlx_whisper
+                return "mlx"
+            except ImportError:
+                logger.info("mlx-whisper not installed, falling back to faster-whisper")
+                return "faster-whisper"
+        return "faster-whisper"
+
+    return backend
+
+
 class TranscriptionService:
     """Thread-safe singleton transcription service with lazy model loading."""
 
@@ -102,6 +130,7 @@ class TranscriptionService:
                     cls._instance = super().__new__(cls)
                     cls._instance._model = None
                     cls._instance._model_lock = threading.Lock()
+                    cls._instance._backend = None
         return cls._instance
 
     @property
@@ -113,17 +142,31 @@ class TranscriptionService:
                     self._load_model()
         return self._model
 
+    @property
+    def backend(self) -> str:
+        """Get the active backend name."""
+        if self._backend is None:
+            self._backend = _get_backend()
+        return self._backend
+
     def _load_model(self) -> None:
         """Load the Whisper model based on settings."""
-        from faster_whisper import WhisperModel
-
         settings = get_settings()
+        backend = self.backend
 
-        self._model = WhisperModel(
-            settings.whisper_model,
-            device=settings.whisper_device,
-            compute_type=settings.whisper_compute_type,
-        )
+        if backend == "mlx":
+            # mlx-whisper doesn't need a model object, it loads per-call
+            # but we'll store the model name for transcribe()
+            logger.info(f"Using mlx-whisper backend with model: {settings.whisper_model}")
+            self._model = {"backend": "mlx", "model": settings.whisper_model}
+        else:
+            from faster_whisper import WhisperModel
+            logger.info(f"Using faster-whisper backend with model: {settings.whisper_model}")
+            self._model = WhisperModel(
+                settings.whisper_model,
+                device=settings.whisper_device,
+                compute_type=settings.whisper_compute_type,
+            )
 
     def transcribe(self, audio_path: Path) -> TranscriptResult:
         """Transcribe an audio file.
@@ -137,16 +180,21 @@ class TranscriptionService:
         # Preprocess audio (currently passthrough)
         processed_path = preprocess_audio(audio_path)
 
-        # Run transcription with VAD filter
+        if self.backend == "mlx":
+            return self._transcribe_mlx(processed_path)
+        else:
+            return self._transcribe_faster_whisper(processed_path)
+
+    def _transcribe_faster_whisper(self, audio_path: Path) -> TranscriptResult:
+        """Transcribe using faster-whisper backend."""
         segments_iter, info = self.model.transcribe(
-            str(processed_path),
+            str(audio_path),
             vad_filter=True,
             vad_parameters=dict(
                 min_silence_duration_ms=500,
             ),
         )
 
-        # Collect segments
         segments = [
             TranscriptSegment(
                 start=seg.start,
@@ -160,6 +208,45 @@ class TranscriptionService:
             segments=segments,
             language=info.language,
             language_probability=info.language_probability,
+        )
+
+    def _transcribe_mlx(self, audio_path: Path) -> TranscriptResult:
+        """Transcribe using mlx-whisper backend."""
+        import mlx_whisper
+
+        model_name = self.model["model"]
+
+        # mlx-whisper uses HuggingFace model names (most need -mlx suffix)
+        model_map = {
+            "tiny": "mlx-community/whisper-tiny",
+            "base": "mlx-community/whisper-base-mlx",
+            "small": "mlx-community/whisper-small-mlx",
+            "medium": "mlx-community/whisper-medium-mlx",
+            "large": "mlx-community/whisper-large-v3-mlx",
+            "large-v2": "mlx-community/whisper-large-v2-mlx",
+            "large-v3": "mlx-community/whisper-large-v3-mlx",
+            "large-v3-turbo": "mlx-community/whisper-large-v3-turbo",
+        }
+        mlx_model = model_map.get(model_name, f"mlx-community/whisper-{model_name}-mlx")
+
+        result = mlx_whisper.transcribe(
+            str(audio_path),
+            path_or_hf_repo=mlx_model,
+        )
+
+        segments = [
+            TranscriptSegment(
+                start=seg["start"],
+                end=seg["end"],
+                text=seg["text"],
+            )
+            for seg in result.get("segments", [])
+        ]
+
+        return TranscriptResult(
+            segments=segments,
+            language=result.get("language", "unknown"),
+            language_probability=1.0,  # mlx-whisper doesn't provide this
         )
 
 
