@@ -17,13 +17,34 @@
     Last polled: {{ feed.last_polled.strftime('%Y-%m-%d %H:%M') if feed.last_polled else 'Never' }}
     &nbsp;|&nbsp;
     <button class="outline" style="padding: 0.25rem 0.5rem; font-size: 0.875rem;" onclick="refreshFeed({{ feed.id }})">Refresh Feed</button>
-    &nbsp;
-    <button class="outline" style="padding: 0.25rem 0.5rem; font-size: 0.875rem;" onclick="queueAllPending({{ feed.id }})">Queue All Pending</button>
+    <button class="outline" style="padding: 0.25rem 0.5rem; font-size: 0.875rem; display: none;" onclick="queueSelected()" id="queueSelectedBtn">Queue Selected (<span id="selectedCount">0</span>)</button>
 </p>
+
+<article style="margin-bottom: 1rem; padding: 1rem; background: var(--card-background-color);">
+    <div style="display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;">
+        <strong>Batch Queue:</strong>
+        <div style="display: flex; align-items: center; gap: 0.5rem;">
+            <label style="margin: 0; font-size: 0.875rem;">Position</label>
+            <input type="number" id="posFrom" placeholder="From" min="1" style="width: 5rem; padding: 0.25rem 0.5rem; margin: 0;">
+            <span>-</span>
+            <input type="number" id="posTo" placeholder="To" min="1" style="width: 5rem; padding: 0.25rem 0.5rem; margin: 0;">
+            <button class="outline" style="padding: 0.25rem 0.5rem; font-size: 0.875rem; margin: 0;" onclick="queueByPosition({{ feed.id }})">Queue</button>
+        </div>
+        <div style="display: flex; align-items: center; gap: 0.5rem;">
+            <label style="margin: 0; font-size: 0.875rem;">Date</label>
+            <input type="date" id="dateFrom" style="padding: 0.25rem 0.5rem; margin: 0;">
+            <span>-</span>
+            <input type="date" id="dateTo" style="padding: 0.25rem 0.5rem; margin: 0;">
+            <button class="outline" style="padding: 0.25rem 0.5rem; font-size: 0.875rem; margin: 0;" onclick="queueByDate({{ feed.id }})">Queue</button>
+        </div>
+        <button class="outline secondary" style="padding: 0.25rem 0.5rem; font-size: 0.875rem; margin: 0;" onclick="queueAllPending({{ feed.id }})">Queue All Pending</button>
+    </div>
+</article>
 
 <table>
     <thead>
         <tr>
+            <th style="width: 2rem;"><input type="checkbox" id="selectAll" onchange="toggleSelectAll()"></th>
             <th>Episode</th>
             <th>Published</th>
             <th>Status</th>
@@ -33,6 +54,10 @@
     <tbody>
         {% for episode in episodes %}
         <tr>
+            <td>
+                <input type="checkbox" class="episode-checkbox" value="{{ episode.id }}"
+                       onchange="updateSelectedCount()" {% if episode.status.value != 'pending' %}disabled{% endif %}>
+            </td>
             <td>
                 <a href="/episodes/{{ episode.id }}" class="truncate" style="display: block;">
                     {{ episode.title }}
@@ -143,6 +168,133 @@ async function queueAllPending(feedId) {
 
     try {
         const response = await fetch(`/api/queue/batch/feed/${feedId}/process`, {method: 'POST'});
+        const data = await response.json();
+
+        if (response.ok) {
+            alert(data.message);
+            window.location.reload();
+        } else {
+            alert('Error: ' + data.detail);
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
+
+// Selection management
+function toggleSelectAll() {
+    const selectAll = document.getElementById('selectAll');
+    document.querySelectorAll('.episode-checkbox:not(:disabled)').forEach(cb => {
+        cb.checked = selectAll.checked;
+    });
+    updateSelectedCount();
+}
+
+function updateSelectedCount() {
+    const selected = document.querySelectorAll('.episode-checkbox:checked').length;
+    document.getElementById('selectedCount').textContent = selected;
+    document.getElementById('queueSelectedBtn').style.display = selected > 0 ? 'inline-block' : 'none';
+}
+
+async function queueSelected() {
+    const selected = Array.from(document.querySelectorAll('.episode-checkbox:checked'))
+        .map(cb => parseInt(cb.value));
+
+    if (selected.length === 0) {
+        alert('No episodes selected');
+        return;
+    }
+
+    if (!confirm(`Queue ${selected.length} selected episode(s) for processing?`)) {
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/queue/batch/episodes', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({episode_ids: selected})
+        });
+        const data = await response.json();
+
+        if (response.ok) {
+            alert(data.message);
+            window.location.reload();
+        } else {
+            alert('Error: ' + data.detail);
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
+
+async function queueByPosition(feedId) {
+    const posFrom = document.getElementById('posFrom').value;
+    const posTo = document.getElementById('posTo').value;
+
+    if (!posFrom && !posTo) {
+        alert('Please specify at least one position value');
+        return;
+    }
+
+    const rangeDesc = posFrom && posTo ? `episodes ${posFrom}-${posTo}` :
+                      posFrom ? `episodes from position ${posFrom}` :
+                      `episodes up to position ${posTo}`;
+
+    if (!confirm(`Queue ${rangeDesc} for processing?`)) {
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/queue/batch/range', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                feed_id: feedId,
+                position_from: posFrom ? parseInt(posFrom) : null,
+                position_to: posTo ? parseInt(posTo) : null
+            })
+        });
+        const data = await response.json();
+
+        if (response.ok) {
+            alert(data.message);
+            window.location.reload();
+        } else {
+            alert('Error: ' + data.detail);
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
+
+async function queueByDate(feedId) {
+    const dateFrom = document.getElementById('dateFrom').value;
+    const dateTo = document.getElementById('dateTo').value;
+
+    if (!dateFrom && !dateTo) {
+        alert('Please specify at least one date');
+        return;
+    }
+
+    const rangeDesc = dateFrom && dateTo ? `episodes from ${dateFrom} to ${dateTo}` :
+                      dateFrom ? `episodes from ${dateFrom}` :
+                      `episodes up to ${dateTo}`;
+
+    if (!confirm(`Queue ${rangeDesc} for processing?`)) {
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/queue/batch/range', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                feed_id: feedId,
+                date_from: dateFrom || null,
+                date_to: dateTo || null
+            })
+        });
         const data = await response.json();
 
         if (response.ok) {
