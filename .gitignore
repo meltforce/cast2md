@@ -81,3 +81,6 @@ models/
 
 # MacOS
 .DS_Store
+
+# Screenshots
+screenshots/

@@ -62,9 +62,9 @@
         <tr>
             <th style="width: 2rem;"><input type="checkbox" id="selectAll" onchange="toggleSelectAll()"></th>
             <th>Episode</th>
-            <th>Published</th>
-            <th>Status</th>
-            <th>Actions</th>
+            <th style="white-space: nowrap;">Published</th>
+            <th style="white-space: nowrap;">Status</th>
+            <th style="white-space: nowrap;">Actions</th>
         </tr>
     </thead>
     <tbody>
@@ -79,11 +79,11 @@
                     {{ episode.title }}
                 </a>
             </td>
-            <td>{{ episode.published_at.strftime('%Y-%m-%d') if episode.published_at else 'Unknown' }}</td>
-            <td>
+            <td style="white-space: nowrap;">{{ episode.published_at.strftime('%Y-%m-%d') if episode.published_at else 'Unknown' }}</td>
+            <td style="white-space: nowrap;">
                 <span class="status-badge status-{{ episode.status.value }}">{{ episode.status.value }}</span>
             </td>
-            <td class="actions">
+            <td class="actions" style="white-space: nowrap;">
                 {% if episode.status.value == 'pending' %}
                     <button class="outline" onclick="downloadEpisode({{ episode.id }})">Download</button>
                 {% elif episode.status.value == 'downloaded' %}
