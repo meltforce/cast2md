@@ -5,7 +5,8 @@
 {% block content %}
 <hgroup>
     <h1>{{ feed.title }}</h1>
-    <p>{{ feed.description[:200] + '...' if feed.description and feed.description|length > 200 else feed.description or 'No description' }}</p>
+    {% set desc = feed.description|strip_html %}
+    <p>{{ desc[:200] + '...' if desc and desc|length > 200 else desc or 'No description' }}</p>
 </hgroup>
 
 <p>
