@@ -39,6 +39,9 @@ dev = [
     "pytest-asyncio>=0.23.0",
     "ruff>=0.1.0",
 ]
+mlx = [
+    "mlx-whisper>=0.4.0",
+]
 
 [project.scripts]
 cast2md = "cast2md.cli:cli"

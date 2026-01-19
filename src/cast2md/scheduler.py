@@ -17,7 +17,7 @@ scheduler: BackgroundScheduler | None = None
 
 
 def poll_all_feeds():
-    """Poll all feeds for new episodes."""
+    """Poll all feeds for new episodes and auto-queue them."""
     logger.info("Starting scheduled feed poll")
 
     with get_db() as conn:
@@ -25,16 +25,18 @@ def poll_all_feeds():
         feeds = repo.get_all()
 
     total_new = 0
+    total_queued = 0
     for feed in feeds:
         try:
-            new_count = discover_new_episodes(feed)
-            if new_count > 0:
-                logger.info(f"Feed '{feed.title}': {new_count} new episodes")
-                total_new += new_count
+            result = discover_new_episodes(feed, auto_queue=True, queue_only_latest=False)
+            if result.total_new > 0:
+                logger.info(f"Feed '{feed.title}': {result.total_new} new episodes, {len(result.new_episode_ids)} queued")
+                total_new += result.total_new
+                total_queued += len(result.new_episode_ids)
         except Exception as e:
             logger.error(f"Failed to poll feed '{feed.title}': {e}")
 
-    logger.info(f"Feed poll complete. Total new episodes: {total_new}")
+    logger.info(f"Feed poll complete. Total new episodes: {total_new}, queued: {total_queued}")
 
 
 def start_scheduler(interval_minutes: int = 60):

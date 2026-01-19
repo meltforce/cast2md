@@ -1,12 +1,25 @@
 """Episode discovery from RSS feeds."""
 
+import logging
+from dataclasses import dataclass
+
 import httpx
 
 from cast2md.config.settings import get_settings
 from cast2md.db.connection import get_db
-from cast2md.db.models import Feed
-from cast2md.db.repository import EpisodeRepository, FeedRepository
+from cast2md.db.models import Feed, JobType
+from cast2md.db.repository import EpisodeRepository, FeedRepository, JobRepository
 from cast2md.feed.parser import ParsedFeed, parse_feed
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class DiscoveryResult:
+    """Result of episode discovery."""
+
+    new_episode_ids: list[int]
+    total_new: int
 
 
 async def fetch_feed(url: str) -> str:
@@ -86,31 +99,38 @@ def validate_feed_url(url: str) -> tuple[bool, str, ParsedFeed | None]:
     return True, f"Found {len(parsed.episodes)} episodes", parsed
 
 
-def discover_new_episodes(feed: Feed) -> int:
+def discover_new_episodes(
+    feed: Feed,
+    auto_queue: bool = False,
+    queue_only_latest: bool = False,
+) -> DiscoveryResult:
     """Discover and store new episodes from a feed.
 
     Args:
         feed: Feed to poll for new episodes.
+        auto_queue: Whether to automatically queue new episodes for processing.
+        queue_only_latest: If True, only queue the most recent episode (for new feeds).
 
     Returns:
-        Number of new episodes discovered.
+        DiscoveryResult with list of new episode IDs and count.
     """
     # Fetch and parse feed
     content = fetch_feed_sync(feed.url)
     parsed = parse_feed(content)
 
-    new_count = 0
+    new_episode_ids = []
 
     with get_db() as conn:
         episode_repo = EpisodeRepository(conn)
         feed_repo = FeedRepository(conn)
+        job_repo = JobRepository(conn)
 
         for ep in parsed.episodes:
             # Skip if already exists
             if episode_repo.exists(feed.id, ep.guid):
                 continue
 
-            episode_repo.create(
+            episode = episode_repo.create(
                 feed_id=feed.id,
                 guid=ep.guid,
                 title=ep.title,
@@ -120,9 +140,27 @@ def discover_new_episodes(feed: Feed) -> int:
                 published_at=ep.published_at,
                 transcript_url=ep.transcript_url,
             )
-            new_count += 1
+            new_episode_ids.append(episode.id)
 
         # Update last polled timestamp
         feed_repo.update_last_polled(feed.id)
 
-    return new_count
+        # Auto-queue if requested
+        if auto_queue and new_episode_ids:
+            episodes_to_queue = new_episode_ids[:1] if queue_only_latest else new_episode_ids
+
+            for episode_id in episodes_to_queue:
+                # Queue download job with priority 1 (high) for new episodes
+                if not job_repo.has_pending_job(episode_id, JobType.DOWNLOAD):
+                    job_repo.create(
+                        episode_id=episode_id,
+                        job_type=JobType.DOWNLOAD,
+                        priority=1,
+                    )
+                    episode = episode_repo.get_by_id(episode_id)
+                    logger.info(f"Auto-queued episode for processing: {episode.title}")
+
+    return DiscoveryResult(
+        new_episode_ids=new_episode_ids,
+        total_new=len(new_episode_ids),
+    )
