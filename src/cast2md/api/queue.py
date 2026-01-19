@@ -444,3 +444,125 @@ def batch_cancel_queued():
         skipped=0,
         message=f"Cancelled {cancelled} queued jobs",
     )
+
+
+class BatchQueueByIdsRequest(BaseModel):
+    """Request to queue specific episodes by ID."""
+
+    episode_ids: list[int]
+    priority: int = 10
+
+
+@router.post("/batch/episodes", response_model=BatchQueueResponse)
+def batch_queue_episodes(request: BatchQueueByIdsRequest):
+    """Queue specific episodes by ID for processing."""
+    from cast2md.db.models import EpisodeStatus
+
+    with get_db() as conn:
+        episode_repo = EpisodeRepository(conn)
+        job_repo = JobRepository(conn)
+
+        queued = 0
+        skipped = 0
+
+        for episode_id in request.episode_ids:
+            episode = episode_repo.get_by_id(episode_id)
+            if not episode:
+                skipped += 1
+                continue
+
+            # Skip if not pending or already has a job
+            if episode.status != EpisodeStatus.PENDING:
+                skipped += 1
+                continue
+
+            if job_repo.has_pending_job(episode.id, JobType.DOWNLOAD):
+                skipped += 1
+                continue
+
+            job_repo.create(
+                episode_id=episode.id,
+                job_type=JobType.DOWNLOAD,
+                priority=request.priority,
+            )
+            queued += 1
+
+    return BatchQueueResponse(
+        queued=queued,
+        skipped=skipped,
+        message=f"Queued {queued} episodes for processing ({skipped} skipped)",
+    )
+
+
+class BatchQueueByRangeRequest(BaseModel):
+    """Request to queue episodes by range (position or date)."""
+
+    feed_id: int
+    priority: int = 10
+    # Position range (1-indexed, by published date descending)
+    position_from: int | None = None
+    position_to: int | None = None
+    # Date range
+    date_from: str | None = None  # ISO format YYYY-MM-DD
+    date_to: str | None = None  # ISO format YYYY-MM-DD
+
+
+@router.post("/batch/range", response_model=BatchQueueResponse)
+def batch_queue_by_range(request: BatchQueueByRangeRequest):
+    """Queue episodes by position range or date range."""
+    from datetime import datetime
+
+    from cast2md.db.models import EpisodeStatus
+
+    with get_db() as conn:
+        episode_repo = EpisodeRepository(conn)
+        job_repo = JobRepository(conn)
+
+        # Get all episodes for the feed (ordered by published_at DESC)
+        all_episodes = episode_repo.get_by_feed(request.feed_id, limit=10000)
+
+        # Filter by position range if specified
+        if request.position_from is not None or request.position_to is not None:
+            start_idx = (request.position_from or 1) - 1  # Convert to 0-indexed
+            end_idx = request.position_to or len(all_episodes)
+            all_episodes = all_episodes[start_idx:end_idx]
+
+        # Filter by date range if specified
+        if request.date_from or request.date_to:
+            date_from = datetime.fromisoformat(request.date_from) if request.date_from else None
+            date_to = datetime.fromisoformat(request.date_to) if request.date_to else None
+
+            filtered = []
+            for ep in all_episodes:
+                if not ep.published_at:
+                    continue
+                if date_from and ep.published_at < date_from:
+                    continue
+                if date_to and ep.published_at > date_to:
+                    continue
+                filtered.append(ep)
+            all_episodes = filtered
+
+        # Filter to pending only
+        pending = [e for e in all_episodes if e.status == EpisodeStatus.PENDING]
+
+        queued = 0
+        skipped = 0
+
+        for episode in pending:
+            if job_repo.has_pending_job(episode.id, JobType.DOWNLOAD):
+                skipped += 1
+                continue
+
+            job_repo.create(
+                episode_id=episode.id,
+                job_type=JobType.DOWNLOAD,
+                priority=request.priority,
+            )
+            queued += 1
+
+    return BatchQueueResponse(
+        queued=queued,
+        skipped=skipped,
+        message=f"Queued {queued} episodes for processing ({skipped} skipped)",
+    )
