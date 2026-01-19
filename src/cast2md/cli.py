@@ -1,5 +1,8 @@
 """Command-line interface for cast2md."""
 
+import shutil
+import sqlite3
+from datetime import datetime
 from pathlib import Path
 
 import click
@@ -305,6 +308,141 @@ def cmd_status():
     click.echo(f"  Storage path: {settings.storage_path}")
     click.echo(f"  Whisper model: {settings.whisper_model}")
     click.echo(f"  Whisper device: {settings.whisper_device}")
+
+
+@cli.command("backup")
+@click.option("--output", "-o", type=click.Path(), help="Custom output path for backup")
+def cmd_backup(output: str | None):
+    """Create a database backup.
+
+    Creates a consistent backup of the SQLite database using SQLite's
+    backup API. By default, saves to data/backups/ with a timestamp.
+    """
+    settings = get_settings()
+    db_path = settings.database_path
+
+    if not db_path.exists():
+        click.echo("Error: Database not found. Nothing to backup.", err=True)
+        raise SystemExit(1)
+
+    # Determine backup path
+    if output:
+        backup_path = Path(output)
+    else:
+        backup_dir = settings.database_path.parent / "backups"
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_path = backup_dir / f"cast2md_backup_{timestamp}.db"
+
+    click.echo(f"Backing up database: {db_path}")
+    click.echo(f"Destination: {backup_path}")
+
+    try:
+        # Use SQLite backup API for consistent copy (handles WAL mode)
+        source = sqlite3.connect(db_path)
+        dest = sqlite3.connect(backup_path)
+        source.backup(dest)
+        dest.close()
+        source.close()
+
+        # Get file size for confirmation
+        size_mb = backup_path.stat().st_size / (1024 * 1024)
+        click.echo(f"Backup complete: {size_mb:.2f} MB")
+    except Exception as e:
+        click.echo(f"Error creating backup: {e}", err=True)
+        raise SystemExit(1)
+
+
+@cli.command("restore")
+@click.argument("backup_file", type=click.Path(exists=True))
+@click.option("--force", "-f", is_flag=True, help="Skip confirmation prompt")
+def cmd_restore(backup_file: str, force: bool):
+    """Restore database from a backup.
+
+    BACKUP_FILE is the path to the backup file to restore from.
+
+    WARNING: This will overwrite the current database!
+    """
+    settings = get_settings()
+    db_path = settings.database_path
+    backup_path = Path(backup_file)
+
+    # Validate backup file
+    try:
+        conn = sqlite3.connect(backup_path)
+        cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        tables = [row[0] for row in cursor.fetchall()]
+        conn.close()
+
+        required_tables = {"feed", "episode", "job_queue", "settings"}
+        if not required_tables.issubset(set(tables)):
+            click.echo("Error: Backup file does not appear to be a valid cast2md database", err=True)
+            click.echo(f"Found tables: {tables}", err=True)
+            raise SystemExit(1)
+    except sqlite3.Error as e:
+        click.echo(f"Error: Invalid SQLite database: {e}", err=True)
+        raise SystemExit(1)
+
+    click.echo(f"Backup file: {backup_path}")
+    click.echo(f"Current database: {db_path}")
+
+    if db_path.exists():
+        size_mb = db_path.stat().st_size / (1024 * 1024)
+        click.echo(f"Current database size: {size_mb:.2f} MB")
+
+        if not force:
+            click.confirm("This will overwrite the current database. Continue?", abort=True)
+
+    try:
+        # Create a pre-restore backup just in case
+        if db_path.exists():
+            pre_restore_backup = db_path.with_suffix(".db.pre-restore")
+            click.echo(f"Creating pre-restore backup: {pre_restore_backup}")
+            shutil.copy2(db_path, pre_restore_backup)
+
+            # Also copy WAL and SHM files if they exist
+            for suffix in ["-wal", "-shm"]:
+                wal_path = Path(str(db_path) + suffix)
+                if wal_path.exists():
+                    wal_path.unlink()
+
+        # Restore using SQLite backup API
+        source = sqlite3.connect(backup_path)
+        dest = sqlite3.connect(db_path)
+        source.backup(dest)
+        dest.close()
+        source.close()
+
+        click.echo("Database restored successfully")
+        click.echo("Note: Restart the server if it's running")
+    except Exception as e:
+        click.echo(f"Error restoring backup: {e}", err=True)
+        raise SystemExit(1)
+
+
+@cli.command("list-backups")
+def cmd_list_backups():
+    """List available database backups."""
+    settings = get_settings()
+    backup_dir = settings.database_path.parent / "backups"
+
+    if not backup_dir.exists():
+        click.echo("No backups directory found")
+        return
+
+    backups = sorted(backup_dir.glob("cast2md_backup_*.db"), reverse=True)
+
+    if not backups:
+        click.echo("No backups found")
+        return
+
+    click.echo(f"{'Backup File':<45} {'Size':>10} {'Date':<20}")
+    click.echo("-" * 75)
+
+    for backup in backups:
+        size_mb = backup.stat().st_size / (1024 * 1024)
+        mtime = datetime.fromtimestamp(backup.stat().st_mtime)
+        click.echo(f"{backup.name:<45} {size_mb:>8.2f} MB {mtime.strftime('%Y-%m-%d %H:%M:%S'):<20}")
 
 
 @cli.command("serve")
