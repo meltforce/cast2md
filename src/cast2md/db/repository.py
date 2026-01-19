@@ -295,26 +295,29 @@ class JobRepository:
         return [Job.from_row(row) for row in cursor.fetchall()]
 
     def get_queued_jobs(self, job_type: JobType | None = None, limit: int = 100) -> list[Job]:
-        """Get queued jobs, optionally filtered by type."""
+        """Get queued jobs ready to run (excludes jobs waiting for retry)."""
+        now = datetime.utcnow().isoformat()
         if job_type:
             cursor = self.conn.execute(
                 """
                 SELECT * FROM job_queue
                 WHERE job_type = ? AND status = ?
+                  AND (next_retry_at IS NULL OR next_retry_at <= ?)
                 ORDER BY priority ASC, scheduled_at ASC
                 LIMIT ?
                 """,
-                (job_type.value, JobStatus.QUEUED.value, limit),
+                (job_type.value, JobStatus.QUEUED.value, now, limit),
             )
         else:
             cursor = self.conn.execute(
                 """
                 SELECT * FROM job_queue
                 WHERE status = ?
+                  AND (next_retry_at IS NULL OR next_retry_at <= ?)
                 ORDER BY priority ASC, scheduled_at ASC
                 LIMIT ?
                 """,
-                (JobStatus.QUEUED.value, limit),
+                (JobStatus.QUEUED.value, now, limit),
             )
         return [Job.from_row(row) for row in cursor.fetchall()]
 

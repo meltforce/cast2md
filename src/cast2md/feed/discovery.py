@@ -150,15 +150,22 @@ def discover_new_episodes(
             episodes_to_queue = new_episode_ids[:1] if queue_only_latest else new_episode_ids
 
             for episode_id in episodes_to_queue:
+                episode = episode_repo.get_by_id(episode_id)
+
+                # Skip if already downloaded or has pending job
+                if episode.audio_path:
+                    logger.debug(f"Skipping {episode.title} - already downloaded")
+                    continue
+                if job_repo.has_pending_job(episode_id, JobType.DOWNLOAD):
+                    continue
+
                 # Queue download job with priority 1 (high) for new episodes
-                if not job_repo.has_pending_job(episode_id, JobType.DOWNLOAD):
-                    job_repo.create(
-                        episode_id=episode_id,
-                        job_type=JobType.DOWNLOAD,
-                        priority=1,
-                    )
-                    episode = episode_repo.get_by_id(episode_id)
-                    logger.info(f"Auto-queued episode for processing: {episode.title}")
+                job_repo.create(
+                    episode_id=episode_id,
+                    job_type=JobType.DOWNLOAD,
+                    priority=1,
+                )
+                logger.info(f"Auto-queued episode for processing: {episode.title}")
 
     return DiscoveryResult(
         new_episode_ids=new_episode_ids,

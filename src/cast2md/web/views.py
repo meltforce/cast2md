@@ -1,5 +1,7 @@
 """Web UI views."""
 
+import re
+
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
@@ -15,10 +17,23 @@ router = APIRouter(tags=["web"])
 templates: Jinja2Templates = None
 
 
+def strip_html(text: str | None) -> str:
+    """Strip HTML tags from text."""
+    if not text:
+        return ""
+    # Remove HTML tags
+    clean = re.sub(r'<[^>]+>', '', text)
+    # Normalize whitespace
+    clean = re.sub(r'\s+', ' ', clean).strip()
+    return clean
+
+
 def configure_templates(t: Jinja2Templates):
     """Configure templates instance."""
     global templates
     templates = t
+    # Add custom filter
+    templates.env.filters["strip_html"] = strip_html
 
 
 @router.get("/", response_class=HTMLResponse)

@@ -21,7 +21,7 @@
 {% if episode.description %}
 <details>
     <summary>Description</summary>
-    <p>{{ episode.description }}</p>
+    <p>{{ episode.description|strip_html }}</p>
 </details>
 {% endif %}
 
