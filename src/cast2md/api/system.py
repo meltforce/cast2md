@@ -1,6 +1,9 @@
 """System API endpoints."""
 
+from typing import Literal
+
 from fastapi import APIRouter
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from cast2md.config.settings import get_settings
@@ -71,3 +74,57 @@ def get_status():
         storage_path=str(settings.storage_path),
         database_path=str(settings.database_path),
     )
+
+
+class HealthCheck(BaseModel):
+    """Health check response."""
+
+    status: Literal["healthy", "unhealthy"]
+    database: bool
+    storage: bool
+    message: str | None = None
+
+
+@router.get("/health", response_model=HealthCheck)
+def health_check():
+    """Health check endpoint for load balancers and monitoring.
+
+    Returns 200 if healthy, 503 if unhealthy.
+    """
+    settings = get_settings()
+    checks = {"database": False, "storage": False}
+    errors = []
+
+    # Check database connectivity
+    try:
+        with get_db() as conn:
+            conn.execute("SELECT 1")
+        checks["database"] = True
+    except Exception as e:
+        errors.append(f"Database: {e}")
+
+    # Check storage directory
+    try:
+        if settings.storage_path.exists() and settings.storage_path.is_dir():
+            checks["storage"] = True
+        else:
+            errors.append("Storage path does not exist")
+    except Exception as e:
+        errors.append(f"Storage: {e}")
+
+    # Determine overall health
+    is_healthy = all(checks.values())
+    status = "healthy" if is_healthy else "unhealthy"
+    message = "; ".join(errors) if errors else None
+
+    response = HealthCheck(
+        status=status,
+        database=checks["database"],
+        storage=checks["storage"],
+        message=message,
+    )
+
+    if not is_healthy:
+        return JSONResponse(content=response.model_dump(), status_code=503)
+
+    return response
