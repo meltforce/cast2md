@@ -347,6 +347,7 @@ Enable fast transcription using Mac with MLX when available:
 - [x] Mac worker using mlx-whisper (`cast2md node start`)
 - [x] Worker heartbeat and job timeout handling
 - [x] Node management UI in Settings
+- [x] Status page shows local vs remote workers with current jobs
 
 ## Development
 
