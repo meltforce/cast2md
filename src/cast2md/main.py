@@ -29,6 +29,24 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def reset_orphaned_jobs():
+    """Reset any jobs left in 'running' state from previous server run.
+
+    On server startup, any jobs marked as 'running' are orphaned since
+    no workers are actively processing them yet. Reset them to 'queued'
+    so they can be picked up by workers.
+    """
+    from cast2md.db.connection import get_db
+    from cast2md.db.models import JobStatus
+    from cast2md.db.repository import JobRepository
+
+    with get_db() as conn:
+        job_repo = JobRepository(conn)
+        count = job_repo.reset_running_jobs()
+        if count > 0:
+            logger.info(f"Reset {count} orphaned running jobs to queued")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan handler."""
@@ -41,6 +59,9 @@ async def lifespan(app: FastAPI):
     # Initialize database
     init_db()
     logger.info(f"Database initialized at {settings.database_path}")
+
+    # Reset any orphaned jobs from previous run
+    reset_orphaned_jobs()
 
     # Start scheduler
     start_scheduler(interval_minutes=60)

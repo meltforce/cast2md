@@ -858,6 +858,59 @@ class JobRepository:
         )
         self.conn.commit()
 
+    def reset_running_jobs(self) -> int:
+        """Reset all running jobs back to queued status.
+
+        Called on server startup to handle jobs orphaned from previous run.
+        Also resets the episode status back to downloaded/pending as appropriate.
+
+        Returns:
+            Number of jobs reset.
+        """
+        from cast2md.db.models import EpisodeStatus
+
+        # Find all running jobs
+        cursor = self.conn.execute(
+            """
+            SELECT id, episode_id, job_type FROM job_queue
+            WHERE status = ?
+            """,
+            (JobStatus.RUNNING.value,),
+        )
+        running_jobs = cursor.fetchall()
+
+        if not running_jobs:
+            return 0
+
+        # Reset jobs to queued
+        self.conn.execute(
+            """
+            UPDATE job_queue
+            SET status = ?, started_at = NULL, assigned_node_id = NULL,
+                claimed_at = NULL, progress_percent = NULL
+            WHERE status = ?
+            """,
+            (JobStatus.QUEUED.value, JobStatus.RUNNING.value),
+        )
+
+        # Reset episode statuses
+        for job_id, episode_id, job_type in running_jobs:
+            if job_type == JobType.DOWNLOAD.value:
+                # Reset to pending
+                self.conn.execute(
+                    "UPDATE episode SET status = ? WHERE id = ?",
+                    (EpisodeStatus.PENDING.value, episode_id),
+                )
+            elif job_type == JobType.TRANSCRIBE.value:
+                # Reset to downloaded
+                self.conn.execute(
+                    "UPDATE episode SET status = ? WHERE id = ?",
+                    (EpisodeStatus.DOWNLOADED.value, episode_id),
+                )
+
+        self.conn.commit()
+        return len(running_jobs)
+
     def mark_failed(self, job_id: int, error_message: str, retry: bool = True) -> None:
         """Mark a job as failed, optionally scheduling a retry."""
         now = datetime.utcnow()
