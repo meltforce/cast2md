@@ -269,6 +269,19 @@
         dialog#episodeDetailModal .shownotes-container {
             font-size: 0.9rem;
             line-height: 1.6;
+            max-height: 10em;
+            overflow: hidden;
+            position: relative;
+        }
+        dialog#episodeDetailModal .shownotes-container::after {
+            content: "";
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 3em;
+            background: linear-gradient(transparent, var(--pico-card-background-color));
+            pointer-events: none;
         }
         dialog#episodeDetailModal .transcript-matches {
             display: flex;
