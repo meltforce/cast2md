@@ -111,6 +111,50 @@ def create_app(worker: Optional[TranscriberNodeWorker] = None) -> FastAPI:
             },
         )
 
+    @app.get("/settings", response_class=HTMLResponse)
+    async def settings_page(request: Request):
+        """Show node settings."""
+        from cast2md.config.settings import get_settings
+
+        config = load_config()
+        settings = get_settings()
+
+        # Get system info
+        import platform
+        import os
+
+        system_info = {
+            "platform": platform.system(),
+            "machine": platform.machine(),
+            "processor": platform.processor() or "Unknown",
+            "cpu_count": os.cpu_count(),
+        }
+
+        # Try to get memory info
+        try:
+            import subprocess
+            result = subprocess.run(
+                ["sysctl", "-n", "hw.memsize"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if result.returncode == 0:
+                mem_bytes = int(result.stdout.strip())
+                system_info["memory_gb"] = round(mem_bytes / (1024**3), 1)
+        except Exception:
+            pass
+
+        return templates.TemplateResponse(
+            "settings.html",
+            {
+                "request": request,
+                "config": config,
+                "settings": settings,
+                "system_info": system_info,
+            },
+        )
+
     return app
 
 

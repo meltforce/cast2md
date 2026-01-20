@@ -328,6 +328,9 @@ def cancel_job(job_id: int):
 @router.post("/{job_id}/reset", response_model=MessageResponse)
 def reset_job(job_id: int):
     """Force reset a running/stuck job back to queued state."""
+    from cast2md.db.models import NodeStatus
+    from cast2md.db.repository import TranscriberNodeRepository
+
     with get_db() as conn:
         repo = JobRepository(conn)
 
@@ -341,6 +344,13 @@ def reset_job(job_id: int):
         reset = repo.force_reset(job_id)
         if not reset:
             raise HTTPException(status_code=400, detail="Failed to reset job")
+
+        # Also clear any node that has this job assigned
+        node_repo = TranscriberNodeRepository(conn)
+        nodes = node_repo.get_all()
+        for node in nodes:
+            if node.current_job_id == job_id:
+                node_repo.update_status(node.id, NodeStatus.ONLINE, current_job_id=None)
 
     return MessageResponse(message="Job reset to queued", job_id=job_id)
 
