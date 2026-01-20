@@ -197,9 +197,9 @@ When jobs are queued:
 3. Both process in parallel
 
 **On the server Status page:**
-- "Transcription Workers: 1" shows the local worker
-- "Remote Transcriber Nodes" shows node status (online/busy/offline)
-- When a node is processing, its status shows "busy"
+- **Workers section**: Shows local transcription workers and their current jobs
+- **Remote Transcriber Nodes section**: Shows each node's status (online/busy/offline), current episode being transcribed with elapsed time, and last heartbeat (e.g., "5s ago")
+- **Currently Processing table**: Lists all active jobs with a "Worker" column showing either "Local" or the node name (e.g., "M4 MacBook")
 
 **On the node console:**
 ```
