@@ -230,3 +230,77 @@ def reindex_episode(episode_id: int):
         "message": f"Indexed {count} segments for episode {episode_id}",
         "segments": count,
     }
+
+
+class TranscriptMatch(BaseModel):
+    """A matching segment within a transcript."""
+
+    segment_start: float
+    segment_end: float
+    snippet: str
+
+
+class EpisodeDetailResponse(BaseModel):
+    """Detailed episode info for search modal."""
+
+    id: int
+    title: str
+    feed_id: int
+    feed_title: str
+    published_at: str | None
+    duration: int | None
+    description: str | None
+    transcript_matches: list[TranscriptMatch]
+
+
+@router.get("/episode-detail/{episode_id}", response_model=EpisodeDetailResponse)
+def get_episode_detail(
+    episode_id: int,
+    q: str | None = Query(None, description="Search query for transcript matches"),
+):
+    """Get episode detail for search modal.
+
+    Returns episode metadata, full description/show notes, and optionally
+    transcript matches if a query is provided.
+    """
+    from fastapi import HTTPException
+
+    with get_db() as conn:
+        episode_repo = EpisodeRepository(conn)
+        feed_repo = FeedRepository(conn)
+        search_repo = TranscriptSearchRepository(conn)
+
+        episode = episode_repo.get_by_id(episode_id)
+        if not episode:
+            raise HTTPException(status_code=404, detail="Episode not found")
+
+        feed = feed_repo.get_by_id(episode.feed_id)
+        feed_title = feed.display_title if feed else "Unknown"
+
+        # Get transcript matches if query provided
+        transcript_matches = []
+        if q:
+            results = search_repo.search_episode(
+                episode_id=episode_id,
+                query=q,
+                limit=50,
+            )
+            transcript_matches = [
+                TranscriptMatch(
+                    segment_start=r.segment_start,
+                    segment_end=r.segment_end,
+                    snippet=r.snippet,
+                )
+                for r in results
+            ]
+
+    return EpisodeDetailResponse(
+        id=episode.id,
+        title=episode.title,
+        feed_id=episode.feed_id,
+        feed_title=feed_title,
+        published_at=episode.published_at.isoformat() if episode.published_at else None,
+        duration=episode.duration,
+        description=episode.description,
+        transcript_matches=transcript_matches,
+    )
