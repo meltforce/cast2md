@@ -514,47 +514,55 @@ python-dotenv>=1.0.0
 ## 8. Development Phases
 
 ### Phase 1: Core CLI (v0.1)
-- [ ] Project structure and configuration
-- [ ] SQLite database with WAL mode
-- [ ] RSS feed parsing with feedparser
-- [ ] Episode download with streaming to temp + move
-- [ ] Whisper transcription via faster-whisper library
-- [ ] File storage with naming convention
-- [ ] Basic CLI for testing
+- [x] Project structure and configuration
+- [x] SQLite database with WAL mode
+- [x] RSS feed parsing with feedparser
+- [x] Episode download with streaming to temp + move
+- [x] Whisper transcription via faster-whisper library
+- [x] File storage with naming convention
+- [x] Basic CLI for testing
 
 ### Phase 2: Web Service (v0.2)
-- [ ] FastAPI application structure
-- [ ] Feed CRUD endpoints with validation
-- [ ] Episode list/detail endpoints
-- [ ] Basic web UI (list feeds, view episodes)
-- [ ] Background scheduler for polling
+- [x] FastAPI application structure
+- [x] Feed CRUD endpoints with validation
+- [x] Episode list/detail endpoints
+- [x] Basic web UI (list feeds, view episodes)
+- [x] Background scheduler for polling
 
 ### Phase 3: Queue System (v0.3)
-- [ ] Job queue implementation
-- [ ] Download queue with concurrency limit (3)
-- [ ] Transcription queue (sequential)
-- [ ] Status tracking in UI
-- [ ] Progress indication
+- [x] Job queue implementation
+- [x] Download queue with concurrency limit (3)
+- [x] Transcription queue (sequential)
+- [x] Status tracking in UI
+- [x] Progress indication
 
 ### Phase 4: Advanced Features (v0.4)
 - [ ] Podcast 2.0 transcript detection and download
-- [ ] Backfill functionality with date filter
+- [x] Backfill functionality with date filter ("Queue All Pending" on feed page)
 - [ ] Language override per episode
-- [ ] Retry logic with exponential backoff
-- [ ] ntfy notifications on failure
+- [x] Retry logic with exponential backoff
+- [x] ntfy notifications on failure
 
 ### Phase 5: Production Ready (v1.0)
-- [ ] Docker build and compose
-- [ ] Health checks endpoint
-- [ ] Structured logging
+- [x] Docker build and compose
+- [x] Health checks endpoint
+- [x] Structured logging
 - [ ] Graceful shutdown (finish current job)
-- [ ] Documentation
-- [ ] Error recovery on restart (resume interrupted jobs)
+- [x] Documentation
+- [x] Error recovery on restart (job reset via API/UI)
+
+### Phase 6: Distributed Transcription (v0.5)
+- [x] Remote transcriber node architecture
+- [x] Node registration and authentication
+- [x] Job claiming and progress reporting
+- [x] Node status UI (status, queue, settings pages)
+- [x] MLX backend support for Apple Silicon
+- [x] Auto-open browser on node start
 
 ### Future (v2.0+)
 - [ ] Audio preprocessing pipeline (ffmpeg)
-- [ ] MCP server for transcript access
-- [ ] SRT/VTT output formats
+- [x] MCP server for transcript access
+- [x] SRT/VTT output formats
 - [ ] OPML import
 - [ ] Feed authentication (HTTP Basic, custom headers)
 - [ ] Full-text search across transcripts
