@@ -83,6 +83,16 @@ CREATE TABLE IF NOT EXISTS whisper_models (
     is_enabled INTEGER DEFAULT 1,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+-- FTS5 virtual table for transcript full-text search
+-- Stores transcript segments with timestamps for precise search results
+CREATE VIRTUAL TABLE IF NOT EXISTS transcript_fts USING fts5(
+    text,                    -- Searchable transcript text
+    episode_id UNINDEXED,    -- Reference to episode (not searchable)
+    segment_start UNINDEXED, -- Start time in seconds
+    segment_end UNINDEXED,   -- End time in seconds
+    tokenize='porter unicode61 remove_diacritics 1'
+);
 """
 
 

@@ -445,6 +445,71 @@ def cmd_list_backups():
         click.echo(f"{backup.name:<45} {size_mb:>8.2f} MB {mtime.strftime('%Y-%m-%d %H:%M:%S'):<20}")
 
 
+@cli.command("reindex-transcripts")
+@click.option("--feed-id", "-f", type=int, help="Only reindex transcripts for this feed")
+def cmd_reindex_transcripts(feed_id: int | None):
+    """Reindex all transcripts for full-text search.
+
+    Parses transcript markdown files and indexes them into the FTS5
+    search table. This enables fast full-text search across all transcripts.
+
+    Use --feed-id to limit reindexing to a specific feed.
+    """
+    from cast2md.search.repository import TranscriptSearchRepository
+
+    init_db()
+
+    with get_db() as conn:
+        episode_repo = EpisodeRepository(conn)
+        search_repo = TranscriptSearchRepository(conn)
+
+        # Build dict of episode_id -> transcript_path
+        if feed_id:
+            # Get episodes for specific feed
+            cursor = conn.execute(
+                """
+                SELECT id, transcript_path FROM episode
+                WHERE feed_id = ? AND transcript_path IS NOT NULL AND status = 'completed'
+                """,
+                (feed_id,),
+            )
+        else:
+            # Get all completed episodes with transcripts
+            cursor = conn.execute(
+                """
+                SELECT id, transcript_path FROM episode
+                WHERE transcript_path IS NOT NULL AND status = 'completed'
+                """
+            )
+
+        episode_transcripts = {row[0]: row[1] for row in cursor.fetchall()}
+
+        if not episode_transcripts:
+            click.echo("No transcripts found to index")
+            return
+
+        click.echo(f"Found {len(episode_transcripts)} transcripts to index")
+
+        # Reindex all
+        with click.progressbar(
+            episode_transcripts.items(),
+            label="Indexing transcripts",
+            length=len(episode_transcripts),
+        ) as items:
+            episodes_indexed = 0
+            segments_indexed = 0
+
+            for episode_id, transcript_path in items:
+                count = search_repo.index_episode(episode_id, transcript_path)
+                if count > 0:
+                    episodes_indexed += 1
+                    segments_indexed += count
+
+    click.echo()
+    click.echo(f"Indexed {episodes_indexed} episodes with {segments_indexed} segments")
+    click.echo("Full-text search is now available via /api/search/transcripts")
+
+
 @cli.command("serve")
 @click.option("--host", "-h", default="0.0.0.0", help="Host to bind to")
 @click.option("--port", "-p", default=8000, help="Port to bind to")

@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+
+{% block title %}Search Transcripts - cast2md{% endblock %}
+
+{% block content %}
+<hgroup>
+    <h1>Search Transcripts</h1>
+    <p>Full-text search across all transcribed episodes</p>
+</hgroup>
+
+<article style="margin-bottom: 1.5rem; padding: 1rem; background: var(--card-background-color);">
+    <form method="get" style="display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-end;">
+        <div style="flex: 1; min-width: 250px;">
+            <label for="searchQuery">Search query</label>
+            <input type="text" id="searchQuery" name="q" value="{{ query }}"
+                   placeholder="Enter search terms..." autofocus>
+        </div>
+        <div style="min-width: 180px;">
+            <label for="feedFilter">Filter by feed</label>
+            <select id="feedFilter" name="feed_id">
+                <option value="">All feeds</option>
+                {% for feed in feeds %}
+                <option value="{{ feed.id }}" {% if feed_id == feed.id %}selected{% endif %}>{{ feed.display_title }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <button type="submit">Search</button>
+        </div>
+    </form>
+    <details style="margin-top: 1rem;">
+        <summary style="cursor: pointer; font-size: 0.875rem;">Search syntax help</summary>
+        <div style="padding: 0.5rem; font-size: 0.875rem; color: var(--muted-color);">
+            <ul style="margin: 0.5rem 0;">
+                <li><code>kubernetes</code> - Simple search</li>
+                <li><code>"machine learning"</code> - Exact phrase</li>
+                <li><code>python AND async</code> - Both terms required</li>
+                <li><code>docker OR kubernetes</code> - Either term</li>
+                <li><code>python NOT flask</code> - Exclude term</li>
+            </ul>
+        </div>
+    </details>
+</article>
+
+<p style="font-size: 0.875rem; color: var(--muted-color);">
+    Index: {{ index_stats.indexed_episodes }} episodes, {{ index_stats.total_segments }} segments
+    {% if query %} | Found <strong>{{ total }}</strong> results{% endif %}
+</p>
+
+{% if results %}
+<div style="display: flex; flex-direction: column; gap: 1rem;">
+    {% for result in results %}
+    <article style="padding: 1rem;">
+        <header style="padding-bottom: 0.5rem; margin-bottom: 0.5rem; border-bottom: 1px solid var(--muted-border-color);">
+            <div style="display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 0.5rem;">
+                <div>
+                    <a href="/episodes/{{ result.episode_id }}" style="font-weight: bold;">{{ result.episode_title }}</a>
+                    <span style="color: var(--muted-color); font-size: 0.875rem;">
+                        &mdash; {{ result.feed_title }}
+                    </span>
+                </div>
+                <div style="font-size: 0.875rem; color: var(--muted-color);">
+                    {% if result.published_at %}{{ result.published_at[:10] }}{% endif %}
+                </div>
+            </div>
+        </header>
+        <div style="display: flex; align-items: flex-start; gap: 1rem;">
+            <div style="background: var(--muted-border-color); padding: 0.25rem 0.5rem; border-radius: 4px; font-family: monospace; font-size: 0.875rem; white-space: nowrap;">
+                {% set minutes = (result.segment_start // 60)|int %}
+                {% set seconds = (result.segment_start % 60)|int %}
+                {{ '%02d:%02d'|format(minutes, seconds) }}
+            </div>
+            <div style="flex: 1;">
+                <p style="margin: 0;">{{ result.snippet|safe }}</p>
+            </div>
+        </div>
+    </article>
+    {% endfor %}
+</div>
+
+{% if total_pages > 1 %}
+<nav style="display: flex; justify-content: center; gap: 0.5rem; margin-top: 1.5rem;">
+    {% if page > 1 %}
+    <a href="?q={{ query|urlencode }}{% if feed_id %}&feed_id={{ feed_id }}{% endif %}&page={{ page - 1 }}" role="button" class="outline">&larr; Previous</a>
+    {% endif %}
+    <span style="padding: 0.5rem 1rem; display: flex; align-items: center;">Page {{ page }} of {{ total_pages }}</span>
+    {% if page < total_pages %}
+    <a href="?q={{ query|urlencode }}{% if feed_id %}&feed_id={{ feed_id }}{% endif %}&page={{ page + 1 }}" role="button" class="outline">Next &rarr;</a>
+    {% endif %}
+</nav>
+{% endif %}
+
+{% elif query %}
+<article style="text-align: center; padding: 3rem;">
+    <p>No results found for "<strong>{{ query }}</strong>"</p>
+    <p style="color: var(--muted-color);">Try different search terms or check that transcripts have been indexed.</p>
+</article>
+{% else %}
+<article style="text-align: center; padding: 3rem;">
+    <p>Enter a search query to find text within transcripts.</p>
+    <p style="color: var(--muted-color);">
+        {% if index_stats.indexed_episodes == 0 %}
+        No transcripts indexed yet. Run <code>cast2md reindex-transcripts</code> to index existing transcripts.
+        {% else %}
+        Search across {{ index_stats.indexed_episodes }} transcribed episodes.
+        {% endif %}
+    </p>
+</article>
+{% endif %}
+{% endblock %}

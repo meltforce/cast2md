@@ -258,13 +258,13 @@ def get_transcription_service() -> TranscriptionService:
     return TranscriptionService()
 
 
-def transcribe_episode(episode: Episode, feed: Feed, include_timestamps: bool = False) -> Path:
+def transcribe_episode(episode: Episode, feed: Feed, include_timestamps: bool = True) -> Path:
     """Transcribe an episode and save the result.
 
     Args:
         episode: Episode to transcribe (must have audio_path set).
         feed: Feed the episode belongs to.
-        include_timestamps: Whether to include timestamps in output (default False).
+        include_timestamps: Whether to include timestamps in output (default True).
 
     Returns:
         Path to the transcript file.
@@ -311,6 +311,19 @@ def transcribe_episode(episode: Episode, feed: Feed, include_timestamps: bool = 
             # Update episode
             repo.update_transcript_path(episode.id, str(transcript_path))
             repo.update_status(episode.id, EpisodeStatus.COMPLETED)
+
+            # Index transcript for full-text search (only if timestamps included)
+            if include_timestamps:
+                try:
+                    from cast2md.search.repository import TranscriptSearchRepository
+                    search_repo = TranscriptSearchRepository(conn)
+                    search_repo.index_episode(episode.id, str(transcript_path))
+                except Exception as index_error:
+                    # Don't fail transcription if indexing fails
+                    import logging
+                    logging.getLogger(__name__).warning(
+                        f"Failed to index transcript for episode {episode.id}: {index_error}"
+                    )
 
             return transcript_path
 
