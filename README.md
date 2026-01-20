@@ -8,7 +8,8 @@ Podcast transcription service - download episodes via RSS and transcribe with Wh
 - **Extended Metadata**: Extracts author, website link, and categories from RSS feeds
 - **Custom Feed Titles**: Override RSS titles with custom names (auto-renames storage directories)
 - **Automatic Downloads**: Queue and download episodes with configurable workers
-- **Whisper Transcription**: Transcribe audio using faster-whisper with CPU or GPU
+- **Whisper Transcription**: Transcribe audio using faster-whisper or mlx-whisper
+- **Distributed Transcription**: Use remote machines (M4 Macs, GPU PCs) to transcribe in parallel
 - **Full-Text Search**: Search across all transcripts and episode metadata
 - **Web Interface**: Simple UI to manage feeds, view episodes, and monitor progress
 - **Show Notes Display**: Preview and full modal view with sanitized HTML
@@ -185,6 +186,12 @@ cast2md restore /path/to/backup.db
 # Start MCP server (for Claude integration)
 cast2md mcp              # stdio mode (Claude Code/Desktop)
 cast2md mcp --sse        # SSE mode (Claude.ai/remote)
+
+# Distributed transcription (run on remote machines)
+cast2md node register --server http://server:8000 --name "M4 Mac"
+cast2md node start       # Start transcription worker
+cast2md node status      # Check node configuration
+cast2md node unregister  # Remove node credentials
 ```
 
 ### MCP Server (Claude Integration)
@@ -320,7 +327,7 @@ cast2md backup -o /mnt/nas/cast2md/backups/cast2md_$(date +%Y%m%d).db
 - [ ] Mobile-responsive improvements
 - [ ] Progress indicators for transcription
 
-### Distributed Transcription (Mac as Remote Worker)
+### Distributed Transcription (Mac as Remote Worker) ✅
 Enable fast transcription using Mac with MLX when available:
 
 ```
@@ -334,10 +341,12 @@ Enable fast transcription using Mac with MLX when available:
 └─────────────┘                      └─────────────┘
 ```
 
-Required implementation:
-- [ ] Job queue API endpoints (`/api/jobs/claim`, `/api/jobs/{id}/complete`, `/api/jobs/{id}/fail`)
-- [ ] Mac worker script using mlx-whisper
-- [ ] Worker heartbeat and job timeout handling
+**Implemented!** See [Distributed Transcription Setup Guide](docs/distributed-transcription-setup.md) for details.
+
+- [x] Job queue API endpoints (`/api/nodes/*/claim`, `/api/nodes/jobs/*/complete`, `/api/nodes/jobs/*/fail`)
+- [x] Mac worker using mlx-whisper (`cast2md node start`)
+- [x] Worker heartbeat and job timeout handling
+- [x] Node management UI in Settings
 
 ## Development
 

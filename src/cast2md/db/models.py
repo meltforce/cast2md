@@ -34,6 +34,14 @@ class JobStatus(str, Enum):
     FAILED = "failed"
 
 
+class NodeStatus(str, Enum):
+    """Transcriber node status."""
+
+    ONLINE = "online"
+    OFFLINE = "offline"
+    BUSY = "busy"
+
+
 @dataclass
 class Feed:
     """Podcast feed model."""
@@ -148,6 +156,8 @@ class Job:
     next_retry_at: Optional[datetime]
     error_message: Optional[str]
     created_at: datetime
+    assigned_node_id: Optional[str] = None
+    claimed_at: Optional[datetime] = None
 
     @classmethod
     def from_row(cls, row: tuple) -> "Job":
@@ -166,4 +176,42 @@ class Job:
             next_retry_at=datetime.fromisoformat(row[10]) if row[10] else None,
             error_message=row[11],
             created_at=datetime.fromisoformat(row[12]),
+            assigned_node_id=row[13] if len(row) > 13 else None,
+            claimed_at=datetime.fromisoformat(row[14]) if len(row) > 14 and row[14] else None,
+        )
+
+
+@dataclass
+class TranscriberNode:
+    """Remote transcriber node."""
+
+    id: str
+    name: str
+    url: str
+    api_key: str
+    whisper_model: Optional[str]
+    whisper_backend: Optional[str]
+    status: NodeStatus
+    last_heartbeat: Optional[datetime]
+    current_job_id: Optional[int]
+    priority: int
+    created_at: datetime
+    updated_at: datetime
+
+    @classmethod
+    def from_row(cls, row: tuple) -> "TranscriberNode":
+        """Create TranscriberNode from database row."""
+        return cls(
+            id=row[0],
+            name=row[1],
+            url=row[2],
+            api_key=row[3],
+            whisper_model=row[4],
+            whisper_backend=row[5],
+            status=NodeStatus(row[6]) if row[6] else NodeStatus.OFFLINE,
+            last_heartbeat=datetime.fromisoformat(row[7]) if row[7] else None,
+            current_job_id=row[8],
+            priority=row[9] if row[9] is not None else 10,
+            created_at=datetime.fromisoformat(row[10]),
+            updated_at=datetime.fromisoformat(row[11]),
         )

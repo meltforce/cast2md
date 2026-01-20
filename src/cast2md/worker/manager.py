@@ -20,6 +20,12 @@ from cast2md.transcription.service import transcribe_episode
 logger = logging.getLogger(__name__)
 
 
+def _is_distributed_enabled() -> bool:
+    """Check if distributed transcription is enabled."""
+    settings = get_settings()
+    return settings.distributed_transcription_enabled
+
+
 class WorkerManager:
     """Manages download and transcription workers."""
 
@@ -43,6 +49,7 @@ class WorkerManager:
         self._download_threads: list[threading.Thread] = []
         self._transcribe_thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
+        self._coordinator = None
 
         settings = get_settings()
         self._max_download_workers = settings.max_concurrent_downloads
@@ -76,6 +83,19 @@ class WorkerManager:
         self._transcribe_thread.start()
         logger.info("Started transcription worker")
 
+        # Start distributed transcription coordinator if enabled
+        if _is_distributed_enabled():
+            from cast2md.distributed import get_coordinator
+
+            settings = get_settings()
+            self._coordinator = get_coordinator()
+            self._coordinator.configure(
+                heartbeat_timeout_seconds=settings.node_heartbeat_timeout_seconds,
+                job_timeout_hours=settings.remote_job_timeout_hours,
+            )
+            self._coordinator.start()
+            logger.info("Started distributed transcription coordinator")
+
     def stop(self, timeout: float = 30.0):
         """Stop all workers gracefully."""
         if not self._running:
@@ -84,6 +104,12 @@ class WorkerManager:
         logger.info("Stopping workers...")
         self._stop_event.set()
         self._running = False
+
+        # Stop coordinator if running
+        if self._coordinator:
+            self._coordinator.stop()
+            self._coordinator = None
+            logger.info("Stopped distributed transcription coordinator")
 
         # Wait for download workers
         for thread in self._download_threads:
@@ -130,10 +156,18 @@ class WorkerManager:
                 time.sleep(5.0)
 
     def _get_next_job(self, job_type: JobType):
-        """Get the next available job from the queue."""
+        """Get the next available job from the queue.
+
+        For transcription jobs when distributed transcription is enabled,
+        only returns jobs not assigned to remote nodes.
+        """
         with get_db() as conn:
             repo = JobRepository(conn)
-            return repo.get_next_job(job_type)
+            # For transcription jobs with distributed enabled, only get unassigned jobs
+            local_only = (
+                job_type == JobType.TRANSCRIBE and _is_distributed_enabled()
+            )
+            return repo.get_next_job(job_type, local_only=local_only)
 
     def _process_download_job(self, job_id: int, episode_id: int):
         """Process a download job."""
@@ -256,7 +290,7 @@ class WorkerManager:
             download_running = job_repo.get_running_jobs(JobType.DOWNLOAD)
             transcribe_running = job_repo.get_running_jobs(JobType.TRANSCRIBE)
 
-        return {
+        status = {
             "running": self._running,
             "download_workers": len(self._download_threads),
             "transcribe_workers": 1 if self._transcribe_thread else 0,
@@ -272,7 +306,14 @@ class WorkerManager:
                 "completed": transcribe_counts.get(JobStatus.COMPLETED.value, 0),
                 "failed": transcribe_counts.get(JobStatus.FAILED.value, 0),
             },
+            "distributed_enabled": _is_distributed_enabled(),
         }
+
+        # Add coordinator status if running
+        if self._coordinator:
+            status["coordinator"] = self._coordinator.get_status()
+
+        return status
 
 
 # Global instance

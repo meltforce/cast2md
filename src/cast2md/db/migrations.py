@@ -18,6 +18,14 @@ MIGRATIONS = [
             "ALTER TABLE episode ADD COLUMN author TEXT",
         ],
     },
+    {
+        "version": 2,
+        "description": "Add distributed transcription support to job_queue",
+        "sql": [
+            "ALTER TABLE job_queue ADD COLUMN assigned_node_id TEXT",
+            "ALTER TABLE job_queue ADD COLUMN claimed_at TEXT",
+        ],
+    },
 ]
 
 

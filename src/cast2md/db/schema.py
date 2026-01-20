@@ -103,6 +103,24 @@ CREATE VIRTUAL TABLE IF NOT EXISTS episode_fts USING fts5(
     feed_id UNINDEXED,       -- Reference to feed for filtering (not searchable)
     tokenize='porter unicode61 remove_diacritics 1'
 );
+
+-- Transcriber node table for distributed transcription
+CREATE TABLE IF NOT EXISTS transcriber_node (
+    id TEXT PRIMARY KEY,              -- UUID
+    name TEXT NOT NULL,               -- "M4 MacBook Pro"
+    url TEXT NOT NULL,                -- "http://192.168.1.100:8001"
+    api_key TEXT NOT NULL,            -- Shared secret
+    whisper_model TEXT,               -- Model on node
+    whisper_backend TEXT,             -- "mlx" or "faster-whisper"
+    status TEXT DEFAULT 'offline',    -- online/offline/busy
+    last_heartbeat TEXT,
+    current_job_id INTEGER,
+    priority INTEGER DEFAULT 10,      -- Lower = preferred
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_transcriber_node_status ON transcriber_node(status);
 """
 
 

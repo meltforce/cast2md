@@ -5,7 +5,16 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Optional
 
-from cast2md.db.models import Episode, EpisodeStatus, Feed, Job, JobStatus, JobType
+from cast2md.db.models import (
+    Episode,
+    EpisodeStatus,
+    Feed,
+    Job,
+    JobStatus,
+    JobType,
+    NodeStatus,
+    TranscriberNode,
+)
 
 
 class FeedRepository:
@@ -623,10 +632,48 @@ class JobRepository:
         row = cursor.fetchone()
         return Job.from_row(row) if row else None
 
-    def get_next_job(self, job_type: JobType) -> Optional[Job]:
+    def get_next_job(self, job_type: JobType, local_only: bool = False) -> Optional[Job]:
         """Get the next queued job of given type, ordered by priority.
 
         Also respects next_retry_at for failed jobs being retried.
+
+        Args:
+            job_type: Type of job to get.
+            local_only: If True, only return jobs not assigned to a node.
+        """
+        now = datetime.utcnow().isoformat()
+        if local_only:
+            cursor = self.conn.execute(
+                """
+                SELECT * FROM job_queue
+                WHERE job_type = ?
+                  AND status = ?
+                  AND assigned_node_id IS NULL
+                  AND (next_retry_at IS NULL OR next_retry_at <= ?)
+                ORDER BY priority ASC, scheduled_at ASC
+                LIMIT 1
+                """,
+                (job_type.value, JobStatus.QUEUED.value, now),
+            )
+        else:
+            cursor = self.conn.execute(
+                """
+                SELECT * FROM job_queue
+                WHERE job_type = ?
+                  AND status = ?
+                  AND (next_retry_at IS NULL OR next_retry_at <= ?)
+                ORDER BY priority ASC, scheduled_at ASC
+                LIMIT 1
+                """,
+                (job_type.value, JobStatus.QUEUED.value, now),
+            )
+        row = cursor.fetchone()
+        return Job.from_row(row) if row else None
+
+    def get_next_unclaimed_job(self, job_type: JobType) -> Optional[Job]:
+        """Get the next queued job that hasn't been claimed by any node.
+
+        Used by distributed transcription nodes to claim work.
         """
         now = datetime.utcnow().isoformat()
         cursor = self.conn.execute(
@@ -634,6 +681,7 @@ class JobRepository:
             SELECT * FROM job_queue
             WHERE job_type = ?
               AND status = ?
+              AND assigned_node_id IS NULL
               AND (next_retry_at IS NULL OR next_retry_at <= ?)
             ORDER BY priority ASC, scheduled_at ASC
             LIMIT 1
@@ -642,6 +690,66 @@ class JobRepository:
         )
         row = cursor.fetchone()
         return Job.from_row(row) if row else None
+
+    def claim_job(self, job_id: int, node_id: str) -> None:
+        """Claim a job for a specific node."""
+        now = datetime.utcnow().isoformat()
+        self.conn.execute(
+            """
+            UPDATE job_queue
+            SET assigned_node_id = ?, claimed_at = ?, status = ?, started_at = ?, attempts = attempts + 1
+            WHERE id = ?
+            """,
+            (node_id, now, JobStatus.RUNNING.value, now, job_id),
+        )
+        self.conn.commit()
+
+    def unclaim_job(self, job_id: int) -> None:
+        """Remove node assignment from a job (for retries or failed nodes)."""
+        self.conn.execute(
+            """
+            UPDATE job_queue
+            SET assigned_node_id = NULL, claimed_at = NULL
+            WHERE id = ?
+            """,
+            (job_id,),
+        )
+        self.conn.commit()
+
+    def get_jobs_by_node(self, node_id: str) -> list[Job]:
+        """Get all jobs assigned to a specific node."""
+        cursor = self.conn.execute(
+            """
+            SELECT * FROM job_queue
+            WHERE assigned_node_id = ?
+            ORDER BY claimed_at DESC
+            """,
+            (node_id,),
+        )
+        return [Job.from_row(row) for row in cursor.fetchall()]
+
+    def reclaim_stale_jobs(self, timeout_hours: int = 2) -> int:
+        """Reclaim jobs that have been running too long on a node.
+
+        Jobs that have been running longer than timeout_hours on a node
+        are reset to queued state so they can be picked up again.
+
+        Returns:
+            Number of jobs reclaimed.
+        """
+        threshold = (datetime.utcnow() - timedelta(hours=timeout_hours)).isoformat()
+        cursor = self.conn.execute(
+            """
+            UPDATE job_queue
+            SET status = ?, assigned_node_id = NULL, claimed_at = NULL, started_at = NULL
+            WHERE status = ?
+              AND assigned_node_id IS NOT NULL
+              AND claimed_at < ?
+            """,
+            (JobStatus.QUEUED.value, JobStatus.RUNNING.value, threshold),
+        )
+        self.conn.commit()
+        return cursor.rowcount
 
     def get_running_jobs(self, job_type: JobType) -> list[Job]:
         """Get all running jobs of given type."""
@@ -1180,3 +1288,178 @@ class WhisperModelRepository:
             )
         self.conn.commit()
         return len(default_models)
+
+
+class TranscriberNodeRepository:
+    """Repository for transcriber node operations."""
+
+    NODE_COLUMNS = """id, name, url, api_key, whisper_model, whisper_backend,
+                      status, last_heartbeat, current_job_id, priority,
+                      created_at, updated_at"""
+
+    def __init__(self, conn: sqlite3.Connection):
+        self.conn = conn
+
+    def create(
+        self,
+        node_id: str,
+        name: str,
+        url: str,
+        api_key: str,
+        whisper_model: str | None = None,
+        whisper_backend: str | None = None,
+        priority: int = 10,
+    ) -> TranscriberNode:
+        """Create a new transcriber node."""
+        now = datetime.utcnow().isoformat()
+        self.conn.execute(
+            """
+            INSERT INTO transcriber_node (
+                id, name, url, api_key, whisper_model, whisper_backend,
+                status, priority, created_at, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (node_id, name, url, api_key, whisper_model, whisper_backend,
+             NodeStatus.OFFLINE.value, priority, now, now),
+        )
+        self.conn.commit()
+        return self.get_by_id(node_id)
+
+    def get_by_id(self, node_id: str) -> Optional[TranscriberNode]:
+        """Get node by ID."""
+        cursor = self.conn.execute(
+            f"SELECT {self.NODE_COLUMNS} FROM transcriber_node WHERE id = ?",
+            (node_id,),
+        )
+        row = cursor.fetchone()
+        return TranscriberNode.from_row(row) if row else None
+
+    def get_by_api_key(self, api_key: str) -> Optional[TranscriberNode]:
+        """Get node by API key."""
+        cursor = self.conn.execute(
+            f"SELECT {self.NODE_COLUMNS} FROM transcriber_node WHERE api_key = ?",
+            (api_key,),
+        )
+        row = cursor.fetchone()
+        return TranscriberNode.from_row(row) if row else None
+
+    def get_all(self) -> list[TranscriberNode]:
+        """Get all nodes."""
+        cursor = self.conn.execute(
+            f"SELECT {self.NODE_COLUMNS} FROM transcriber_node ORDER BY priority, name"
+        )
+        return [TranscriberNode.from_row(row) for row in cursor.fetchall()]
+
+    def get_online(self) -> list[TranscriberNode]:
+        """Get all online nodes."""
+        cursor = self.conn.execute(
+            f"""
+            SELECT {self.NODE_COLUMNS} FROM transcriber_node
+            WHERE status IN (?, ?)
+            ORDER BY priority, name
+            """,
+            (NodeStatus.ONLINE.value, NodeStatus.BUSY.value),
+        )
+        return [TranscriberNode.from_row(row) for row in cursor.fetchall()]
+
+    def update_status(
+        self,
+        node_id: str,
+        status: NodeStatus,
+        current_job_id: int | None = None,
+    ) -> None:
+        """Update node status."""
+        now = datetime.utcnow().isoformat()
+        self.conn.execute(
+            """
+            UPDATE transcriber_node
+            SET status = ?, current_job_id = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (status.value, current_job_id, now, node_id),
+        )
+        self.conn.commit()
+
+    def update_heartbeat(self, node_id: str) -> None:
+        """Update last heartbeat timestamp."""
+        now = datetime.utcnow().isoformat()
+        self.conn.execute(
+            """
+            UPDATE transcriber_node
+            SET last_heartbeat = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (now, now, node_id),
+        )
+        self.conn.commit()
+
+    def update_info(
+        self,
+        node_id: str,
+        whisper_model: str | None = None,
+        whisper_backend: str | None = None,
+    ) -> None:
+        """Update node whisper info."""
+        now = datetime.utcnow().isoformat()
+        self.conn.execute(
+            """
+            UPDATE transcriber_node
+            SET whisper_model = ?, whisper_backend = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (whisper_model, whisper_backend, now, node_id),
+        )
+        self.conn.commit()
+
+    def delete(self, node_id: str) -> bool:
+        """Delete a node."""
+        cursor = self.conn.execute(
+            "DELETE FROM transcriber_node WHERE id = ?",
+            (node_id,),
+        )
+        self.conn.commit()
+        return cursor.rowcount > 0
+
+    def get_stale_nodes(self, timeout_seconds: int = 60) -> list[TranscriberNode]:
+        """Get nodes that haven't sent a heartbeat within the timeout.
+
+        Args:
+            timeout_seconds: Seconds after which a node is considered stale.
+
+        Returns:
+            List of stale nodes.
+        """
+        threshold = (datetime.utcnow() - timedelta(seconds=timeout_seconds)).isoformat()
+        cursor = self.conn.execute(
+            f"""
+            SELECT {self.NODE_COLUMNS} FROM transcriber_node
+            WHERE status != ?
+            AND (last_heartbeat IS NULL OR last_heartbeat < ?)
+            """,
+            (NodeStatus.OFFLINE.value, threshold),
+        )
+        return [TranscriberNode.from_row(row) for row in cursor.fetchall()]
+
+    def mark_offline(self, node_id: str) -> None:
+        """Mark a node as offline and clear its current job."""
+        now = datetime.utcnow().isoformat()
+        self.conn.execute(
+            """
+            UPDATE transcriber_node
+            SET status = ?, current_job_id = NULL, updated_at = ?
+            WHERE id = ?
+            """,
+            (NodeStatus.OFFLINE.value, now, node_id),
+        )
+        self.conn.commit()
+
+    def count_by_status(self) -> dict[str, int]:
+        """Count nodes by status."""
+        cursor = self.conn.execute(
+            """
+            SELECT status, COUNT(*) FROM transcriber_node
+            GROUP BY status
+            """
+        )
+        return dict(cursor.fetchall())
