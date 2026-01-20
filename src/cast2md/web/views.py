@@ -350,6 +350,15 @@ def status_page(request: Request):
             if ep:
                 running_transcribe_episodes.append({"job": job, "episode": ep})
 
+        # Filter out episodes that have queued/running download jobs from "pending" list
+        running_download_episode_ids = {job.episode_id for job in running_downloads}
+        queued_download_episode_ids = {job.episode_id for job in queued_downloads}
+        pending = [
+            ep for ep in pending
+            if ep.id not in running_download_episode_ids
+            and ep.id not in queued_download_episode_ids
+        ]
+
         # Filter out episodes that have running transcription jobs from "downloaded" list
         running_transcribe_episode_ids = {job.episode_id for job in running_transcriptions}
         queued_transcribe_episode_ids = {job.episode_id for job in queued_transcriptions}
