@@ -435,14 +435,16 @@ def status_page(request: Request):
                     assigned_transcribe_job_ids.add(node_job.id)
                     break
 
+            # MLX backend doesn't support streaming progress
+            # "auto" on Apple Silicon uses MLX, so treat both as non-streaming
+            is_mlx = node.whisper_backend in ("mlx", "auto")
             workers.append({
                 "name": node.name,
                 "type": "transcription",
                 "status": node.status.value,
                 "job": node_job,
                 "episode": node_episode,
-                # MLX backend doesn't support streaming progress, so show indeterminate
-                "progress": None if node.whisper_backend == "mlx" else (node_job.progress_percent if node_job else None),
+                "progress": None if is_mlx else (node_job.progress_percent if node_job else None),
                 "last_heartbeat": node.last_heartbeat,
             })
 
