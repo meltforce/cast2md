@@ -1,6 +1,8 @@
 """FastAPI application entry point."""
 
 import logging
+import signal
+import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -47,11 +49,29 @@ def reset_orphaned_jobs():
             logger.info(f"Reset {count} orphaned running jobs to queued")
 
 
+def setup_signal_handlers():
+    """Setup signal handlers for graceful shutdown.
+
+    Ensures SIGTERM/SIGINT trigger FastAPI lifespan shutdown.
+    """
+    def handle_signal(signum, frame):
+        sig_name = signal.Signals(signum).name
+        logger.info(f"Received {sig_name}, initiating shutdown...")
+        # Raise SystemExit to trigger FastAPI lifespan shutdown
+        sys.exit(0)
+
+    signal.signal(signal.SIGTERM, handle_signal)
+    signal.signal(signal.SIGINT, handle_signal)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan handler."""
     # Startup
     logger.info("Starting cast2md...")
+
+    # Setup signal handlers for graceful shutdown
+    setup_signal_handlers()
 
     settings = get_settings()
     settings.ensure_directories()
