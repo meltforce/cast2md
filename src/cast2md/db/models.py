@@ -158,6 +158,7 @@ class Job:
     created_at: datetime
     assigned_node_id: Optional[str] = None
     claimed_at: Optional[datetime] = None
+    progress_percent: Optional[int] = None
 
     @classmethod
     def from_row(cls, row: tuple) -> "Job":
@@ -178,6 +179,7 @@ class Job:
             created_at=datetime.fromisoformat(row[12]),
             assigned_node_id=row[13] if len(row) > 13 else None,
             claimed_at=datetime.fromisoformat(row[14]) if len(row) > 14 and row[14] else None,
+            progress_percent=row[15] if len(row) > 15 else None,
         )
 
 

@@ -222,7 +222,7 @@ class TranscriberNodeWorker:
                     return
 
                 # Transcribe
-                transcript = self._transcribe(audio_path)
+                transcript = self._transcribe(audio_path, job_id)
                 if not transcript:
                     self._fail_job(job_id, "Transcription failed")
                     return
@@ -276,26 +276,63 @@ class TranscriberNodeWorker:
             logger.error(f"Download error: {e}")
             return None
 
-    def _transcribe(self, audio_path: Path) -> Optional[str]:
+    def _transcribe(self, audio_path: Path, job_id: int) -> Optional[str]:
         """Transcribe audio file.
 
         Args:
             audio_path: Path to audio file.
+            job_id: Job ID for progress reporting.
 
         Returns:
             Transcript text, or None on failure.
         """
         logger.info(f"Transcribing {audio_path}")
 
+        # Create progress callback that reports to server
+        last_progress = [0]
+        last_report_time = [time.time()]
+
+        def progress_callback(progress: int):
+            # Throttle progress updates to every 5 seconds
+            now = time.time()
+            if progress > last_progress[0] + 5 or (now - last_report_time[0]) >= 5:
+                last_progress[0] = progress
+                last_report_time[0] = now
+                self._report_progress(job_id, progress)
+
         try:
             # Use the same transcription service as the main server
-            transcript = transcribe_audio(str(audio_path), include_timestamps=True)
+            transcript = transcribe_audio(
+                str(audio_path),
+                include_timestamps=True,
+                progress_callback=progress_callback,
+            )
             logger.info(f"Transcription complete ({len(transcript)} chars)")
             return transcript
 
         except Exception as e:
             logger.error(f"Transcription error: {e}")
             return None
+
+    def _report_progress(self, job_id: int, progress: int):
+        """Report progress to server.
+
+        Args:
+            job_id: Job ID.
+            progress: Progress percentage (0-100).
+        """
+        try:
+            response = self._client.post(
+                f"/api/nodes/jobs/{job_id}/progress",
+                json={"progress_percent": progress},
+                timeout=10.0,
+            )
+            if response.status_code == 200:
+                logger.debug(f"Progress reported: {progress}%")
+            else:
+                logger.warning(f"Progress report failed: {response.status_code}")
+        except httpx.RequestError as e:
+            logger.debug(f"Progress report error: {e}")
 
     def _complete_job(self, job_id: int, transcript: str):
         """Submit completed job to server.

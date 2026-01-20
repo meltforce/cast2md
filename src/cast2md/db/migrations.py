@@ -26,6 +26,13 @@ MIGRATIONS = [
             "ALTER TABLE job_queue ADD COLUMN claimed_at TEXT",
         ],
     },
+    {
+        "version": 3,
+        "description": "Add progress tracking to job_queue",
+        "sql": [
+            "ALTER TABLE job_queue ADD COLUMN progress_percent INTEGER",
+        ],
+    },
 ]
 
 
