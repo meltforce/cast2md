@@ -267,3 +267,71 @@ def settings_page(request: Request):
         "settings.html",
         {"request": request},
     )
+
+
+@router.get("/queue", response_class=HTMLResponse)
+def queue_management(request: Request, status: str | None = None):
+    """Queue management page for viewing and managing all jobs."""
+    from datetime import datetime, timedelta
+
+    from cast2md.config.settings import get_settings
+    from cast2md.db.models import JobStatus
+
+    stuck_threshold_hours = get_settings().stuck_threshold_hours
+
+    with get_db() as conn:
+        job_repo = JobRepository(conn)
+        episode_repo = EpisodeRepository(conn)
+        feed_repo = FeedRepository(conn)
+
+        # Get job counts
+        job_counts = job_repo.count_by_status()
+        stuck_count = job_repo.count_stuck_jobs(stuck_threshold_hours)
+
+        # Get jobs based on filter
+        if status == "stuck":
+            jobs = job_repo.get_stuck_jobs(stuck_threshold_hours)
+        elif status:
+            try:
+                job_status = JobStatus(status)
+                jobs = job_repo.get_all_jobs(status=job_status, limit=100)
+            except ValueError:
+                jobs = job_repo.get_all_jobs(limit=100)
+        else:
+            jobs = job_repo.get_all_jobs(limit=100)
+
+        # Build job info with episode and feed details
+        stuck_threshold = datetime.utcnow() - timedelta(hours=stuck_threshold_hours)
+        job_list = []
+        for job in jobs:
+            episode = episode_repo.get_by_id(job.episode_id)
+            if not episode:
+                continue
+            feed = feed_repo.get_by_id(episode.feed_id)
+
+            # Calculate runtime
+            runtime_seconds = None
+            is_stuck = False
+            if job.status == JobStatus.RUNNING and job.started_at:
+                runtime_seconds = int((datetime.utcnow() - job.started_at).total_seconds())
+                is_stuck = job.started_at < stuck_threshold
+
+            job_list.append({
+                "job": job,
+                "episode": episode,
+                "feed": feed,
+                "is_stuck": is_stuck,
+                "runtime_seconds": runtime_seconds,
+            })
+
+    return templates.TemplateResponse(
+        "queue.html",
+        {
+            "request": request,
+            "jobs": job_list,
+            "job_counts": job_counts,
+            "stuck_count": stuck_count,
+            "current_filter": status or "all",
+            "stuck_threshold_hours": stuck_threshold_hours,
+        },
+    )

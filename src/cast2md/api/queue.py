@@ -325,6 +325,43 @@ def cancel_job(job_id: int):
     return MessageResponse(message="Job cancelled", job_id=job_id)
 
 
+@router.post("/{job_id}/reset", response_model=MessageResponse)
+def reset_job(job_id: int):
+    """Force reset a running/stuck job back to queued state."""
+    with get_db() as conn:
+        repo = JobRepository(conn)
+
+        job = repo.get_by_id(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="Job not found")
+
+        if job.status != JobStatus.RUNNING:
+            raise HTTPException(status_code=400, detail="Can only reset running jobs")
+
+        reset = repo.force_reset(job_id)
+        if not reset:
+            raise HTTPException(status_code=400, detail="Failed to reset job")
+
+    return MessageResponse(message="Job reset to queued", job_id=job_id)
+
+
+@router.delete("/{job_id}/force", response_model=MessageResponse)
+def force_delete_job(job_id: int):
+    """Delete a job regardless of status."""
+    with get_db() as conn:
+        repo = JobRepository(conn)
+
+        job = repo.get_by_id(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="Job not found")
+
+        deleted = repo.delete(job_id)
+        if not deleted:
+            raise HTTPException(status_code=400, detail="Failed to delete job")
+
+    return MessageResponse(message="Job deleted", job_id=job_id)
+
+
 @router.get("/{job_id}", response_model=JobResponse)
 def get_job(job_id: int):
     """Get job details."""
@@ -575,4 +612,294 @@ def batch_queue_by_range(request: BatchQueueByRangeRequest):
         queued=queued,
         skipped=skipped,
         message=f"Queued {queued} episodes for processing ({skipped} skipped)",
+    )
+
+
+# Stuck job detection and management
+
+
+class StuckJobInfo(BaseModel):
+    """Stuck job with episode info."""
+
+    job_id: int
+    episode_id: int
+    episode_title: str
+    podcast_title: str
+    job_type: str
+    started_at: str
+    runtime_seconds: int
+    attempts: int
+    max_attempts: int
+
+
+class StuckJobsResponse(BaseModel):
+    """Response for stuck jobs list."""
+
+    stuck_count: int
+    threshold_hours: int
+    jobs: list[StuckJobInfo]
+
+
+class AllJobInfo(BaseModel):
+    """Job info with episode and podcast details."""
+
+    job_id: int
+    episode_id: int
+    episode_title: str
+    podcast_title: str
+    job_type: str
+    status: str
+    is_stuck: bool
+    priority: int
+    attempts: int
+    max_attempts: int
+    created_at: str
+    scheduled_at: str
+    started_at: str | None
+    completed_at: str | None
+    runtime_seconds: int | None
+    error_message: str | None
+
+
+class AllJobsResponse(BaseModel):
+    """Response for all jobs list."""
+
+    total: int
+    stuck_count: int
+    jobs: list[AllJobInfo]
+
+
+def _get_stuck_threshold() -> int:
+    """Get stuck threshold hours from settings."""
+    from cast2md.config.settings import get_settings
+    return get_settings().stuck_threshold_hours
+
+
+@router.get("/stuck", response_model=StuckJobsResponse)
+def get_stuck_jobs(threshold_hours: int | None = None):
+    """Get jobs that have been running longer than threshold."""
+    from datetime import datetime, timedelta
+
+    from cast2md.db.repository import FeedRepository
+
+    if threshold_hours is None:
+        threshold_hours = _get_stuck_threshold()
+
+    with get_db() as conn:
+        job_repo = JobRepository(conn)
+        episode_repo = EpisodeRepository(conn)
+        feed_repo = FeedRepository(conn)
+
+        stuck_jobs = job_repo.get_stuck_jobs(threshold_hours)
+
+        jobs = []
+        for job in stuck_jobs:
+            episode = episode_repo.get_by_id(job.episode_id)
+            if not episode:
+                continue
+            feed = feed_repo.get_by_id(episode.feed_id)
+
+            runtime = 0
+            if job.started_at:
+                runtime = int((datetime.utcnow() - job.started_at).total_seconds())
+
+            jobs.append(StuckJobInfo(
+                job_id=job.id,
+                episode_id=job.episode_id,
+                episode_title=episode.title,
+                podcast_title=feed.display_title if feed else "Unknown",
+                job_type=job.job_type.value,
+                started_at=job.started_at.isoformat() if job.started_at else "",
+                runtime_seconds=runtime,
+                attempts=job.attempts,
+                max_attempts=job.max_attempts,
+            ))
+
+    return StuckJobsResponse(
+        stuck_count=len(jobs),
+        threshold_hours=threshold_hours,
+        jobs=jobs,
+    )
+
+
+@router.get("/all", response_model=AllJobsResponse)
+def get_all_jobs(
+    status: str | None = None,
+    job_type: str | None = None,
+    limit: int = 100,
+):
+    """Get all jobs with optional filtering."""
+    from datetime import datetime, timedelta
+
+    from cast2md.db.repository import FeedRepository
+
+    # Validate status
+    job_status = None
+    if status:
+        if status == "stuck":
+            # Special filter for stuck jobs
+            return _get_stuck_jobs_as_all_jobs(limit)
+        try:
+            job_status = JobStatus(status)
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid status: {status}")
+
+    # Validate job_type
+    jt = None
+    if job_type:
+        try:
+            jt = JobType(job_type)
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid job type: {job_type}")
+
+    with get_db() as conn:
+        job_repo = JobRepository(conn)
+        episode_repo = EpisodeRepository(conn)
+        feed_repo = FeedRepository(conn)
+
+        threshold_hours = _get_stuck_threshold()
+        jobs = job_repo.get_all_jobs(status=job_status, job_type=jt, limit=limit)
+        stuck_threshold = datetime.utcnow() - timedelta(hours=threshold_hours)
+        stuck_count = job_repo.count_stuck_jobs(threshold_hours)
+
+        job_infos = []
+        for job in jobs:
+            episode = episode_repo.get_by_id(job.episode_id)
+            if not episode:
+                continue
+            feed = feed_repo.get_by_id(episode.feed_id)
+
+            # Calculate runtime for running jobs
+            runtime = None
+            is_stuck = False
+            if job.status == JobStatus.RUNNING and job.started_at:
+                runtime = int((datetime.utcnow() - job.started_at).total_seconds())
+                is_stuck = job.started_at < stuck_threshold
+
+            job_infos.append(AllJobInfo(
+                job_id=job.id,
+                episode_id=job.episode_id,
+                episode_title=episode.title,
+                podcast_title=feed.display_title if feed else "Unknown",
+                job_type=job.job_type.value,
+                status=job.status.value,
+                is_stuck=is_stuck,
+                priority=job.priority,
+                attempts=job.attempts,
+                max_attempts=job.max_attempts,
+                created_at=job.created_at.isoformat(),
+                scheduled_at=job.scheduled_at.isoformat(),
+                started_at=job.started_at.isoformat() if job.started_at else None,
+                completed_at=job.completed_at.isoformat() if job.completed_at else None,
+                runtime_seconds=runtime,
+                error_message=job.error_message,
+            ))
+
+    return AllJobsResponse(
+        total=len(job_infos),
+        stuck_count=stuck_count,
+        jobs=job_infos,
+    )
+
+
+def _get_stuck_jobs_as_all_jobs(limit: int) -> AllJobsResponse:
+    """Get stuck jobs formatted as AllJobsResponse."""
+    from datetime import datetime
+
+    from cast2md.db.repository import FeedRepository
+
+    threshold_hours = _get_stuck_threshold()
+
+    with get_db() as conn:
+        job_repo = JobRepository(conn)
+        episode_repo = EpisodeRepository(conn)
+        feed_repo = FeedRepository(conn)
+
+        stuck_jobs = job_repo.get_stuck_jobs(threshold_hours)[:limit]
+
+        job_infos = []
+        for job in stuck_jobs:
+            episode = episode_repo.get_by_id(job.episode_id)
+            if not episode:
+                continue
+            feed = feed_repo.get_by_id(episode.feed_id)
+
+            runtime = None
+            if job.started_at:
+                runtime = int((datetime.utcnow() - job.started_at).total_seconds())
+
+            job_infos.append(AllJobInfo(
+                job_id=job.id,
+                episode_id=job.episode_id,
+                episode_title=episode.title,
+                podcast_title=feed.display_title if feed else "Unknown",
+                job_type=job.job_type.value,
+                status=job.status.value,
+                is_stuck=True,
+                priority=job.priority,
+                attempts=job.attempts,
+                max_attempts=job.max_attempts,
+                created_at=job.created_at.isoformat(),
+                scheduled_at=job.scheduled_at.isoformat(),
+                started_at=job.started_at.isoformat() if job.started_at else None,
+                completed_at=job.completed_at.isoformat() if job.completed_at else None,
+                runtime_seconds=runtime,
+                error_message=job.error_message,
+            ))
+
+    return AllJobsResponse(
+        total=len(job_infos),
+        stuck_count=len(job_infos),
+        jobs=job_infos,
+    )
+
+
+@router.post("/batch/reset-stuck", response_model=BatchQueueResponse)
+def batch_reset_stuck(threshold_hours: int | None = None):
+    """Reset all stuck jobs back to queued state."""
+    if threshold_hours is None:
+        threshold_hours = _get_stuck_threshold()
+
+    with get_db() as conn:
+        job_repo = JobRepository(conn)
+        count = job_repo.batch_force_reset_stuck(threshold_hours)
+
+    return BatchQueueResponse(
+        queued=count,
+        skipped=0,
+        message=f"Reset {count} stuck jobs to queued",
+    )
+
+
+@router.post("/batch/retry-failed", response_model=BatchQueueResponse)
+def batch_retry_failed():
+    """Retry all failed jobs."""
+    with get_db() as conn:
+        job_repo = JobRepository(conn)
+        count = job_repo.batch_retry_failed()
+
+    return BatchQueueResponse(
+        queued=count,
+        skipped=0,
+        message=f"Retrying {count} failed jobs",
+    )
+
+
+class CleanupRequest(BaseModel):
+    """Request for cleanup operations."""
+
+    older_than_days: int = 7
+
+
+@router.delete("/batch/completed", response_model=BatchQueueResponse)
+def batch_delete_completed(older_than_days: int = 7):
+    """Delete completed/failed jobs older than N days."""
+    with get_db() as conn:
+        job_repo = JobRepository(conn)
+        count = job_repo.cleanup_completed(older_than_days)
+
+    return BatchQueueResponse(
+        queued=0,
+        skipped=0,
+        message=f"Deleted {count} old completed/failed jobs",
     )

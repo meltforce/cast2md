@@ -1,0 +1,328 @@
+{% extends "base.html" %}
+
+{% block title %}Queue Management - cast2md{% endblock %}
+
+{% block content %}
+<hgroup>
+    <h1>Queue Management</h1>
+    <p>View and manage job queue</p>
+</hgroup>
+
+<!-- Alert for stuck jobs -->
+{% if stuck_count > 0 %}
+<article style="background: #fef3c7; border-color: #f59e0b; margin-bottom: 1rem;">
+    <strong style="color: #92400e;">Warning:</strong>
+    <span style="color: #92400e;">{{ stuck_count }} job{% if stuck_count > 1 %}s{% endif %} stuck (running > {{ stuck_threshold_hours }}h)</span>
+    <button class="outline" style="margin-left: 1rem; padding: 0.25rem 0.5rem; font-size: 0.875rem;"
+            onclick="resetAllStuck()">Reset All Stuck</button>
+</article>
+{% endif %}
+
+<!-- Bulk Actions -->
+<div style="margin-bottom: 1rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
+    {% if stuck_count > 0 %}
+    <button onclick="resetAllStuck()">Reset Stuck ({{ stuck_count }})</button>
+    {% endif %}
+    {% if job_counts.get('queued', 0) > 0 %}
+    <button class="secondary" onclick="cancelAllQueued()">Cancel Queued ({{ job_counts.get('queued', 0) }})</button>
+    {% endif %}
+    {% if job_counts.get('failed', 0) > 0 %}
+    <button class="secondary" onclick="retryAllFailed()">Retry Failed ({{ job_counts.get('failed', 0) }})</button>
+    {% endif %}
+    <button class="outline secondary" onclick="cleanupCompleted()">Cleanup Old Jobs</button>
+</div>
+
+<!-- Filter Tabs -->
+<div style="margin-bottom: 1rem;">
+    <nav>
+        <ul>
+            <li><a href="/queue" {% if current_filter == 'all' %}aria-current="page"{% endif %}>All</a></li>
+            <li><a href="/queue?status=running" {% if current_filter == 'running' %}aria-current="page"{% endif %}>
+                Running ({{ job_counts.get('running', 0) }})
+            </a></li>
+            <li><a href="/queue?status=stuck" {% if current_filter == 'stuck' %}aria-current="page"{% endif %}>
+                Stuck ({{ stuck_count }})
+            </a></li>
+            <li><a href="/queue?status=queued" {% if current_filter == 'queued' %}aria-current="page"{% endif %}>
+                Queued ({{ job_counts.get('queued', 0) }})
+            </a></li>
+            <li><a href="/queue?status=failed" {% if current_filter == 'failed' %}aria-current="page"{% endif %}>
+                Failed ({{ job_counts.get('failed', 0) }})
+            </a></li>
+            <li><a href="/queue?status=completed" {% if current_filter == 'completed' %}aria-current="page"{% endif %}>
+                Completed ({{ job_counts.get('completed', 0) }})
+            </a></li>
+        </ul>
+    </nav>
+</div>
+
+<!-- Job Table -->
+{% if jobs %}
+<table>
+    <thead>
+        <tr>
+            <th>Episode</th>
+            <th>Type</th>
+            <th>Status</th>
+            <th>Runtime</th>
+            <th>Attempts</th>
+            <th>Priority</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for item in jobs %}
+        <tr>
+            <td>
+                <div style="max-width: 300px;">
+                    <a href="/episodes/{{ item.episode.id }}">{{ item.episode.title[:50] }}{% if item.episode.title|length > 50 %}...{% endif %}</a>
+                    <br>
+                    <small style="color: var(--pico-muted-color);">{{ item.feed.display_title if item.feed else 'Unknown' }}</small>
+                </div>
+            </td>
+            <td>
+                {% if item.job.job_type.value == 'download' %}
+                <span title="Download">DL</span>
+                {% else %}
+                <span title="Transcribe">TX</span>
+                {% endif %}
+            </td>
+            <td>
+                {% if item.is_stuck %}
+                <span class="status-badge" style="background: #fef3c7; color: #92400e;">STUCK</span>
+                {% elif item.job.status.value == 'running' %}
+                <span class="status-badge status-downloading">RUNNING</span>
+                {% elif item.job.status.value == 'queued' %}
+                <span class="status-badge status-pending">QUEUED</span>
+                {% elif item.job.status.value == 'failed' %}
+                <span class="status-badge status-failed">FAILED</span>
+                {% elif item.job.status.value == 'completed' %}
+                <span class="status-badge status-completed">DONE</span>
+                {% endif %}
+            </td>
+            <td>
+                {% if item.runtime_seconds is not none %}
+                <span class="elapsed" data-seconds="{{ item.runtime_seconds }}">
+                    {% if item.runtime_seconds >= 3600 %}
+                    {{ (item.runtime_seconds // 3600) }}h {{ ((item.runtime_seconds % 3600) // 60) }}m
+                    {% elif item.runtime_seconds >= 60 %}
+                    {{ (item.runtime_seconds // 60) }}m {{ (item.runtime_seconds % 60) }}s
+                    {% else %}
+                    {{ item.runtime_seconds }}s
+                    {% endif %}
+                </span>
+                {% else %}
+                -
+                {% endif %}
+            </td>
+            <td>{{ item.job.attempts }} / {{ item.job.max_attempts }}</td>
+            <td>{{ item.job.priority }}</td>
+            <td class="actions">
+                {% if item.job.status.value == 'queued' %}
+                <button class="outline secondary" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;"
+                        onclick="cancelJob({{ item.job.id }})">Cancel</button>
+                {% endif %}
+
+                {% if item.job.status.value == 'running' %}
+                <button class="outline" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;"
+                        onclick="resetJob({{ item.job.id }})">Reset</button>
+                {% endif %}
+
+                {% if item.job.status.value == 'failed' %}
+                <button class="outline" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;"
+                        onclick="retryJob({{ item.job.id }})">Retry</button>
+                {% endif %}
+
+                <button class="outline secondary" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;"
+                        onclick="deleteJob({{ item.job.id }})" title="Delete job">Del</button>
+
+                {% if item.job.error_message %}
+                <button class="outline secondary" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;"
+                        onclick="showError({{ item.job.id }}, `{{ item.job.error_message | replace('`', '\\`') | replace('\n', '\\n') }}`)"
+                        title="View error">Err</button>
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+<p><small>Showing {{ jobs|length }} jobs</small></p>
+{% else %}
+<article>
+    <p>No jobs found{% if current_filter != 'all' %} with status "{{ current_filter }}"{% endif %}.</p>
+    <a href="/status">Back to Status</a>
+</article>
+{% endif %}
+
+<!-- Error Modal -->
+<dialog id="error-modal">
+    <article>
+        <header>
+            <button aria-label="Close" rel="prev" onclick="document.getElementById('error-modal').close()"></button>
+            <h3>Error Details</h3>
+        </header>
+        <pre id="error-content" style="white-space: pre-wrap; word-break: break-word; max-height: 400px; overflow-y: auto;"></pre>
+    </article>
+</dialog>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function cancelJob(jobId) {
+    if (!confirm('Cancel this job?')) return;
+
+    try {
+        const response = await fetch(`/api/queue/${jobId}`, {method: 'DELETE'});
+        const data = await response.json();
+
+        if (response.ok) {
+            window.location.reload();
+        } else {
+            alert('Error: ' + data.detail);
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
+
+async function resetJob(jobId) {
+    if (!confirm('Reset this running job back to queued?')) return;
+
+    try {
+        const response = await fetch(`/api/queue/${jobId}/reset`, {method: 'POST'});
+        const data = await response.json();
+
+        if (response.ok) {
+            window.location.reload();
+        } else {
+            alert('Error: ' + data.detail);
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
+
+async function retryJob(jobId) {
+    if (!confirm('Retry this failed job?')) return;
+
+    try {
+        const response = await fetch(`/api/queue/${jobId}/retry`, {method: 'POST'});
+        const data = await response.json();
+
+        if (response.ok) {
+            window.location.reload();
+        } else {
+            alert('Error: ' + data.detail);
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
+
+async function deleteJob(jobId) {
+    if (!confirm('Delete this job permanently?')) return;
+
+    try {
+        const response = await fetch(`/api/queue/${jobId}/force`, {method: 'DELETE'});
+        const data = await response.json();
+
+        if (response.ok) {
+            window.location.reload();
+        } else {
+            alert('Error: ' + data.detail);
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
+
+async function resetAllStuck() {
+    if (!confirm('Reset all stuck jobs back to queued? This will allow them to be processed again.')) return;
+
+    try {
+        const response = await fetch('/api/queue/batch/reset-stuck', {method: 'POST'});
+        const data = await response.json();
+
+        if (response.ok) {
+            alert(data.message);
+            window.location.reload();
+        } else {
+            alert('Error: ' + data.detail);
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
+
+async function cancelAllQueued() {
+    if (!confirm('Cancel all queued jobs?')) return;
+
+    try {
+        const response = await fetch('/api/queue/batch/queued', {method: 'DELETE'});
+        const data = await response.json();
+
+        if (response.ok) {
+            alert(data.message);
+            window.location.reload();
+        } else {
+            alert('Error: ' + data.detail);
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
+
+async function retryAllFailed() {
+    if (!confirm('Retry all failed jobs?')) return;
+
+    try {
+        const response = await fetch('/api/queue/batch/retry-failed', {method: 'POST'});
+        const data = await response.json();
+
+        if (response.ok) {
+            alert(data.message);
+            window.location.reload();
+        } else {
+            alert('Error: ' + data.detail);
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
+
+async function cleanupCompleted() {
+    const days = prompt('Delete completed/failed jobs older than how many days?', '7');
+    if (days === null) return;
+
+    const daysNum = parseInt(days);
+    if (isNaN(daysNum) || daysNum < 1) {
+        alert('Please enter a valid number of days (1 or more)');
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/queue/batch/completed?older_than_days=${daysNum}`, {method: 'DELETE'});
+        const data = await response.json();
+
+        if (response.ok) {
+            alert(data.message);
+            window.location.reload();
+        } else {
+            alert('Error: ' + data.detail);
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
+
+function showError(jobId, errorMessage) {
+    document.getElementById('error-content').textContent = errorMessage;
+    document.getElementById('error-modal').showModal();
+}
+
+// Auto-refresh for running/stuck views
+{% if current_filter in ['running', 'stuck', 'all'] and jobs %}
+setTimeout(() => window.location.reload(), 10000);
+{% endif %}
+</script>
+{% endblock %}

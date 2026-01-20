@@ -33,6 +33,9 @@ class Settings(BaseSettings):
     max_retry_attempts: int = 3
     request_timeout: int = 30
 
+    # Queue management
+    stuck_threshold_hours: int = 2  # Jobs running longer than this are considered stuck
+
     # HTTP client settings
     user_agent: str = "cast2md/0.1.0 (Podcast Transcription Service)"
 
