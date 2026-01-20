@@ -5,12 +5,18 @@ from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# Build list of env files (later files override earlier ones)
+_env_files = [".env"]
+_node_env = Path.home() / ".cast2md" / ".env"
+if _node_env.exists():
+    _env_files.append(str(_node_env))
+
 
 class Settings(BaseSettings):
     """Application configuration with environment variable loading."""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=tuple(_env_files),
         env_file_encoding="utf-8",
         case_sensitive=False,
     )
@@ -75,6 +81,15 @@ def _apply_db_overrides() -> None:
     if _settings is None:
         return
 
+    # Node-specific settings should come from local env, not database
+    # (each node has different hardware/whisper capabilities)
+    node_specific_keys = {
+        "whisper_model",
+        "whisper_device",
+        "whisper_compute_type",
+        "whisper_backend",
+    }
+
     try:
         # Only import here to avoid circular imports
         from cast2md.db.connection import get_db
@@ -85,6 +100,8 @@ def _apply_db_overrides() -> None:
             overrides = repo.get_all()
 
             for key, value in overrides.items():
+                if key in node_specific_keys:
+                    continue  # Skip node-specific settings
                 if hasattr(_settings, key):
                     current_value = getattr(_settings, key)
                     field_type = type(current_value)
