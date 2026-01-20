@@ -1,11 +1,7 @@
 """MCP tools (actions) for cast2md."""
 
-from cast2md.db.connection import get_db
-from cast2md.db.models import JobStatus, JobType
-from cast2md.db.repository import EpisodeRepository, FeedRepository, JobRepository
-from cast2md.feed.discovery import discover_new_episodes, validate_feed_url
+from cast2md.mcp import client as remote
 from cast2md.mcp.server import mcp
-from cast2md.search.repository import TranscriptSearchRepository
 
 
 @mcp.tool()
@@ -24,6 +20,12 @@ def search_transcripts(
     Returns:
         Search results with matching transcript segments and episode info.
     """
+    if remote.is_remote_mode():
+        return remote.search_transcripts(query, feed_id, limit)
+
+    from cast2md.db.connection import get_db
+    from cast2md.search.repository import TranscriptSearchRepository
+
     with get_db() as conn:
         search_repo = TranscriptSearchRepository(conn)
         response = search_repo.search(query=query, feed_id=feed_id, limit=limit)
@@ -64,6 +66,12 @@ def search_episodes(
     Returns:
         Matching episodes with their details.
     """
+    if remote.is_remote_mode():
+        return remote.search_episodes(query, feed_id, limit)
+
+    from cast2md.db.connection import get_db
+    from cast2md.db.repository import EpisodeRepository
+
     with get_db() as conn:
         episode_repo = EpisodeRepository(conn)
         episodes, total = episode_repo.search_episodes_fts_full(
@@ -101,6 +109,13 @@ def queue_episode(episode_id: int) -> dict:
     Returns:
         Status of the queue operation.
     """
+    if remote.is_remote_mode():
+        return remote.queue_episode(episode_id)
+
+    from cast2md.db.connection import get_db
+    from cast2md.db.models import JobType
+    from cast2md.db.repository import EpisodeRepository, JobRepository
+
     with get_db() as conn:
         episode_repo = EpisodeRepository(conn)
         job_repo = JobRepository(conn)
@@ -164,6 +179,13 @@ def get_queue_status() -> dict:
     Returns:
         Queue statistics and active/pending jobs.
     """
+    if remote.is_remote_mode():
+        return remote.get_queue_status()
+
+    from cast2md.db.connection import get_db
+    from cast2md.db.models import JobStatus, JobType
+    from cast2md.db.repository import EpisodeRepository, JobRepository
+
     with get_db() as conn:
         job_repo = JobRepository(conn)
         episode_repo = EpisodeRepository(conn)
@@ -224,6 +246,13 @@ def add_feed(url: str) -> dict:
     Returns:
         Result of the add operation with feed details.
     """
+    if remote.is_remote_mode():
+        return remote.add_feed(url)
+
+    from cast2md.db.connection import get_db
+    from cast2md.db.repository import FeedRepository
+    from cast2md.feed.discovery import validate_feed_url
+
     # Validate the feed URL
     is_valid, message, parsed = validate_feed_url(url)
     if not is_valid:
@@ -269,6 +298,13 @@ def refresh_feed(feed_id: int, auto_queue: bool = False) -> dict:
     Returns:
         Result with count of new episodes discovered.
     """
+    if remote.is_remote_mode():
+        return remote.refresh_feed(feed_id, auto_queue)
+
+    from cast2md.db.connection import get_db
+    from cast2md.db.repository import FeedRepository
+    from cast2md.feed.discovery import discover_new_episodes
+
     with get_db() as conn:
         feed_repo = FeedRepository(conn)
         feed = feed_repo.get_by_id(feed_id)
