@@ -307,8 +307,14 @@ def complete_job(
 
     The node calls this after successfully transcribing the audio.
     """
+    import logging
+
+    from cast2md.db.models import EpisodeStatus
+    from cast2md.db.repository import FeedRepository
     from cast2md.search.repository import TranscriptSearchRepository
-    from cast2md.storage.filesystem import get_storage
+    from cast2md.storage.filesystem import ensure_podcast_directories, get_transcript_path
+
+    logger = logging.getLogger(__name__)
 
     with get_db() as conn:
         job_repo = JobRepository(conn)
@@ -330,28 +336,33 @@ def complete_job(
         if not episode:
             raise HTTPException(status_code=404, detail="Episode not found")
 
-        # Save the transcript
-        from cast2md.db.repository import FeedRepository
-
+        # Get feed info for storage path
         feed_repo = FeedRepository(conn)
         feed = feed_repo.get_by_id(episode.feed_id)
+        feed_title = feed.display_title if feed else "unknown"
 
-        storage = get_storage()
-        transcript_path = storage.save_transcript(
-            feed_title=feed.display_title if feed else "unknown",
-            episode_title=episode.title,
-            content=request.transcript_text,
+        # Ensure directories exist
+        ensure_podcast_directories(feed_title)
+
+        # Get transcript path and save
+        transcript_path = get_transcript_path(
+            feed_title,
+            episode.title,
+            episode.published_at,
         )
+        transcript_path.write_text(request.transcript_text, encoding="utf-8")
 
         # Update episode
-        from cast2md.db.models import EpisodeStatus
-
         episode_repo.update_transcript_path(episode.id, str(transcript_path))
         episode_repo.update_status(episode.id, EpisodeStatus.COMPLETED)
 
         # Index transcript for search
-        search_repo = TranscriptSearchRepository(conn)
-        search_repo.index_episode(episode.id, str(transcript_path))
+        try:
+            search_repo = TranscriptSearchRepository(conn)
+            search_repo.index_episode(episode.id, str(transcript_path))
+        except Exception as index_error:
+            # Don't fail job completion if indexing fails
+            logger.warning(f"Failed to index transcript for episode {episode.id}: {index_error}")
 
         # Mark job complete
         job_repo.mark_completed(job_id)
