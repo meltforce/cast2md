@@ -148,10 +148,33 @@ Press Ctrl+C to stop
 2024-01-15 10:30:00 - cast2md.node.worker - INFO - Node 'M4 MacBook Pro' started, polling http://192.168.1.100:8000
 ```
 
-The node will now:
+The node will:
+- **Auto-open browser** to the status UI at http://localhost:8001
 - Send heartbeats every 30 seconds
 - Poll for jobs every 5 seconds
 - Process any available transcription jobs
+
+### Node Web UI
+
+The node runs a local web interface on port 8001 with four pages:
+
+**Status Page** (`/`)
+- Node configuration (ID, server URL)
+- Worker status (Running/Stopped)
+- Current job with progress bar and elapsed time
+
+**Queue Page** (`/queue`)
+- Transcription queue stats from main server (queued, running, completed, failed)
+- List of running and queued jobs
+- Auto-refreshes every 10 seconds
+
+**Settings Page** (`/settings`)
+- System information (platform, CPU cores, memory)
+- Whisper configuration (model, backend, device, compute type)
+- Node configuration details
+
+**Server Link**
+- Opens the main cast2md server in a new tab
 
 ### Step 5: Verify Node is Connected
 
@@ -412,9 +435,17 @@ docker run -d --name cast2md-node \
 
 If a job shows as "running" but the node isn't processing:
 
-1. **Wait for timeout** - jobs auto-reclaim after 2 hours
-2. **Manually reclaim** via the Queue Management page (cancel the job)
+1. **Reset the job** via API:
+   ```bash
+   curl -X POST http://localhost:8000/api/queue/{job_id}/reset
+   ```
+   This resets the job to "queued" and clears the node assignment.
+
+2. **Wait for timeout** - jobs auto-reclaim after 2 hours (configurable)
+
 3. **Check node logs** for errors
+
+4. **Verify node status** - if the node was restarted, it may have lost its job context. The reset endpoint now properly clears both the job status and node assignment.
 
 ### Server Can't Reach Node (Test Fails)
 
