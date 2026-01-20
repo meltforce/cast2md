@@ -67,11 +67,13 @@
             <h3>{{ queue_status.transcribe_workers }}</h3>
             <p>Transcription Workers</p>
             {% for item in running_transcriptions %}
+            {% if not item.job.assigned_node_id %}
             <small style="display:block; margin-top:0.5rem;">
                 <span class="status-badge status-transcribing">TX</span>
                 <a href="/episodes/{{ item.episode.id }}">{{ item.episode.title[:30] }}{% if item.episode.title|length > 30 %}...{% endif %}</a>
                 <span class="elapsed" data-started="{{ item.job.started_at.isoformat() }}Z"></span>
             </small>
+            {% endif %}
             {% endfor %}
         </div>
     </div>
@@ -131,8 +133,19 @@
                     <span class="status-badge status-failed">offline</span>
                     {% endif %}
                 </td>
-                <td>{% if node.current_job_id %}Job #{{ node.current_job_id }}{% else %}-{% endif %}</td>
-                <td>{% if node.last_heartbeat %}{{ node.last_heartbeat }}{% else %}Never{% endif %}</td>
+                <td>
+                    {% if node.current_job_id %}
+                        {% for item in running_transcriptions %}
+                        {% if item.job.id == node.current_job_id %}
+                        <a href="/episodes/{{ item.episode.id }}">{{ item.episode.title[:30] }}{% if item.episode.title|length > 30 %}...{% endif %}</a>
+                        <span class="elapsed" data-started="{{ item.job.started_at.isoformat() }}Z"></span>
+                        {% endif %}
+                        {% endfor %}
+                    {% else %}
+                    -
+                    {% endif %}
+                </td>
+                <td>{% if node.last_heartbeat %}<span class="local-time" data-utc="{{ node.last_heartbeat }}">{{ node.last_heartbeat }}</span>{% else %}Never{% endif %}</td>
             </tr>
             {% endfor %}
         </tbody>
@@ -148,13 +161,14 @@
     <header><h3>Currently Processing</h3></header>
     <table>
         <thead>
-            <tr><th>Episode</th><th>Task</th><th>Status</th></tr>
+            <tr><th>Episode</th><th>Task</th><th>Worker</th><th>Status</th></tr>
         </thead>
         <tbody>
             {% for item in running_downloads %}
             <tr>
                 <td><a href="/episodes/{{ item.episode.id }}">{{ item.episode.title }}</a></td>
                 <td>Download</td>
+                <td>Local</td>
                 <td><span class="status-badge status-downloading">running</span></td>
             </tr>
             {% endfor %}
@@ -162,6 +176,15 @@
             <tr>
                 <td><a href="/episodes/{{ item.episode.id }}">{{ item.episode.title }}</a></td>
                 <td>Transcription</td>
+                <td>
+                    {% if item.job.assigned_node_id %}
+                        {% for node in queue_status.coordinator.nodes %}
+                        {% if node.id == item.job.assigned_node_id %}{{ node.name }}{% endif %}
+                        {% endfor %}
+                    {% else %}
+                    Local
+                    {% endif %}
+                </td>
                 <td><span class="status-badge status-transcribing">running</span></td>
             </tr>
             {% endfor %}
@@ -306,6 +329,27 @@ function updateElapsedTimes() {
 
 updateElapsedTimes();
 setInterval(updateElapsedTimes, 1000);
+
+// Convert UTC timestamps to local time
+function updateLocalTimes() {
+    document.querySelectorAll('.local-time').forEach(el => {
+        const utc = el.dataset.utc;
+        if (utc) {
+            const date = new Date(utc + (utc.endsWith('Z') ? '' : 'Z'));
+            const now = new Date();
+            const diff = Math.floor((now - date) / 1000);
+            if (diff < 60) {
+                el.textContent = `${diff}s ago`;
+            } else if (diff < 3600) {
+                el.textContent = `${Math.floor(diff / 60)}m ago`;
+            } else {
+                el.textContent = date.toLocaleTimeString();
+            }
+        }
+    });
+}
+updateLocalTimes();
+setInterval(updateLocalTimes, 5000);
 
 async function queueProcess(episodeId) {
     try {
