@@ -399,12 +399,20 @@ def queue_management(request: Request, status: str | None = None):
 def transcript_search_page(
     request: Request,
     q: str | None = None,
-    feed_id: int | None = None,
+    feed_id: str | None = None,
     page: int = 1,
     per_page: int = 20,
 ):
     """Transcript search page."""
     from cast2md.search.repository import TranscriptSearchRepository
+
+    # Convert feed_id to int or None (handles empty string from form)
+    feed_id_int: int | None = None
+    if feed_id and feed_id.strip():
+        try:
+            feed_id_int = int(feed_id)
+        except ValueError:
+            pass
 
     results = []
     total = 0
@@ -430,7 +438,7 @@ def transcript_search_page(
             offset = (page - 1) * per_page
             response = search_repo.search(
                 query=q,
-                feed_id=feed_id,
+                feed_id=feed_id_int,
                 limit=per_page,
                 offset=offset,
             )
@@ -443,7 +451,7 @@ def transcript_search_page(
         {
             "request": request,
             "query": q or "",
-            "feed_id": feed_id,
+            "feed_id": feed_id_int,
             "feeds": feeds,
             "results": results,
             "total": total,
