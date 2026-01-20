@@ -46,7 +46,13 @@ def _get_configurable_settings() -> dict:
             "description": "Number of concurrent download workers (requires restart)",
             "min": 1,
             "max": 10,
-            "full_width": True,
+        },
+        "stuck_threshold_hours": {
+            "type": "int",
+            "label": "Stuck Job Threshold (hours)",
+            "description": "Jobs running longer than this are considered stuck",
+            "min": 1,
+            "max": 48,
         },
         "storage_path": {
             "type": "path",

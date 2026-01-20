@@ -535,6 +535,203 @@ class JobRepository:
         self.conn.commit()
         return cursor.rowcount
 
+    def get_stuck_jobs(self, threshold_hours: int = 2) -> list[Job]:
+        """Get jobs that have been running longer than threshold.
+
+        Args:
+            threshold_hours: Hours after which a running job is considered stuck.
+
+        Returns:
+            List of stuck jobs.
+        """
+        threshold = (datetime.utcnow() - timedelta(hours=threshold_hours)).isoformat()
+        cursor = self.conn.execute(
+            """
+            SELECT * FROM job_queue
+            WHERE status = ?
+            AND started_at < ?
+            ORDER BY started_at ASC
+            """,
+            (JobStatus.RUNNING.value, threshold),
+        )
+        return [Job.from_row(row) for row in cursor.fetchall()]
+
+    def force_reset(self, job_id: int) -> bool:
+        """Force reset a running/stuck job back to queued state.
+
+        Clears started_at, resets status to queued.
+
+        Args:
+            job_id: Job ID to reset.
+
+        Returns:
+            True if job was reset, False if not found or not in running state.
+        """
+        cursor = self.conn.execute(
+            """
+            UPDATE job_queue
+            SET status = ?, started_at = NULL, error_message = NULL
+            WHERE id = ? AND status = ?
+            """,
+            (JobStatus.QUEUED.value, job_id, JobStatus.RUNNING.value),
+        )
+        self.conn.commit()
+        return cursor.rowcount > 0
+
+    def get_all_jobs(
+        self,
+        status: JobStatus | None = None,
+        job_type: JobType | None = None,
+        limit: int = 100,
+        include_stuck: bool = False,
+        stuck_threshold_hours: int = 2,
+    ) -> list[Job]:
+        """Get all jobs with optional filters.
+
+        Args:
+            status: Filter by job status.
+            job_type: Filter by job type.
+            limit: Maximum number of jobs to return.
+            include_stuck: If True and status is None, includes stuck indicator.
+            stuck_threshold_hours: Hours after which running job is stuck.
+
+        Returns:
+            List of jobs ordered by priority, then scheduled time.
+        """
+        conditions = []
+        params = []
+
+        if status:
+            conditions.append("status = ?")
+            params.append(status.value)
+
+        if job_type:
+            conditions.append("job_type = ?")
+            params.append(job_type.value)
+
+        where_clause = ""
+        if conditions:
+            where_clause = "WHERE " + " AND ".join(conditions)
+
+        params.append(limit)
+        cursor = self.conn.execute(
+            f"""
+            SELECT * FROM job_queue
+            {where_clause}
+            ORDER BY
+                CASE status
+                    WHEN 'running' THEN 0
+                    WHEN 'queued' THEN 1
+                    WHEN 'failed' THEN 2
+                    WHEN 'completed' THEN 3
+                END,
+                priority ASC,
+                scheduled_at ASC
+            LIMIT ?
+            """,
+            params,
+        )
+        return [Job.from_row(row) for row in cursor.fetchall()]
+
+    def get_failed_jobs(self, limit: int = 100) -> list[Job]:
+        """Get all failed jobs.
+
+        Args:
+            limit: Maximum number of jobs to return.
+
+        Returns:
+            List of failed jobs.
+        """
+        cursor = self.conn.execute(
+            """
+            SELECT * FROM job_queue
+            WHERE status = ?
+            ORDER BY completed_at DESC
+            LIMIT ?
+            """,
+            (JobStatus.FAILED.value, limit),
+        )
+        return [Job.from_row(row) for row in cursor.fetchall()]
+
+    def retry_failed_job(self, job_id: int) -> bool:
+        """Retry a failed job by resetting it to queued state.
+
+        Args:
+            job_id: Job ID to retry.
+
+        Returns:
+            True if job was reset, False if not found or not failed.
+        """
+        cursor = self.conn.execute(
+            """
+            UPDATE job_queue
+            SET status = ?, attempts = 0, error_message = NULL,
+                next_retry_at = NULL, completed_at = NULL
+            WHERE id = ? AND status = ?
+            """,
+            (JobStatus.QUEUED.value, job_id, JobStatus.FAILED.value),
+        )
+        self.conn.commit()
+        return cursor.rowcount > 0
+
+    def batch_force_reset_stuck(self, threshold_hours: int = 2) -> int:
+        """Reset all stuck jobs back to queued state.
+
+        Args:
+            threshold_hours: Hours after which a running job is considered stuck.
+
+        Returns:
+            Number of jobs reset.
+        """
+        threshold = (datetime.utcnow() - timedelta(hours=threshold_hours)).isoformat()
+        cursor = self.conn.execute(
+            """
+            UPDATE job_queue
+            SET status = ?, started_at = NULL, error_message = NULL
+            WHERE status = ? AND started_at < ?
+            """,
+            (JobStatus.QUEUED.value, JobStatus.RUNNING.value, threshold),
+        )
+        self.conn.commit()
+        return cursor.rowcount
+
+    def batch_retry_failed(self) -> int:
+        """Retry all failed jobs.
+
+        Returns:
+            Number of jobs reset.
+        """
+        cursor = self.conn.execute(
+            """
+            UPDATE job_queue
+            SET status = ?, attempts = 0, error_message = NULL,
+                next_retry_at = NULL, completed_at = NULL
+            WHERE status = ?
+            """,
+            (JobStatus.QUEUED.value, JobStatus.FAILED.value),
+        )
+        self.conn.commit()
+        return cursor.rowcount
+
+    def count_stuck_jobs(self, threshold_hours: int = 2) -> int:
+        """Count jobs that have been running longer than threshold.
+
+        Args:
+            threshold_hours: Hours after which a running job is considered stuck.
+
+        Returns:
+            Number of stuck jobs.
+        """
+        threshold = (datetime.utcnow() - timedelta(hours=threshold_hours)).isoformat()
+        cursor = self.conn.execute(
+            """
+            SELECT COUNT(*) FROM job_queue
+            WHERE status = ? AND started_at < ?
+            """,
+            (JobStatus.RUNNING.value, threshold),
+        )
+        return cursor.fetchone()[0]
+
 
 class SettingsRepository:
     """Repository for runtime settings overrides."""
