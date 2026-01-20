@@ -544,5 +544,30 @@ def cmd_serve(host: str, port: int, reload: bool):
     run_server(host=host, port=port, reload=reload)
 
 
+@cli.command("mcp")
+@click.option("--sse", is_flag=True, help="Use SSE/HTTP transport instead of stdio")
+@click.option("--host", "-h", default="0.0.0.0", help="Host for SSE server (only with --sse)")
+@click.option("--port", "-p", default=8080, help="Port for SSE server (only with --sse)")
+def cmd_mcp(sse: bool, host: str, port: int):
+    """Start the MCP server for Claude integration.
+
+    By default, runs with stdio transport (for Claude Code/Desktop).
+    Use --sse flag for HTTP/SSE transport (for Claude.ai/remote clients).
+
+    Examples:
+        cast2md mcp              # stdio mode (Claude Code)
+        cast2md mcp --sse        # SSE mode on port 8080
+        cast2md mcp --sse -p 9000  # SSE mode on custom port
+    """
+    from cast2md.mcp.server import run_sse, run_stdio
+
+    if sse:
+        click.echo(f"Starting MCP server with SSE transport on http://{host}:{port}/sse")
+        run_sse(host=host, port=port)
+    else:
+        # stdio mode - no output to stdout as it's used for communication
+        run_stdio()
+
+
 if __name__ == "__main__":
     cli()

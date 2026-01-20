@@ -9,9 +9,11 @@ Podcast transcription service - download episodes via RSS and transcribe with Wh
 - **Custom Feed Titles**: Override RSS titles with custom names (auto-renames storage directories)
 - **Automatic Downloads**: Queue and download episodes with configurable workers
 - **Whisper Transcription**: Transcribe audio using faster-whisper with CPU or GPU
+- **Full-Text Search**: Search across all transcripts and episode metadata
 - **Web Interface**: Simple UI to manage feeds, view episodes, and monitor progress
 - **Show Notes Display**: Preview and full modal view with sanitized HTML
 - **REST API**: Full API for integration with other tools
+- **MCP Server**: Claude integration via Model Context Protocol for AI-powered podcast exploration
 - **Background Processing**: Scheduled feed polling and queue-based transcription
 - **Database Migrations**: Automatic schema migrations for seamless upgrades
 - **NAS Storage**: Store transcripts and audio on network storage
@@ -179,7 +181,59 @@ cast2md backup -o /path/to/backup.db
 
 # Restore database
 cast2md restore /path/to/backup.db
+
+# Start MCP server (for Claude integration)
+cast2md mcp              # stdio mode (Claude Code/Desktop)
+cast2md mcp --sse        # SSE mode (Claude.ai/remote)
 ```
+
+### MCP Server (Claude Integration)
+
+cast2md includes an MCP (Model Context Protocol) server that enables Claude to search transcripts, manage feeds, and queue episodes for processing.
+
+#### Setup for Claude Code
+
+Create `.mcp.json` in your project root:
+
+```json
+{
+  "mcpServers": {
+    "podcasts": {
+      "command": "/path/to/cast2md",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+#### Available Tools
+
+| Tool | Description |
+|------|-------------|
+| `search_transcripts` | Full-text search across all transcripts |
+| `search_episodes` | Search episodes by title/description |
+| `queue_episode` | Queue episode for download/transcription |
+| `get_queue_status` | View processing queue status |
+| `add_feed` | Add new podcast by RSS URL |
+| `refresh_feed` | Poll feed for new episodes |
+
+#### Available Resources
+
+| URI | Description |
+|-----|-------------|
+| `cast2md://feeds` | List all feeds |
+| `cast2md://feeds/{id}` | Feed details + recent episodes |
+| `cast2md://episodes/{id}` | Episode details |
+| `cast2md://episodes/{id}/transcript` | Full transcript text |
+| `cast2md://status` | System status overview |
+
+#### Example Usage
+
+Once configured, you can ask Claude things like:
+- "Search my podcasts for discussions about AI"
+- "What episodes are in my queue?"
+- "Add this podcast feed: https://example.com/feed.xml"
+- "Summarize the latest episode about climate change"
 
 ### API Endpoints
 
