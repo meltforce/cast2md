@@ -344,6 +344,15 @@ def status_page(request: Request):
             if ep:
                 running_transcribe_episodes.append({"job": job, "episode": ep})
 
+        # Filter out episodes that have running transcription jobs from "downloaded" list
+        running_transcribe_episode_ids = {job.episode_id for job in running_transcriptions}
+        queued_transcribe_episode_ids = {job.episode_id for job in queued_transcriptions}
+        downloaded = [
+            ep for ep in downloaded
+            if ep.id not in running_transcribe_episode_ids
+            and ep.id not in queued_transcribe_episode_ids
+        ]
+
     # Get worker status
     worker_manager = get_worker_manager()
     queue_status = worker_manager.get_status()
