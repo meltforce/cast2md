@@ -135,7 +135,12 @@
                        onchange="updateSelectedCount()" {% if episode.status.value != 'pending' %}disabled{% endif %}>
             </td>
             <td>
-                <a href="/episodes/{{ episode.id }}" class="truncate" style="display: block;">
+                {% set ep_params = [] %}
+                {% if query %}{% set _ = ep_params.append('q=' ~ query|urlencode) %}{% endif %}
+                {% if status_filter %}{% set _ = ep_params.append('status=' ~ status_filter) %}{% endif %}
+                {% if per_page != 25 %}{% set _ = ep_params.append('per_page=' ~ per_page) %}{% endif %}
+                {% if page != 1 %}{% set _ = ep_params.append('page=' ~ page) %}{% endif %}
+                <a href="/episodes/{{ episode.id }}{% if ep_params %}?{{ ep_params|join('&') }}{% endif %}" class="truncate" style="display: block;">
                     {{ episode.title }}
                 </a>
             </td>

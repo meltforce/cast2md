@@ -3,7 +3,12 @@
 {% block title %}{{ episode.title }} - cast2md{% endblock %}
 
 {% block content %}
-<p><a href="/feeds/{{ feed.id }}">&larr; Back to {{ feed.display_title }}</a></p>
+{% set back_params = [] %}
+{% if back_query %}{% set _ = back_params.append('q=' ~ back_query|urlencode) %}{% endif %}
+{% if back_status %}{% set _ = back_params.append('status=' ~ back_status) %}{% endif %}
+{% if back_per_page and back_per_page != 25 %}{% set _ = back_params.append('per_page=' ~ back_per_page) %}{% endif %}
+{% if back_page and back_page != 1 %}{% set _ = back_params.append('page=' ~ back_page) %}{% endif %}
+<p><a href="/feeds/{{ feed.id }}{% if back_params %}?{{ back_params|join('&') }}{% endif %}">&larr; Back to {{ feed.display_title }}</a></p>
 
 <article class="episode-header">
     <div style="display: flex; gap: 1.5rem;">

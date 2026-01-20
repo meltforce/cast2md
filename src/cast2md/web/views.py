@@ -198,7 +198,14 @@ def feed_detail(
 
 
 @router.get("/episodes/{episode_id}", response_class=HTMLResponse)
-def episode_detail(request: Request, episode_id: int):
+def episode_detail(
+    request: Request,
+    episode_id: int,
+    q: str | None = None,
+    status: str | None = None,
+    per_page: int = 25,
+    page: int = 1,
+):
     """Episode detail page."""
     with get_db() as conn:
         episode_repo = EpisodeRepository(conn)
@@ -230,6 +237,10 @@ def episode_detail(request: Request, episode_id: int):
             "episode": episode,
             "feed": feed,
             "transcript_content": transcript_content,
+            "back_query": q,
+            "back_status": status,
+            "back_per_page": per_page,
+            "back_page": page,
         },
     )
 
