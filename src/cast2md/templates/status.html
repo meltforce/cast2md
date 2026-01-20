@@ -80,9 +80,6 @@
                 <td>
                     {% if worker.episode %}
                     <a href="/episodes/{{ worker.episode.id }}">{{ worker.episode.title[:40] }}{% if worker.episode.title|length > 40 %}...{% endif %}</a>
-                    {% if worker.job and worker.job.started_at %}
-                    <span class="elapsed" data-started="{{ worker.job.started_at.isoformat() }}Z"></span>
-                    {% endif %}
                     {% else %}
                     -
                     {% endif %}
@@ -92,11 +89,16 @@
                     <div class="progress-container">
                         <progress value="{{ worker.progress }}" max="100"></progress>
                         <small>{{ worker.progress }}%</small>
+                        {% if worker.job and worker.job.started_at and worker.progress > 0 %}
+                        <small class="remaining" data-started="{{ worker.job.started_at.isoformat() }}Z" data-progress="{{ worker.progress }}"></small>
+                        {% endif %}
                     </div>
                     {% elif worker.status == 'busy' %}
                     <div class="progress-container">
                         <progress class="indeterminate"></progress>
-                        <small>...</small>
+                        {% if worker.job and worker.job.started_at %}
+                        <small class="elapsed" data-started="{{ worker.job.started_at.isoformat() }}Z"></small>
+                        {% endif %}
                     </div>
                     {% else %}
                     -
@@ -224,21 +226,38 @@
 
 {% block scripts %}
 <script>
-// Update elapsed time displays
-function formatElapsed(seconds) {
+// Format time duration
+function formatDuration(seconds) {
     const h = Math.floor(seconds / 3600);
     const m = Math.floor((seconds % 3600) / 60);
     const s = Math.floor(seconds % 60);
-    if (h > 0) return `${h}h ${m}m ${s}s`;
+    if (h > 0) return `${h}h ${m}m`;
     if (m > 0) return `${m}m ${s}s`;
     return `${s}s`;
 }
 
 function updateElapsedTimes() {
+    // Update elapsed time for indeterminate progress
     document.querySelectorAll('.elapsed').forEach(el => {
         const started = new Date(el.dataset.started);
         const elapsed = (Date.now() - started.getTime()) / 1000;
-        el.textContent = '(' + formatElapsed(elapsed) + ')';
+        el.textContent = formatDuration(elapsed);
+    });
+
+    // Update remaining time for jobs with progress
+    document.querySelectorAll('.remaining').forEach(el => {
+        const started = new Date(el.dataset.started);
+        const progress = parseFloat(el.dataset.progress);
+        if (progress > 0) {
+            const elapsed = (Date.now() - started.getTime()) / 1000;
+            const totalEstimate = elapsed / (progress / 100);
+            const remaining = totalEstimate - elapsed;
+            if (remaining > 0) {
+                el.textContent = '~' + formatDuration(remaining) + ' left';
+            } else {
+                el.textContent = 'finishing...';
+            }
+        }
     });
 }
 
