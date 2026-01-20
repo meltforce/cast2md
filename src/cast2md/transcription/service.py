@@ -14,7 +14,7 @@ from cast2md.db.connection import get_db
 from cast2md.db.models import Episode, EpisodeStatus, Feed
 from cast2md.db.repository import EpisodeRepository
 from cast2md.storage.filesystem import ensure_podcast_directories, get_transcript_path
-from cast2md.transcription.preprocessing import preprocess_audio
+from cast2md.transcription.preprocessing import cleanup_preprocessed, preprocess_audio
 
 
 @dataclass
@@ -182,14 +182,18 @@ class TranscriptionService:
         Returns:
             TranscriptResult with segments and metadata.
         """
-        # Preprocess audio (currently passthrough)
+        # Preprocess audio to mono 16kHz WAV (creates temp file)
         processed_path = preprocess_audio(audio_path)
 
-        if self.backend == "mlx":
-            # mlx-whisper returns all segments at once, no streaming progress
-            return self._transcribe_mlx(processed_path)
-        else:
-            return self._transcribe_faster_whisper(processed_path, progress_callback)
+        try:
+            if self.backend == "mlx":
+                # mlx-whisper returns all segments at once, no streaming progress
+                return self._transcribe_mlx(processed_path)
+            else:
+                return self._transcribe_faster_whisper(processed_path, progress_callback)
+        finally:
+            # Clean up preprocessed temp file (preserves original)
+            cleanup_preprocessed(processed_path, audio_path)
 
     def _transcribe_faster_whisper(
         self,
