@@ -4,6 +4,7 @@ from fastapi import APIRouter, Query
 from pydantic import BaseModel
 
 from cast2md.db.connection import get_db
+from cast2md.db.repository import EpisodeRepository, FeedRepository
 from cast2md.search.repository import TranscriptSearchRepository
 
 router = APIRouter(prefix="/api/search", tags=["search"])
@@ -36,6 +37,81 @@ class IndexStats(BaseModel):
 
     total_segments: int
     indexed_episodes: int
+
+
+class EpisodeResult(BaseModel):
+    """An episode matching the search query."""
+
+    id: int
+    feed_id: int
+    feed_title: str
+    title: str
+    description: str | None
+    published_at: str | None
+    status: str
+
+
+class EpisodeSearchResponse(BaseModel):
+    """Response from episode search."""
+
+    query: str
+    total: int
+    results: list[EpisodeResult]
+
+
+@router.get("/episodes", response_model=EpisodeSearchResponse)
+def search_episodes(
+    q: str = Query(..., min_length=1, description="Search query"),
+    feed_id: int | None = Query(None, description="Filter by feed ID"),
+    limit: int = Query(20, ge=1, le=100, description="Max results"),
+    offset: int = Query(0, ge=0, description="Offset for pagination"),
+):
+    """Search episodes by title and description using full-text search.
+
+    Supports FTS5 query syntax:
+    - Simple terms: `ai`
+    - Phrases: `"machine learning"`
+    - Boolean: `python AND async`, `docker OR kubernetes`
+    - Negation: `python NOT flask`
+
+    Returns matching episodes with feed info.
+    """
+    with get_db() as conn:
+        episode_repo = EpisodeRepository(conn)
+        feed_repo = FeedRepository(conn)
+
+        episodes, total = episode_repo.search_episodes_fts_full(
+            query=q,
+            feed_id=feed_id,
+            limit=limit,
+            offset=offset,
+        )
+
+        # Build results with feed titles
+        results = []
+        feed_cache: dict[int, str] = {}
+        for ep in episodes:
+            if ep.feed_id not in feed_cache:
+                feed = feed_repo.get_by_id(ep.feed_id)
+                feed_cache[ep.feed_id] = feed.title if feed else "Unknown"
+
+            results.append(
+                EpisodeResult(
+                    id=ep.id,
+                    feed_id=ep.feed_id,
+                    feed_title=feed_cache[ep.feed_id],
+                    title=ep.title,
+                    description=ep.description,
+                    published_at=ep.published_at.isoformat() if ep.published_at else None,
+                    status=ep.status.value,
+                )
+            )
+
+    return EpisodeSearchResponse(
+        query=q,
+        total=total,
+        results=results,
+    )
 
 
 @router.get("/transcripts", response_model=SearchResponse)
