@@ -452,9 +452,14 @@ def transcript_search_page(
     feed_id: str | None = None,
     page: int = 1,
     per_page: int = 20,
+    type: str = "transcripts",
 ):
-    """Transcript search page."""
+    """Unified search page for episodes and transcripts."""
     from cast2md.search.repository import TranscriptSearchRepository
+
+    # Validate search type
+    valid_types = ("episodes", "transcripts", "everything")
+    search_type = type if type in valid_types else "transcripts"
 
     # Convert feed_id to int or None (handles empty string from form)
     feed_id_int: int | None = None
@@ -464,14 +469,17 @@ def transcript_search_page(
         except ValueError:
             pass
 
-    results = []
-    total = 0
+    transcript_results = []
+    episode_results = []
+    transcript_total = 0
+    episode_total = 0
     total_pages = 1
     index_stats = {"total_segments": 0, "indexed_episodes": 0}
     feeds = []
 
     with get_db() as conn:
         feed_repo = FeedRepository(conn)
+        episode_repo = EpisodeRepository(conn)
         search_repo = TranscriptSearchRepository(conn)
 
         # Get all feeds for dropdown
@@ -486,15 +494,44 @@ def transcript_search_page(
         # Perform search if query provided
         if q:
             offset = (page - 1) * per_page
-            response = search_repo.search(
-                query=q,
-                feed_id=feed_id_int,
-                limit=per_page,
-                offset=offset,
-            )
-            results = response.results
-            total = response.total
-            total_pages = max(1, (total + per_page - 1) // per_page)
+
+            # Episode search (for "episodes" or "everything" modes)
+            if search_type in ("episodes", "everything"):
+                episode_results, episode_total = episode_repo.search_episodes_fts_full(
+                    query=q,
+                    feed_id=feed_id_int,
+                    limit=per_page,
+                    offset=offset,
+                )
+                # Add feed info to episodes for display
+                episode_results_with_feed = []
+                for ep in episode_results:
+                    feed = feed_repo.get_by_id(ep.feed_id)
+                    episode_results_with_feed.append({
+                        "episode": ep,
+                        "feed": feed,
+                    })
+                episode_results = episode_results_with_feed
+
+            # Transcript search (for "transcripts" or "everything" modes)
+            if search_type in ("transcripts", "everything"):
+                response = search_repo.search(
+                    query=q,
+                    feed_id=feed_id_int,
+                    limit=per_page,
+                    offset=offset,
+                )
+                transcript_results = response.results
+                transcript_total = response.total
+
+            # Calculate total pages based on search type
+            if search_type == "episodes":
+                total_pages = max(1, (episode_total + per_page - 1) // per_page)
+            elif search_type == "transcripts":
+                total_pages = max(1, (transcript_total + per_page - 1) // per_page)
+            else:  # everything - use max of both
+                max_total = max(episode_total, transcript_total)
+                total_pages = max(1, (max_total + per_page - 1) // per_page)
 
     return templates.TemplateResponse(
         "search.html",
@@ -503,8 +540,11 @@ def transcript_search_page(
             "query": q or "",
             "feed_id": feed_id_int,
             "feeds": feeds,
-            "results": results,
-            "total": total,
+            "search_type": search_type,
+            "episode_results": episode_results,
+            "transcript_results": transcript_results,
+            "episode_total": episode_total,
+            "transcript_total": transcript_total,
             "page": page,
             "per_page": per_page,
             "total_pages": total_pages,

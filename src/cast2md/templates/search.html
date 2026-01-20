@@ -1,15 +1,16 @@
 {% extends "base.html" %}
 
-{% block title %}Search Transcripts - cast2md{% endblock %}
+{% block title %}Search - cast2md{% endblock %}
 
 {% block content %}
 <hgroup>
-    <h1>Search Transcripts</h1>
-    <p>Full-text search across all transcribed episodes</p>
+    <h1>Search</h1>
+    <p>Search episodes and transcripts</p>
 </hgroup>
 
 <article style="margin-bottom: 1.5rem; padding: 1rem; background: var(--card-background-color);">
-    <form method="get" style="display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-end;">
+    <form id="main-search-form" method="get" style="display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-end;">
+        <input type="hidden" name="type" value="{{ search_type }}">
         <div style="flex: 1; min-width: 250px;">
             <label for="searchQuery">Search query</label>
             <input type="text" id="searchQuery" name="q" value="{{ query }}"
@@ -28,6 +29,56 @@
             <button type="submit">Search</button>
         </div>
     </form>
+    <fieldset style="border: none; margin-top: 0.75rem; padding: 0;">
+        <legend style="font-size: 0.875rem; margin-bottom: 0.5rem; padding: 0;">Search in:</legend>
+        <div style="display: flex; gap: 1.5rem; flex-wrap: wrap;">
+            <label style="display: flex; align-items: center; gap: 0.25rem; cursor: pointer;">
+                <input type="radio" name="type" value="episodes" form="search-form" {% if search_type == 'episodes' %}checked{% endif %}
+                       onchange="this.form.submit()" form="">
+                Episodes
+            </label>
+            <label style="display: flex; align-items: center; gap: 0.25rem; cursor: pointer;">
+                <input type="radio" name="type" value="transcripts" form="search-form" {% if search_type == 'transcripts' %}checked{% endif %}
+                       onchange="this.form.submit()" form="">
+                Transcripts
+            </label>
+            <label style="display: flex; align-items: center; gap: 0.25rem; cursor: pointer;">
+                <input type="radio" name="type" value="everything" form="search-form" {% if search_type == 'everything' %}checked{% endif %}
+                       onchange="this.form.submit()" form="">
+                Everything
+            </label>
+        </div>
+    </fieldset>
+    <!-- Hidden form for radio button submission -->
+    <form id="search-form" method="get" style="display: none;">
+        <input type="hidden" name="q" value="{{ query }}">
+        {% if feed_id %}<input type="hidden" name="feed_id" value="{{ feed_id }}">{% endif %}
+    </form>
+    <script>
+        // Wire up radio buttons to submit with current query
+        document.querySelectorAll('input[name="type"]').forEach(radio => {
+            radio.addEventListener('change', function() {
+                // Update the hidden type field in the main form
+                const mainForm = document.getElementById('main-search-form');
+                const mainTypeInput = mainForm.querySelector('input[name="type"]');
+                if (mainTypeInput) {
+                    mainTypeInput.value = this.value;
+                }
+
+                // Submit using the hidden form (preserves query params)
+                const form = document.getElementById('search-form');
+                let typeInput = form.querySelector('input[name="type"]');
+                if (!typeInput) {
+                    typeInput = document.createElement('input');
+                    typeInput.type = 'hidden';
+                    typeInput.name = 'type';
+                    form.appendChild(typeInput);
+                }
+                typeInput.value = this.value;
+                form.submit();
+            });
+        });
+    </script>
     <details style="margin-top: 1rem;">
         <summary style="cursor: pointer; font-size: 0.875rem;">Search syntax help</summary>
         <div style="padding: 0.5rem; font-size: 0.875rem; color: var(--muted-color);">
@@ -44,60 +95,121 @@
 
 <p style="font-size: 0.875rem; color: var(--muted-color);">
     Index: {{ index_stats.indexed_episodes }} episodes, {{ index_stats.total_segments }} segments
-    {% if query %} | Found <strong>{{ total }}</strong> results{% endif %}
+    {% if query %}
+        {% if search_type == 'episodes' %}
+            | Found <strong>{{ episode_total }}</strong> episode{{ 's' if episode_total != 1 else '' }}
+        {% elif search_type == 'transcripts' %}
+            | Found <strong>{{ transcript_total }}</strong> transcript match{{ 'es' if transcript_total != 1 else '' }}
+        {% else %}
+            | Found <strong>{{ episode_total }}</strong> episode{{ 's' if episode_total != 1 else '' }}, <strong>{{ transcript_total }}</strong> transcript match{{ 'es' if transcript_total != 1 else '' }}
+        {% endif %}
+    {% endif %}
 </p>
 
-{% if results %}
-<div style="display: flex; flex-direction: column; gap: 1rem;">
-    {% for result in results %}
-    <article style="padding: 1rem;">
-        <header style="padding-bottom: 0.5rem; margin-bottom: 0.5rem; border-bottom: 1px solid var(--muted-border-color);">
-            <div style="display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 0.5rem;">
+{% if query %}
+    {# Episode Results Section #}
+    {% if search_type in ['episodes', 'everything'] %}
+        {% if search_type == 'everything' %}
+        <h3 style="margin-top: 1.5rem; margin-bottom: 1rem;">Episode Matches</h3>
+        {% endif %}
+
+        {% if episode_results %}
+        <div style="display: flex; flex-direction: column; gap: 1rem;">
+            {% for item in episode_results %}
+            <article style="padding: 1rem;">
+                <header style="padding-bottom: 0.5rem; margin-bottom: 0.5rem; border-bottom: 1px solid var(--muted-border-color);">
+                    <div style="display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 0.5rem;">
+                        <div>
+                            <a href="/episodes/{{ item.episode.id }}" style="font-weight: bold;">{{ item.episode.title }}</a>
+                            <span style="color: var(--muted-color); font-size: 0.875rem;">
+                                &mdash; {{ item.feed.display_title if item.feed else 'Unknown Feed' }}
+                            </span>
+                        </div>
+                        <div style="font-size: 0.875rem; color: var(--muted-color);">
+                            {% if item.episode.published_at %}{{ item.episode.published_at.strftime('%Y-%m-%d') }}{% endif %}
+                        </div>
+                    </div>
+                </header>
                 <div>
-                    <a href="/episodes/{{ result.episode_id }}?t={{ result.segment_start|int }}" style="font-weight: bold;">{{ result.episode_title }}</a>
-                    <span style="color: var(--muted-color); font-size: 0.875rem;">
-                        &mdash; {{ result.feed_title }}
-                    </span>
+                    <p style="margin: 0; color: var(--muted-color); font-size: 0.9rem;">
+                        {{ item.episode.description|truncate_html(250) }}
+                    </p>
                 </div>
-                <div style="font-size: 0.875rem; color: var(--muted-color);">
-                    {% if result.published_at %}{{ result.published_at[:10] }}{% endif %}
-                </div>
-            </div>
-        </header>
-        <div style="display: flex; align-items: flex-start; gap: 1rem;">
-            <a href="/episodes/{{ result.episode_id }}?t={{ result.segment_start|int }}" style="background: var(--muted-border-color); padding: 0.25rem 0.5rem; border-radius: 4px; font-family: monospace; font-size: 0.875rem; white-space: nowrap; text-decoration: none; color: inherit;">
-                {% set minutes = (result.segment_start // 60)|int %}
-                {% set seconds = (result.segment_start % 60)|int %}
-                {{ '%02d:%02d'|format(minutes, seconds) }}
-            </a>
-            <div style="flex: 1;">
-                <p style="margin: 0;">{{ result.snippet|safe }}</p>
-            </div>
+            </article>
+            {% endfor %}
         </div>
-    </article>
-    {% endfor %}
-</div>
-
-{% if total_pages > 1 %}
-<nav style="display: flex; justify-content: center; gap: 0.5rem; margin-top: 1.5rem;">
-    {% if page > 1 %}
-    <a href="?q={{ query|urlencode }}{% if feed_id %}&feed_id={{ feed_id }}{% endif %}&page={{ page - 1 }}" role="button" class="outline">&larr; Previous</a>
+        {% elif search_type == 'episodes' %}
+        <article style="text-align: center; padding: 3rem;">
+            <p>No episodes found for "<strong>{{ query }}</strong>"</p>
+            <p style="color: var(--muted-color);">Try different search terms or search in Transcripts mode.</p>
+        </article>
+        {% else %}
+        <p style="color: var(--muted-color); font-style: italic;">No episode matches found.</p>
+        {% endif %}
     {% endif %}
-    <span style="padding: 0.5rem 1rem; display: flex; align-items: center;">Page {{ page }} of {{ total_pages }}</span>
-    {% if page < total_pages %}
-    <a href="?q={{ query|urlencode }}{% if feed_id %}&feed_id={{ feed_id }}{% endif %}&page={{ page + 1 }}" role="button" class="outline">Next &rarr;</a>
-    {% endif %}
-</nav>
-{% endif %}
 
-{% elif query %}
-<article style="text-align: center; padding: 3rem;">
-    <p>No results found for "<strong>{{ query }}</strong>"</p>
-    <p style="color: var(--muted-color);">Try different search terms or check that transcripts have been indexed.</p>
-</article>
+    {# Transcript Results Section #}
+    {% if search_type in ['transcripts', 'everything'] %}
+        {% if search_type == 'everything' %}
+        <h3 style="margin-top: 1.5rem; margin-bottom: 1rem;">Transcript Matches</h3>
+        {% endif %}
+
+        {% if transcript_results %}
+        <div style="display: flex; flex-direction: column; gap: 1rem;">
+            {% for result in transcript_results %}
+            <article style="padding: 1rem;">
+                <header style="padding-bottom: 0.5rem; margin-bottom: 0.5rem; border-bottom: 1px solid var(--muted-border-color);">
+                    <div style="display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 0.5rem;">
+                        <div>
+                            <a href="/episodes/{{ result.episode_id }}?t={{ result.segment_start|int }}" style="font-weight: bold;">{{ result.episode_title }}</a>
+                            <span style="color: var(--muted-color); font-size: 0.875rem;">
+                                &mdash; {{ result.feed_title }}
+                            </span>
+                        </div>
+                        <div style="font-size: 0.875rem; color: var(--muted-color);">
+                            {% if result.published_at %}{{ result.published_at[:10] }}{% endif %}
+                        </div>
+                    </div>
+                </header>
+                <div style="display: flex; align-items: flex-start; gap: 1rem;">
+                    <a href="/episodes/{{ result.episode_id }}?t={{ result.segment_start|int }}" style="background: var(--muted-border-color); padding: 0.25rem 0.5rem; border-radius: 4px; font-family: monospace; font-size: 0.875rem; white-space: nowrap; text-decoration: none; color: inherit;">
+                        {% set minutes = (result.segment_start // 60)|int %}
+                        {% set seconds = (result.segment_start % 60)|int %}
+                        {{ '%02d:%02d'|format(minutes, seconds) }}
+                    </a>
+                    <div style="flex: 1;">
+                        <p style="margin: 0;">{{ result.snippet|safe }}</p>
+                    </div>
+                </div>
+            </article>
+            {% endfor %}
+        </div>
+        {% elif search_type == 'transcripts' %}
+        <article style="text-align: center; padding: 3rem;">
+            <p>No transcript matches found for "<strong>{{ query }}</strong>"</p>
+            <p style="color: var(--muted-color);">Try different search terms or check that transcripts have been indexed.</p>
+        </article>
+        {% else %}
+        <p style="color: var(--muted-color); font-style: italic;">No transcript matches found.</p>
+        {% endif %}
+    {% endif %}
+
+    {# Pagination #}
+    {% if total_pages > 1 %}
+    <nav style="display: flex; justify-content: center; gap: 0.5rem; margin-top: 1.5rem;">
+        {% if page > 1 %}
+        <a href="?q={{ query|urlencode }}&type={{ search_type }}{% if feed_id %}&feed_id={{ feed_id }}{% endif %}&page={{ page - 1 }}" role="button" class="outline">&larr; Previous</a>
+        {% endif %}
+        <span style="padding: 0.5rem 1rem; display: flex; align-items: center;">Page {{ page }} of {{ total_pages }}</span>
+        {% if page < total_pages %}
+        <a href="?q={{ query|urlencode }}&type={{ search_type }}{% if feed_id %}&feed_id={{ feed_id }}{% endif %}&page={{ page + 1 }}" role="button" class="outline">Next &rarr;</a>
+        {% endif %}
+    </nav>
+    {% endif %}
+
 {% else %}
 <article style="text-align: center; padding: 3rem;">
-    <p>Enter a search query to find text within transcripts.</p>
+    <p>Enter a search query to find episodes and transcripts.</p>
     <p style="color: var(--muted-color);">
         {% if index_stats.indexed_episodes == 0 %}
         No transcripts indexed yet. Run <code>cast2md reindex-transcripts</code> to index existing transcripts.
