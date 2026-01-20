@@ -87,12 +87,16 @@
                 <td>
                     {% if worker.status == 'stuck' %}
                     <span style="color: var(--pico-del-color);">needs cancellation</span>
-                    {% elif worker.progress is not none and worker.progress > 0 %}
+                    {% elif worker.progress is not none %}
                     <div class="progress-container">
                         <progress value="{{ worker.progress }}" max="100"></progress>
                         <small class="progress-text">{{ worker.progress }}%</small>
                         {% if worker.job and worker.job.started_at %}
+                            {% if worker.progress > 0 %}
                         <small class="remaining" data-started="{{ worker.job.started_at.isoformat() }}Z" data-progress="{{ worker.progress }}"></small>
+                            {% else %}
+                        <small class="elapsed" data-started="{{ worker.job.started_at.isoformat() }}Z"></small>
+                            {% endif %}
                         {% endif %}
                     </div>
                     {% elif worker.status == 'busy' %}
