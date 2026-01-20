@@ -56,7 +56,8 @@ def setup_signal_handlers():
     """
     def handle_signal(signum, frame):
         sig_name = signal.Signals(signum).name
-        logger.info(f"Received {sig_name}, initiating shutdown...")
+        # Use print to ensure message appears before exit
+        print(f"Received {sig_name}, initiating shutdown...", flush=True)
         # Raise SystemExit to trigger FastAPI lifespan shutdown
         sys.exit(0)
 
