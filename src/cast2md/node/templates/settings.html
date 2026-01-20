@@ -8,6 +8,12 @@
     <p>{{ config.name if config else 'Unknown Node' }}</p>
 </hgroup>
 
+{% if saved %}
+<article style="background: #d4edda; border-color: #c3e6cb;">
+    <p style="margin: 0; color: #155724;">Settings saved. Restart the node worker to apply whisper changes.</p>
+</article>
+{% endif %}
+
 {% if not config %}
 <article>
     <header>
@@ -46,36 +52,40 @@
     </table>
 </article>
 
+<form method="post" action="/settings">
 <article>
     <header>
         <h3>Whisper Configuration</h3>
     </header>
-    <table>
-        <tbody>
-            <tr>
-                <td><strong>Model</strong></td>
-                <td><code>{{ settings.whisper_model }}</code></td>
-            </tr>
-            <tr>
-                <td><strong>Backend</strong></td>
-                <td><code>{{ settings.whisper_backend }}</code></td>
-            </tr>
-            <tr>
-                <td><strong>Device</strong></td>
-                <td><code>{{ settings.whisper_device }}</code></td>
-            </tr>
-            <tr>
-                <td><strong>Compute Type</strong></td>
-                <td><code>{{ settings.whisper_compute_type }}</code></td>
-            </tr>
-        </tbody>
-    </table>
+    <div class="grid">
+        <label>
+            Model
+            <select name="whisper_model">
+                {% for value, label in whisper_models %}
+                <option value="{{ value }}" {% if settings.whisper_model == value %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label>
+            Backend
+            <select name="whisper_backend">
+                {% for value, label in whisper_backends %}
+                <option value="{{ value }}" {% if settings.whisper_backend == value %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </label>
+    </div>
+    <small>Changes require a node restart to take effect.</small>
 </article>
 
 <article>
     <header>
         <h3>Node Configuration</h3>
     </header>
+    <label>
+        Server URL
+        <input type="url" name="server_url" value="{{ config.server_url }}" required>
+    </label>
     <table>
         <tbody>
             <tr>
@@ -86,13 +96,12 @@
                 <td><strong>Name</strong></td>
                 <td>{{ config.name }}</td>
             </tr>
-            <tr>
-                <td><strong>Server URL</strong></td>
-                <td><a href="{{ config.server_url }}">{{ config.server_url }}</a></td>
-            </tr>
         </tbody>
     </table>
 </article>
+
+<button type="submit">Save Settings</button>
+</form>
 
 {% endif %}
 {% endblock %}
