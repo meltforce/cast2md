@@ -2,7 +2,10 @@
   "mcpServers": {
     "podcasts": {
       "command": "/Library/Frameworks/Python.framework/Versions/3.11/bin/cast2md",
-      "args": ["mcp"]
+      "args": ["mcp"],
+      "env": {
+        "MCP_API_URL": "https://cast2md.leo-royal.ts.net"
+      }
     }
   }
 }

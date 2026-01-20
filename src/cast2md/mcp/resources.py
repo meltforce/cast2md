@@ -2,12 +2,8 @@
 
 from pathlib import Path
 
-from cast2md.config.settings import get_settings
-from cast2md.db.connection import get_db
-from cast2md.db.models import EpisodeStatus
-from cast2md.db.repository import EpisodeRepository, FeedRepository, JobRepository
+from cast2md.mcp import client as remote
 from cast2md.mcp.server import mcp
-from cast2md.search.repository import TranscriptSearchRepository
 
 
 @mcp.resource("cast2md://feeds")
@@ -17,6 +13,25 @@ def list_feeds() -> str:
     Returns a list of all configured podcast feeds with their IDs,
     titles, and episode counts.
     """
+    if remote.is_remote_mode():
+        feeds = remote.get_feeds()
+        lines = ["# Podcast Feeds\n"]
+        if not feeds:
+            lines.append("No feeds configured. Use the add_feed tool to add a podcast.")
+        else:
+            for feed in feeds:
+                lines.append(f"## {feed.get('display_title') or feed.get('title', 'Unknown')}")
+                lines.append(f"- **ID:** {feed['id']}")
+                lines.append(f"- **URL:** {feed.get('url', 'N/A')}")
+                lines.append(f"- **Episodes:** {feed.get('episode_count', 0)}")
+                if feed.get("description"):
+                    lines.append(f"- **Description:** {feed['description'][:200]}...")
+                lines.append("")
+        return "\n".join(lines)
+
+    from cast2md.db.connection import get_db
+    from cast2md.db.repository import EpisodeRepository, FeedRepository
+
     with get_db() as conn:
         feed_repo = FeedRepository(conn)
         episode_repo = EpisodeRepository(conn)
@@ -56,6 +71,35 @@ def get_feed(feed_id: int) -> str:
     Returns:
         Feed details and a list of recent episodes.
     """
+    if remote.is_remote_mode():
+        feed = remote.get_feed(feed_id)
+        if not feed:
+            return f"Feed {feed_id} not found."
+        lines = [f"# {feed.get('display_title') or feed.get('title', 'Unknown')}\n"]
+        lines.append(f"- **ID:** {feed['id']}")
+        lines.append(f"- **URL:** {feed.get('url', 'N/A')}")
+        if feed.get("author"):
+            lines.append(f"- **Author:** {feed['author']}")
+        if feed.get("link"):
+            lines.append(f"- **Website:** {feed['link']}")
+        if feed.get("description"):
+            lines.append(f"- **Description:** {feed['description']}")
+        lines.append("")
+        if feed.get("episodes"):
+            lines.append("## Recent Episodes\n")
+            for ep in feed["episodes"][:25]:
+                status = ep.get("status", "pending")
+                status_icon = {"pending": "[ ]", "downloading": "[D]", "downloaded": "[d]",
+                              "transcribing": "[T]", "completed": "[x]", "failed": "[!]"}.get(status, "[ ]")
+                pub_date = ep.get("published_at", "Unknown")[:10] if ep.get("published_at") else "Unknown"
+                lines.append(f"- {status_icon} **{ep['title']}** (ID: {ep['id']})")
+                lines.append(f"  - Published: {pub_date} | Status: {status}")
+        return "\n".join(lines)
+
+    from cast2md.db.connection import get_db
+    from cast2md.db.models import EpisodeStatus
+    from cast2md.db.repository import EpisodeRepository, FeedRepository
+
     with get_db() as conn:
         feed_repo = FeedRepository(conn)
         episode_repo = EpisodeRepository(conn)
@@ -115,6 +159,29 @@ def get_episode(episode_id: int) -> str:
     Returns:
         Full episode details including processing status.
     """
+    if remote.is_remote_mode():
+        episode = remote.get_episode(episode_id)
+        if not episode:
+            return f"Episode {episode_id} not found."
+        lines = [f"# {episode['title']}\n"]
+        lines.append(f"- **ID:** {episode['id']}")
+        lines.append(f"- **Feed ID:** {episode.get('feed_id', 'Unknown')}")
+        lines.append(f"- **Status:** {episode.get('status', 'unknown')}")
+        if episode.get("published_at"):
+            lines.append(f"- **Published:** {episode['published_at'][:16]}")
+        if episode.get("duration_seconds"):
+            minutes = episode["duration_seconds"] // 60
+            seconds = episode["duration_seconds"] % 60
+            lines.append(f"- **Duration:** {minutes}m {seconds}s")
+        if episode.get("description"):
+            lines.append("")
+            lines.append("## Description")
+            lines.append(episode["description"])
+        return "\n".join(lines)
+
+    from cast2md.db.connection import get_db
+    from cast2md.db.repository import EpisodeRepository, FeedRepository
+
     with get_db() as conn:
         episode_repo = EpisodeRepository(conn)
         feed_repo = FeedRepository(conn)
@@ -167,6 +234,15 @@ def get_transcript(episode_id: int) -> str:
     Returns:
         The full transcript text or an error message if not available.
     """
+    if remote.is_remote_mode():
+        transcript = remote.get_transcript(episode_id)
+        if transcript is None:
+            return f"No transcript available for episode {episode_id}. Use queue_episode to process it."
+        return transcript
+
+    from cast2md.db.connection import get_db
+    from cast2md.db.repository import EpisodeRepository
+
     with get_db() as conn:
         episode_repo = EpisodeRepository(conn)
         episode = episode_repo.get_by_id(episode_id)
@@ -200,6 +276,19 @@ def get_status() -> str:
     Returns an overview of the cast2md system including database
     statistics, queue status, and configuration.
     """
+    if remote.is_remote_mode():
+        status = remote.get_status()
+        lines = ["# cast2md Status (Remote)\n"]
+        lines.append(f"- **API URL:** {remote.API_URL}")
+        lines.append(f"- **Status:** {'OK' if status.get('status') == 'healthy' else 'Unknown'}")
+        return "\n".join(lines)
+
+    from cast2md.config.settings import get_settings
+    from cast2md.db.connection import get_db
+    from cast2md.db.models import EpisodeStatus
+    from cast2md.db.repository import EpisodeRepository, FeedRepository, JobRepository
+    from cast2md.search.repository import TranscriptSearchRepository
+
     settings = get_settings()
 
     lines = ["# cast2md Status\n"]
