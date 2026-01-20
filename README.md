@@ -8,7 +8,7 @@ Podcast transcription service - download episodes via RSS and transcribe with Wh
 - **Extended Metadata**: Extracts author, website link, and categories from RSS feeds
 - **Custom Feed Titles**: Override RSS titles with custom names (auto-renames storage directories)
 - **Automatic Downloads**: Queue and download episodes with configurable workers
-- **Whisper Transcription**: Transcribe audio using faster-whisper or mlx-whisper
+- **Whisper Transcription**: Transcribe audio using faster-whisper or mlx-whisper (auto-converts to mono 16kHz for optimal accuracy)
 - **Distributed Transcription**: Use remote machines (M4 Macs, GPU PCs) to transcribe in parallel
 - **Full-Text Search**: Unified search across episode metadata and transcripts with detail modal
 - **Web Interface**: Simple UI to manage feeds, view episodes, and monitor progress
@@ -203,10 +203,9 @@ cast2md node unregister  # Remove node credentials
 
 cast2md includes an MCP (Model Context Protocol) server that enables Claude to search transcripts, manage feeds, and queue episodes for processing.
 
-#### Setup for Claude Code
+#### Setup for Claude Code / Claude Desktop
 
-Create `.mcp.json` in your project root:
-
+**Local mode** (uses local database):
 ```json
 {
   "mcpServers": {
@@ -217,6 +216,25 @@ Create `.mcp.json` in your project root:
   }
 }
 ```
+
+**Remote mode** (connects to server via HTTPS):
+```json
+{
+  "mcpServers": {
+    "podcasts": {
+      "command": "/path/to/cast2md",
+      "args": ["mcp"],
+      "env": {
+        "MCP_API_URL": "https://your-server.example.com"
+      }
+    }
+  }
+}
+```
+
+Config locations:
+- **Claude Code**: `.mcp.json` in project root
+- **Claude Desktop**: `~/Library/Application Support/Claude/claude_desktop_config.json`
 
 #### Available Tools
 
