@@ -441,7 +441,8 @@ def status_page(request: Request):
                 "status": node.status.value,
                 "job": node_job,
                 "episode": node_episode,
-                "progress": node_job.progress_percent if node_job else None,
+                # MLX backend doesn't support streaming progress, so show indeterminate
+                "progress": None if node.whisper_backend == "mlx" else (node_job.progress_percent if node_job else None),
                 "last_heartbeat": node.last_heartbeat,
             })
 
