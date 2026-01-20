@@ -729,16 +729,35 @@ class JobRepository:
         )
         return [Job.from_row(row) for row in cursor.fetchall()]
 
-    def reclaim_stale_jobs(self, timeout_hours: int = 2) -> int:
+    def reclaim_stale_jobs(self, timeout_hours: int = 2) -> tuple[int, int]:
         """Reclaim jobs that have been running too long on a node.
 
         Jobs that have been running longer than timeout_hours on a node
-        are reset to queued state so they can be picked up again.
+        are either reset to queued state (if retries remain) or marked as
+        permanently failed (if max attempts exceeded).
 
         Returns:
-            Number of jobs reclaimed.
+            Tuple of (jobs_requeued, jobs_failed).
         """
         threshold = (datetime.utcnow() - timedelta(hours=timeout_hours)).isoformat()
+        now = datetime.utcnow().isoformat()
+
+        # First, fail jobs that have exceeded max attempts
+        cursor = self.conn.execute(
+            """
+            UPDATE job_queue
+            SET status = ?, error_message = 'Max attempts exceeded (job timed out repeatedly)',
+                completed_at = ?, assigned_node_id = NULL, claimed_at = NULL
+            WHERE status = ?
+              AND assigned_node_id IS NOT NULL
+              AND claimed_at < ?
+              AND attempts >= max_attempts
+            """,
+            (JobStatus.FAILED.value, now, JobStatus.RUNNING.value, threshold),
+        )
+        jobs_failed = cursor.rowcount
+
+        # Then, requeue jobs that still have retries remaining
         cursor = self.conn.execute(
             """
             UPDATE job_queue
@@ -746,11 +765,14 @@ class JobRepository:
             WHERE status = ?
               AND assigned_node_id IS NOT NULL
               AND claimed_at < ?
+              AND attempts < max_attempts
             """,
             (JobStatus.QUEUED.value, JobStatus.RUNNING.value, threshold),
         )
+        jobs_requeued = cursor.rowcount
+
         self.conn.commit()
-        return cursor.rowcount
+        return jobs_requeued, jobs_failed
 
     def get_running_jobs(self, job_type: JobType) -> list[Job]:
         """Get all running jobs of given type."""
@@ -859,21 +881,24 @@ class JobRepository:
         )
         self.conn.commit()
 
-    def reset_running_jobs(self) -> int:
-        """Reset all running jobs back to queued status.
+    def reset_running_jobs(self) -> tuple[int, int]:
+        """Reset all running jobs back to queued status or fail if max attempts exceeded.
 
         Called on server startup to handle jobs orphaned from previous run.
-        Also resets the episode status back to downloaded/pending as appropriate.
+        Also resets the episode status back to downloaded/pending as appropriate,
+        or to failed if max attempts exceeded.
 
         Returns:
-            Number of jobs reset.
+            Tuple of (jobs_requeued, jobs_failed).
         """
         from cast2md.db.models import EpisodeStatus
 
-        # Find all running jobs
+        now = datetime.utcnow().isoformat()
+
+        # Find all running jobs with their attempt counts
         cursor = self.conn.execute(
             """
-            SELECT id, episode_id, job_type FROM job_queue
+            SELECT id, episode_id, job_type, attempts, max_attempts FROM job_queue
             WHERE status = ?
             """,
             (JobStatus.RUNNING.value,),
@@ -881,36 +906,68 @@ class JobRepository:
         running_jobs = cursor.fetchall()
 
         if not running_jobs:
-            return 0
+            return 0, 0
 
-        # Reset jobs to queued
-        self.conn.execute(
-            """
-            UPDATE job_queue
-            SET status = ?, started_at = NULL, assigned_node_id = NULL,
-                claimed_at = NULL, progress_percent = NULL
-            WHERE status = ?
-            """,
-            (JobStatus.QUEUED.value, JobStatus.RUNNING.value),
-        )
+        jobs_to_requeue = []
+        jobs_to_fail = []
 
-        # Reset episode statuses
-        for job_id, episode_id, job_type in running_jobs:
-            if job_type == JobType.DOWNLOAD.value:
-                # Reset to pending
+        for job_id, episode_id, job_type, attempts, max_attempts in running_jobs:
+            if attempts >= max_attempts:
+                jobs_to_fail.append((job_id, episode_id, job_type))
+            else:
+                jobs_to_requeue.append((job_id, episode_id, job_type))
+
+        # Fail jobs that have exceeded max attempts
+        if jobs_to_fail:
+            job_ids = [j[0] for j in jobs_to_fail]
+            placeholders = ",".join("?" for _ in job_ids)
+            self.conn.execute(
+                f"""
+                UPDATE job_queue
+                SET status = ?, error_message = 'Max attempts exceeded (orphaned on restart)',
+                    completed_at = ?, assigned_node_id = NULL, claimed_at = NULL,
+                    progress_percent = NULL
+                WHERE id IN ({placeholders})
+                """,
+                [JobStatus.FAILED.value, now] + job_ids,
+            )
+
+            # Set episode status to failed
+            for job_id, episode_id, job_type in jobs_to_fail:
                 self.conn.execute(
-                    "UPDATE episode SET status = ? WHERE id = ?",
-                    (EpisodeStatus.PENDING.value, episode_id),
+                    "UPDATE episode SET status = ?, error_message = ? WHERE id = ?",
+                    (EpisodeStatus.FAILED.value, "Max attempts exceeded", episode_id),
                 )
-            elif job_type == JobType.TRANSCRIBE.value:
-                # Reset to downloaded
-                self.conn.execute(
-                    "UPDATE episode SET status = ? WHERE id = ?",
-                    (EpisodeStatus.DOWNLOADED.value, episode_id),
-                )
+
+        # Requeue jobs that still have retries
+        if jobs_to_requeue:
+            job_ids = [j[0] for j in jobs_to_requeue]
+            placeholders = ",".join("?" for _ in job_ids)
+            self.conn.execute(
+                f"""
+                UPDATE job_queue
+                SET status = ?, started_at = NULL, assigned_node_id = NULL,
+                    claimed_at = NULL, progress_percent = NULL
+                WHERE id IN ({placeholders})
+                """,
+                [JobStatus.QUEUED.value] + job_ids,
+            )
+
+            # Reset episode statuses
+            for job_id, episode_id, job_type in jobs_to_requeue:
+                if job_type == JobType.DOWNLOAD.value:
+                    self.conn.execute(
+                        "UPDATE episode SET status = ? WHERE id = ?",
+                        (EpisodeStatus.PENDING.value, episode_id),
+                    )
+                elif job_type == JobType.TRANSCRIBE.value:
+                    self.conn.execute(
+                        "UPDATE episode SET status = ? WHERE id = ?",
+                        (EpisodeStatus.DOWNLOADED.value, episode_id),
+                    )
 
         self.conn.commit()
-        return len(running_jobs)
+        return len(jobs_to_requeue), len(jobs_to_fail)
 
     def mark_failed(self, job_id: int, error_message: str, retry: bool = True) -> None:
         """Mark a job as failed, optionally scheduling a retry."""
@@ -1138,26 +1195,43 @@ class JobRepository:
         self.conn.commit()
         return cursor.rowcount > 0
 
-    def batch_force_reset_stuck(self, threshold_hours: int = 2) -> int:
-        """Reset all stuck jobs back to queued state.
+    def batch_force_reset_stuck(self, threshold_hours: int = 2) -> tuple[int, int]:
+        """Reset all stuck jobs back to queued state or fail them if max attempts exceeded.
 
         Args:
             threshold_hours: Hours after which a running job is considered stuck.
 
         Returns:
-            Number of jobs reset.
+            Tuple of (jobs_requeued, jobs_failed).
         """
         threshold = (datetime.utcnow() - timedelta(hours=threshold_hours)).isoformat()
+        now = datetime.utcnow().isoformat()
+
+        # First, fail jobs that have exceeded max attempts
+        cursor = self.conn.execute(
+            """
+            UPDATE job_queue
+            SET status = ?, error_message = 'Max attempts exceeded (job stuck repeatedly)',
+                completed_at = ?
+            WHERE status = ? AND started_at < ? AND attempts >= max_attempts
+            """,
+            (JobStatus.FAILED.value, now, JobStatus.RUNNING.value, threshold),
+        )
+        jobs_failed = cursor.rowcount
+
+        # Then, requeue jobs that still have retries remaining
         cursor = self.conn.execute(
             """
             UPDATE job_queue
             SET status = ?, started_at = NULL, error_message = NULL
-            WHERE status = ? AND started_at < ?
+            WHERE status = ? AND started_at < ? AND attempts < max_attempts
             """,
             (JobStatus.QUEUED.value, JobStatus.RUNNING.value, threshold),
         )
+        jobs_requeued = cursor.rowcount
+
         self.conn.commit()
-        return cursor.rowcount
+        return jobs_requeued, jobs_failed
 
     def batch_retry_failed(self) -> int:
         """Retry all failed jobs.

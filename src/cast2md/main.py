@@ -39,14 +39,13 @@ def reset_orphaned_jobs():
     so they can be picked up by workers.
     """
     from cast2md.db.connection import get_db
-    from cast2md.db.models import JobStatus
     from cast2md.db.repository import JobRepository
 
     with get_db() as conn:
         job_repo = JobRepository(conn)
-        count = job_repo.reset_running_jobs()
-        if count > 0:
-            logger.info(f"Reset {count} orphaned running jobs to queued")
+        requeued, failed = job_repo.reset_running_jobs()
+        if requeued > 0 or failed > 0:
+            logger.info(f"Reset orphaned jobs: {requeued} requeued, {failed} failed (max attempts)")
 
 
 def setup_signal_handlers():

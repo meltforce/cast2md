@@ -866,18 +866,18 @@ def _get_stuck_jobs_as_all_jobs(limit: int) -> AllJobsResponse:
 
 @router.post("/batch/reset-stuck", response_model=BatchQueueResponse)
 def batch_reset_stuck(threshold_hours: int | None = None):
-    """Reset all stuck jobs back to queued state."""
+    """Reset all stuck jobs back to queued state or fail them if max attempts exceeded."""
     if threshold_hours is None:
         threshold_hours = _get_stuck_threshold()
 
     with get_db() as conn:
         job_repo = JobRepository(conn)
-        count = job_repo.batch_force_reset_stuck(threshold_hours)
+        requeued, failed = job_repo.batch_force_reset_stuck(threshold_hours)
 
     return BatchQueueResponse(
-        queued=count,
-        skipped=0,
-        message=f"Reset {count} stuck jobs to queued",
+        queued=requeued,
+        skipped=failed,
+        message=f"Reset {requeued} stuck jobs to queued, {failed} failed (max attempts)",
     )
 
 

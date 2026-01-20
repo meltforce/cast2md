@@ -112,12 +112,14 @@ class RemoteTranscriptionCoordinator:
             job_repo = JobRepository(conn)
 
             # Reclaim jobs that have been running > timeout on any node
-            reclaimed = job_repo.reclaim_stale_jobs(
+            requeued, failed = job_repo.reclaim_stale_jobs(
                 timeout_hours=self._job_timeout_hours
             )
 
-            if reclaimed > 0:
-                logger.info(f"Reclaimed {reclaimed} stale jobs from nodes")
+            if requeued > 0 or failed > 0:
+                logger.info(
+                    f"Reclaimed stale jobs: {requeued} requeued, {failed} failed (max attempts)"
+                )
 
     def configure(
         self,
