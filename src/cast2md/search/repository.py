@@ -422,10 +422,17 @@ class TranscriptSearchRepository:
 
         # Sort by rank (ascending, since BM25 returns negative values where lower is better)
         # Then by published_at (descending for recency)
-        sorted_results = sorted(
-            episode_matches.values(),
-            key=lambda x: (x["best_rank"], -(x["published_at"] or "") if x["published_at"] else ""),
-        )
+        def sort_key(x):
+            rank = x["best_rank"]
+            # For secondary sort by date (descending), we reverse the string
+            # since we can't negate a string
+            pub = x["published_at"] or ""
+            return (rank, pub)
+
+        # Sort by rank ascending, then by date descending (reverse=True for date would mess up rank)
+        # So we do two-phase sort: first by date descending, then stable sort by rank ascending
+        sorted_results = sorted(episode_matches.values(), key=lambda x: x["published_at"] or "", reverse=True)
+        sorted_results = sorted(sorted_results, key=lambda x: x["best_rank"])
 
         total = len(sorted_results)
 
