@@ -32,6 +32,29 @@ class SearchResponse:
     results: list[SearchResult]
 
 
+@dataclass
+class UnifiedSearchResult:
+    """A unified search result grouping matches by episode."""
+
+    episode_id: int
+    episode_title: str
+    feed_id: int
+    feed_title: str
+    published_at: Optional[str]
+    match_sources: list[str]  # e.g., ["title", "description", "transcript"]
+    transcript_match_count: int
+    best_rank: float  # Best (lowest) BM25 rank across matches
+
+
+@dataclass
+class UnifiedSearchResponse:
+    """Response from unified search."""
+
+    query: str
+    total: int
+    results: list[UnifiedSearchResult]
+
+
 class TranscriptSearchRepository:
     """Repository for transcript FTS5 search operations."""
 
@@ -268,3 +291,155 @@ class TranscriptSearchRepository:
                 segments_indexed += count
 
         return episodes_indexed, segments_indexed
+
+    def unified_search(
+        self,
+        query: str,
+        feed_id: Optional[int] = None,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> UnifiedSearchResponse:
+        """Unified search across episodes and transcripts.
+
+        Searches both episode FTS (title/description) and transcript FTS,
+        groups results by episode, and returns merged results.
+
+        Args:
+            query: Search query (supports FTS5 syntax).
+            feed_id: Optional feed ID to filter results.
+            limit: Maximum results to return.
+            offset: Offset for pagination.
+
+        Returns:
+            UnifiedSearchResponse with grouped results and total count.
+        """
+        safe_query = query.strip()
+        if not safe_query:
+            return UnifiedSearchResponse(query=query, total=0, results=[])
+
+        # Normalize query for FTS (match word boundaries, like existing episode search)
+        fts_query = " ".join(word for word in safe_query.split() if word)
+
+        # Build feed filter clauses
+        episode_feed_filter = ""
+        transcript_feed_filter = ""
+        episode_feed_params: list = []
+        transcript_feed_params: list = []
+        if feed_id is not None:
+            episode_feed_filter = " AND ef.feed_id = ?"
+            transcript_feed_filter = " AND e.feed_id = ?"
+            episode_feed_params = [feed_id]
+            transcript_feed_params = [feed_id]
+
+        # Query 1: Get episodes matching in episode_fts (title/description)
+        # episode_fts has columns: title, description, episode_id, feed_id
+        episode_fts_sql = f"""
+            SELECT
+                ef.episode_id,
+                e.title as episode_title,
+                e.feed_id,
+                COALESCE(f.custom_title, f.title) as feed_title,
+                e.published_at,
+                bm25(episode_fts) as rank
+            FROM episode_fts ef
+            JOIN episode e ON ef.episode_id = e.id
+            JOIN feed f ON e.feed_id = f.id
+            WHERE episode_fts MATCH ?{episode_feed_filter}
+        """
+
+        # Query 2: Get episodes with transcript matches and count
+        transcript_fts_sql = f"""
+            SELECT
+                e.id as episode_id,
+                e.title as episode_title,
+                e.feed_id,
+                COALESCE(f.custom_title, f.title) as feed_title,
+                e.published_at,
+                MIN(bm25(transcript_fts)) as rank,
+                COUNT(*) as match_count
+            FROM transcript_fts t
+            JOIN episode e ON t.episode_id = e.id
+            JOIN feed f ON e.feed_id = f.id
+            WHERE t.text MATCH ?{transcript_feed_filter}
+            GROUP BY e.id
+        """
+
+        # Combine and aggregate results in Python
+        try:
+            # Get episode FTS matches
+            episode_matches: dict[int, dict] = {}
+            cursor = self.conn.execute(
+                episode_fts_sql,
+                [fts_query] + episode_feed_params,
+            )
+            for row in cursor.fetchall():
+                ep_id = row[0]
+                episode_matches[ep_id] = {
+                    "episode_id": ep_id,
+                    "episode_title": row[1],
+                    "feed_id": row[2],
+                    "feed_title": row[3],
+                    "published_at": row[4],
+                    "match_sources": ["episode"],  # Matches in title or description
+                    "transcript_match_count": 0,
+                    "best_rank": row[5],
+                }
+
+            # Get transcript FTS matches
+            cursor = self.conn.execute(
+                transcript_fts_sql,
+                [fts_query] + transcript_feed_params,
+            )
+            for row in cursor.fetchall():
+                ep_id = row[0]
+                if ep_id in episode_matches:
+                    # Merge with existing episode match
+                    episode_matches[ep_id]["match_sources"].append("transcript")
+                    episode_matches[ep_id]["transcript_match_count"] = row[6]
+                    # Keep the better (lower) rank
+                    if row[5] < episode_matches[ep_id]["best_rank"]:
+                        episode_matches[ep_id]["best_rank"] = row[5]
+                else:
+                    # New episode from transcript match
+                    episode_matches[ep_id] = {
+                        "episode_id": ep_id,
+                        "episode_title": row[1],
+                        "feed_id": row[2],
+                        "feed_title": row[3],
+                        "published_at": row[4],
+                        "match_sources": ["transcript"],
+                        "transcript_match_count": row[6],
+                        "best_rank": row[5],
+                    }
+
+        except sqlite3.OperationalError:
+            # Invalid FTS5 query syntax
+            return UnifiedSearchResponse(query=query, total=0, results=[])
+
+        # Sort by rank (ascending, since BM25 returns negative values where lower is better)
+        # Then by published_at (descending for recency)
+        sorted_results = sorted(
+            episode_matches.values(),
+            key=lambda x: (x["best_rank"], -(x["published_at"] or "") if x["published_at"] else ""),
+        )
+
+        total = len(sorted_results)
+
+        # Apply pagination
+        paginated = sorted_results[offset : offset + limit]
+
+        results = [
+            UnifiedSearchResult(
+                episode_id=r["episode_id"],
+                episode_title=r["episode_title"],
+                feed_id=r["feed_id"],
+                feed_title=r["feed_title"],
+                published_at=r["published_at"],
+                match_sources=r["match_sources"],
+                transcript_match_count=r["transcript_match_count"],
+                best_rank=r["best_rank"],
+            )
+            for r in paginated
+        ]
+
+        return UnifiedSearchResponse(query=query, total=total, results=results)

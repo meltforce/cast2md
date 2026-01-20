@@ -163,6 +163,157 @@
             0% { background-position: 200% 0; }
             100% { background-position: -200% 0; }
         }
+        /* Search results styles */
+        .search-results {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+        .search-result {
+            padding: 1rem;
+            transition: background-color 0.15s ease;
+            border: 1px solid var(--pico-muted-border-color);
+        }
+        .search-result:hover {
+            background-color: var(--pico-secondary-background);
+            border-color: var(--pico-primary);
+        }
+        .match-badge {
+            display: inline-block;
+            padding: 0.15rem 0.4rem;
+            border-radius: 0.25rem;
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        .match-episode {
+            background: #dbeafe;
+            color: #1e40af;
+        }
+        .match-transcript {
+            background: #d1fae5;
+            color: #065f46;
+        }
+        .match-count {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 1.5rem;
+            height: 1.5rem;
+            padding: 0 0.4rem;
+            border-radius: 50%;
+            font-size: 0.75rem;
+            font-weight: 600;
+            background: var(--pico-primary);
+            color: var(--pico-primary-inverse);
+        }
+        /* Modal styles */
+        dialog#episodeDetailModal {
+            width: min(90vw, 800px);
+            max-height: 85vh;
+            padding: 0;
+            border: none;
+            border-radius: 0.5rem;
+            box-shadow: 0 25px 50px -12px rgb(0 0 0 / 0.25);
+        }
+        dialog#episodeDetailModal::backdrop {
+            background: rgba(0, 0, 0, 0.5);
+        }
+        dialog#episodeDetailModal .modal-content {
+            margin: 0;
+            padding: 0;
+            background: var(--pico-card-background-color);
+            display: flex;
+            flex-direction: column;
+            max-height: 85vh;
+        }
+        dialog#episodeDetailModal .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            padding: 1.25rem;
+            border-bottom: 1px solid var(--pico-muted-border-color);
+            background: var(--pico-card-background-color);
+        }
+        dialog#episodeDetailModal .close-btn {
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+            padding: 0;
+            margin: 0;
+            width: auto;
+            line-height: 1;
+            color: var(--pico-muted-color);
+        }
+        dialog#episodeDetailModal .close-btn:hover {
+            color: var(--pico-color);
+        }
+        dialog#episodeDetailModal .modal-section {
+            padding: 1rem 1.25rem;
+            border-bottom: 1px solid var(--pico-muted-border-color);
+        }
+        dialog#episodeDetailModal .modal-section:last-of-type {
+            border-bottom: none;
+        }
+        dialog#episodeDetailModal .modal-section h4 {
+            margin: 0 0 0.75rem;
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: var(--pico-muted-color);
+        }
+        dialog#episodeDetailModal #modalBody {
+            flex: 1;
+            overflow-y: auto;
+        }
+        dialog#episodeDetailModal .shownotes-container {
+            max-height: 200px;
+            overflow-y: auto;
+            font-size: 0.9rem;
+            line-height: 1.6;
+            padding-right: 0.5rem;
+        }
+        dialog#episodeDetailModal .transcript-matches {
+            max-height: 300px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+        dialog#episodeDetailModal .transcript-match {
+            display: flex;
+            gap: 0.75rem;
+            padding: 0.5rem;
+            background: var(--pico-background-color);
+            border-radius: 0.25rem;
+        }
+        dialog#episodeDetailModal .match-timestamp {
+            font-family: monospace;
+            font-size: 0.85rem;
+            color: var(--pico-primary);
+            white-space: nowrap;
+            text-decoration: none;
+        }
+        dialog#episodeDetailModal .match-timestamp:hover {
+            text-decoration: underline;
+        }
+        dialog#episodeDetailModal .match-text {
+            font-size: 0.9rem;
+            flex: 1;
+        }
+        dialog#episodeDetailModal .match-text mark {
+            background: rgba(255, 220, 100, 0.4);
+            padding: 0 0.1rem;
+        }
+        dialog#episodeDetailModal .modal-footer {
+            padding: 1rem 1.25rem;
+            border-top: 1px solid var(--pico-muted-border-color);
+            text-align: center;
+            background: var(--pico-card-background-color);
+        }
+        dialog#episodeDetailModal .modal-footer a {
+            margin: 0;
+        }
     </style>
 </head>
 <body>
