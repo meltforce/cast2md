@@ -547,7 +547,7 @@ python-dotenv>=1.0.0
 - [x] Docker build and compose
 - [x] Health checks endpoint
 - [x] Structured logging
-- [ ] Graceful shutdown (finish current job)
+- [x] Graceful shutdown (signal handlers, job release on node shutdown)
 - [x] Documentation
 - [x] Error recovery on restart (job reset via API/UI)
 
