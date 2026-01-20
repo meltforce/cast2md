@@ -3,6 +3,8 @@
 {% block title %}{{ episode.title }} - cast2md{% endblock %}
 
 {% block content %}
+<p><a href="/feeds/{{ feed.id }}">&larr; Back to {{ feed.display_title }}</a></p>
+
 <article class="episode-header">
     <div style="display: flex; gap: 1.5rem;">
         {% if feed.image_url %}
@@ -103,8 +105,6 @@
     <pre class="transcript">{{ transcript_content }}</pre>
 </article>
 {% endif %}
-
-<p><a href="/feeds/{{ feed.id }}">&larr; Back to {{ feed.display_title }}</a></p>
 {% endblock %}
 
 {% block scripts %}
