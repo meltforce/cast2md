@@ -114,8 +114,32 @@ def index(request: Request):
 
 
 @router.get("/feeds/{feed_id}", response_class=HTMLResponse)
-def feed_detail(request: Request, feed_id: int, page: int = 1, per_page: int = 20):
-    """Feed detail page - show episodes."""
+def feed_detail(
+    request: Request,
+    feed_id: int,
+    page: int = 1,
+    per_page: int = 25,
+    q: str | None = None,
+    status: str | None = None,
+):
+    """Feed detail page - show episodes with search and filtering."""
+    # Validate per_page
+    valid_per_page = [10, 25, 50, 100]
+    if per_page not in valid_per_page:
+        per_page = 25
+
+    # Validate page
+    if page < 1:
+        page = 1
+
+    # Parse status filter
+    episode_status = None
+    if status:
+        try:
+            episode_status = EpisodeStatus(status)
+        except ValueError:
+            pass  # Invalid status, ignore
+
     with get_db() as conn:
         feed_repo = FeedRepository(conn)
         episode_repo = EpisodeRepository(conn)
@@ -128,13 +152,31 @@ def feed_detail(request: Request, feed_id: int, page: int = 1, per_page: int = 2
                 status_code=404,
             )
 
-        # Get paginated episodes
-        total = episode_repo.count_by_feed(feed_id)
-        offset = (page - 1) * per_page
-        episodes = episode_repo.get_by_feed(feed_id, limit=per_page + offset)
-        episodes = episodes[offset : offset + per_page]
+        # Get total count for the feed (unfiltered)
+        total_all = episode_repo.count_by_feed(feed_id)
 
-        total_pages = (total + per_page - 1) // per_page
+        offset = (page - 1) * per_page
+
+        # Use search_by_feed if there's a query or status filter
+        if q or episode_status:
+            episodes, total = episode_repo.search_by_feed(
+                feed_id,
+                query=q,
+                status=episode_status,
+                limit=per_page,
+                offset=offset,
+            )
+        else:
+            episodes = episode_repo.get_by_feed_paginated(
+                feed_id, limit=per_page, offset=offset
+            )
+            total = total_all
+
+        total_pages = max(1, (total + per_page - 1) // per_page)
+
+        # Clamp page to valid range
+        if page > total_pages:
+            page = total_pages
 
     return templates.TemplateResponse(
         "feed_detail.html",
@@ -144,8 +186,13 @@ def feed_detail(request: Request, feed_id: int, page: int = 1, per_page: int = 2
             "episodes": episodes,
             "page": page,
             "per_page": per_page,
+            "valid_per_page": valid_per_page,
             "total": total,
+            "total_all": total_all,
             "total_pages": total_pages,
+            "query": q or "",
+            "status_filter": status or "",
+            "statuses": [s.value for s in EpisodeStatus],
         },
     )
 
