@@ -378,6 +378,10 @@ def status_page(request: Request):
     # Build unified workers list
     workers = []
 
+    # Track which jobs have been assigned to workers
+    assigned_download_job_ids = set()
+    assigned_transcribe_job_ids = set()
+
     # Add local download workers
     download_job_index = 0
     for i in range(queue_status["download_workers"]):
@@ -387,6 +391,7 @@ def status_page(request: Request):
             item = running_download_episodes[download_job_index]
             job = item["job"]
             episode = item["episode"]
+            assigned_download_job_ids.add(job.id)
             download_job_index += 1
 
         workers.append({
@@ -405,6 +410,7 @@ def status_page(request: Request):
         if not item["job"].assigned_node_id:
             local_tx_job = item["job"]
             local_tx_episode = item["episode"]
+            assigned_transcribe_job_ids.add(local_tx_job.id)
             break
 
     workers.append({
@@ -426,6 +432,7 @@ def status_page(request: Request):
                 if item["job"].assigned_node_id == node.id:
                     node_job = item["job"]
                     node_episode = item["episode"]
+                    assigned_transcribe_job_ids.add(node_job.id)
                     break
 
             workers.append({
@@ -436,6 +443,29 @@ def status_page(request: Request):
                 "episode": node_episode,
                 "progress": node_job.progress_percent if node_job else None,
                 "last_heartbeat": node.last_heartbeat,
+            })
+
+    # Add orphaned running jobs (jobs marked running but not assigned to any active worker)
+    for item in running_download_episodes:
+        if item["job"].id not in assigned_download_job_ids:
+            workers.append({
+                "name": "Orphaned",
+                "type": "download",
+                "status": "stuck",
+                "job": item["job"],
+                "episode": item["episode"],
+                "progress": None,
+            })
+
+    for item in running_transcribe_episodes:
+        if item["job"].id not in assigned_transcribe_job_ids:
+            workers.append({
+                "name": "Orphaned",
+                "type": "transcription",
+                "status": "stuck",
+                "job": item["job"],
+                "episode": item["episode"],
+                "progress": item["job"].progress_percent,
             })
 
     return templates.TemplateResponse(
