@@ -2,8 +2,6 @@
 
 from mcp.server.fastmcp import FastMCP
 
-from cast2md.db.connection import init_db
-
 # Module-level server instance - will be configured before tools/resources import
 mcp: FastMCP = None  # type: ignore
 
@@ -29,8 +27,11 @@ IMPORTANT: When an episode was mentioned earlier in the conversation, use its ID
         port=port,
     )
 
-    # Ensure database is initialized
-    init_db()
+    # Only initialize database in local mode (not when using remote API)
+    from cast2md.mcp.client import is_remote_mode
+    if not is_remote_mode():
+        from cast2md.db.connection import init_db
+        init_db()
 
     # Import tools and resources to register them
     # These modules use @mcp.tool() and @mcp.resource() decorators
