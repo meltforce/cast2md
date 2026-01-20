@@ -510,6 +510,27 @@ def cmd_reindex_transcripts(feed_id: int | None):
     click.echo("Full-text search is now available via /api/search/transcripts")
 
 
+@cli.command("reindex-episodes")
+def cmd_reindex_episodes():
+    """Reindex all episodes for full-text search.
+
+    Rebuilds the episode_fts index from the episode table. This enables
+    word-boundary search on episode titles and descriptions.
+
+    Run this after upgrading if search isn't working correctly.
+    """
+    init_db()
+
+    with get_db() as conn:
+        episode_repo = EpisodeRepository(conn)
+
+        click.echo("Reindexing episodes for full-text search...")
+        count = episode_repo.reindex_all_episodes()
+
+    click.echo(f"Indexed {count} episodes")
+    click.echo("Episode search now uses word-boundary matching")
+
+
 @cli.command("serve")
 @click.option("--host", "-h", default="0.0.0.0", help="Host to bind to")
 @click.option("--port", "-p", default=8000, help="Port to bind to")

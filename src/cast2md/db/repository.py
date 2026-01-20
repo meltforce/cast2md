@@ -174,9 +174,19 @@ class EpisodeRepository:
                 transcript_url, link, author, now, now,
             ),
         )
+        episode_id = cursor.lastrowid
+
+        # Auto-index in FTS for search
+        self.conn.execute(
+            """
+            INSERT INTO episode_fts (title, description, episode_id, feed_id)
+            VALUES (?, ?, ?, ?)
+            """,
+            (title, description or "", episode_id, feed_id),
+        )
         self.conn.commit()
 
-        return self.get_by_id(cursor.lastrowid)
+        return self.get_by_id(episode_id)
 
     def get_by_id(self, episode_id: int) -> Optional[Episode]:
         """Get episode by ID."""
@@ -307,17 +317,63 @@ class EpisodeRepository:
     ) -> tuple[list[Episode], int]:
         """Search episodes by title/description with optional status filter.
 
+        Uses FTS5 full-text search when query is provided for word-boundary matching.
+
         Returns: (episodes, total_count)
         """
+        # Use FTS search when query is provided (word-boundary matching)
+        if query:
+            episode_ids, fts_total = self.search_episodes_fts(
+                query, feed_id=feed_id, limit=limit, offset=offset
+            )
+
+            if not episode_ids:
+                return [], 0
+
+            # Fetch full episode data for matching IDs
+            # Preserve FTS ranking order
+            placeholders = ",".join("?" for _ in episode_ids)
+            id_order = ",".join(str(eid) for eid in episode_ids)
+
+            # Build query with optional status filter
+            if status:
+                cursor = self.conn.execute(
+                    f"""
+                    SELECT {self.EPISODE_COLUMNS} FROM episode
+                    WHERE id IN ({placeholders}) AND status = ?
+                    ORDER BY CASE id {' '.join(f'WHEN {eid} THEN {i}' for i, eid in enumerate(episode_ids))} END
+                    """,
+                    (*episode_ids, status.value),
+                )
+                # Recount with status filter
+                count_cursor = self.conn.execute(
+                    f"""
+                    SELECT COUNT(*) FROM episode
+                    WHERE id IN (
+                        SELECT episode_id FROM episode_fts
+                        WHERE episode_fts MATCH ? AND feed_id = ?
+                    ) AND status = ?
+                    """,
+                    (" ".join(f"{w}*" for w in query.split() if w), feed_id, status.value),
+                )
+                total = count_cursor.fetchone()[0]
+            else:
+                cursor = self.conn.execute(
+                    f"""
+                    SELECT {self.EPISODE_COLUMNS} FROM episode
+                    WHERE id IN ({placeholders})
+                    ORDER BY CASE id {' '.join(f'WHEN {eid} THEN {i}' for i, eid in enumerate(episode_ids))} END
+                    """,
+                    episode_ids,
+                )
+                total = fts_total
+
+            episodes = [Episode.from_row(row) for row in cursor.fetchall()]
+            return episodes, total
+
+        # No query - use simple SQL filtering
         conditions = ["feed_id = ?"]
         params: list = [feed_id]
-
-        if query:
-            conditions.append(
-                "(title LIKE ? COLLATE NOCASE OR description LIKE ? COLLATE NOCASE)"
-            )
-            search_term = f"%{query}%"
-            params.extend([search_term, search_term])
 
         if status:
             conditions.append("status = ?")
@@ -359,9 +415,126 @@ class EpisodeRepository:
 
     def delete(self, episode_id: int) -> bool:
         """Delete an episode."""
+        # Also remove from FTS index
+        self.conn.execute("DELETE FROM episode_fts WHERE episode_id = ?", (episode_id,))
         cursor = self.conn.execute("DELETE FROM episode WHERE id = ?", (episode_id,))
         self.conn.commit()
         return cursor.rowcount > 0
+
+    # --- FTS indexing methods ---
+
+    def index_episode(
+        self,
+        episode_id: int,
+        title: str,
+        description: str | None,
+        feed_id: int,
+    ) -> None:
+        """Add or update an episode in the FTS index."""
+        # Delete existing entry if any
+        self.conn.execute("DELETE FROM episode_fts WHERE episode_id = ?", (episode_id,))
+        # Insert new entry
+        self.conn.execute(
+            """
+            INSERT INTO episode_fts (title, description, episode_id, feed_id)
+            VALUES (?, ?, ?, ?)
+            """,
+            (title, description or "", episode_id, feed_id),
+        )
+        self.conn.commit()
+
+    def reindex_all_episodes(self) -> int:
+        """Rebuild the entire episode FTS index from the episode table.
+
+        Returns:
+            Number of episodes indexed.
+        """
+        # Clear existing FTS data
+        self.conn.execute("DELETE FROM episode_fts")
+
+        # Index all episodes
+        cursor = self.conn.execute(
+            "SELECT id, feed_id, title, description FROM episode"
+        )
+        count = 0
+        for row in cursor.fetchall():
+            episode_id, feed_id, title, description = row
+            self.conn.execute(
+                """
+                INSERT INTO episode_fts (title, description, episode_id, feed_id)
+                VALUES (?, ?, ?, ?)
+                """,
+                (title, description or "", episode_id, feed_id),
+            )
+            count += 1
+
+        self.conn.commit()
+        return count
+
+    def search_episodes_fts(
+        self,
+        query: str,
+        feed_id: int | None = None,
+        limit: int = 25,
+        offset: int = 0,
+    ) -> tuple[list[int], int]:
+        """Search episodes using FTS5 full-text search.
+
+        Args:
+            query: Search query (will be converted to FTS5 syntax).
+            feed_id: Optional feed ID to filter results.
+            limit: Maximum results per page.
+            offset: Pagination offset.
+
+        Returns:
+            (list of episode IDs, total count)
+        """
+        # Convert query to FTS5 match syntax with word prefix matching
+        # e.g., "ai test" -> "ai* test*" to match word prefixes
+        fts_query = " ".join(f"{word}*" for word in query.split() if word)
+
+        if feed_id is not None:
+            # Count total matches for this feed
+            count_cursor = self.conn.execute(
+                """
+                SELECT COUNT(*) FROM episode_fts
+                WHERE episode_fts MATCH ? AND feed_id = ?
+                """,
+                (fts_query, feed_id),
+            )
+            total = count_cursor.fetchone()[0]
+
+            # Get paginated episode IDs
+            cursor = self.conn.execute(
+                """
+                SELECT episode_id FROM episode_fts
+                WHERE episode_fts MATCH ? AND feed_id = ?
+                ORDER BY rank
+                LIMIT ? OFFSET ?
+                """,
+                (fts_query, feed_id, limit, offset),
+            )
+        else:
+            # Count total matches across all feeds
+            count_cursor = self.conn.execute(
+                "SELECT COUNT(*) FROM episode_fts WHERE episode_fts MATCH ?",
+                (fts_query,),
+            )
+            total = count_cursor.fetchone()[0]
+
+            # Get paginated episode IDs
+            cursor = self.conn.execute(
+                """
+                SELECT episode_id FROM episode_fts
+                WHERE episode_fts MATCH ?
+                ORDER BY rank
+                LIMIT ? OFFSET ?
+                """,
+                (fts_query, limit, offset),
+            )
+
+        episode_ids = [row[0] for row in cursor.fetchall()]
+        return episode_ids, total
 
 
 class JobRepository:
