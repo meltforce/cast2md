@@ -85,11 +85,13 @@
                     {% endif %}
                 </td>
                 <td>
-                    {% if worker.progress is not none %}
+                    {% if worker.status == 'stuck' %}
+                    <span style="color: var(--pico-del-color);">needs cancellation</span>
+                    {% elif worker.progress is not none and worker.progress > 0 %}
                     <div class="progress-container">
                         <progress value="{{ worker.progress }}" max="100"></progress>
-                        <small>{{ worker.progress }}%</small>
-                        {% if worker.job and worker.job.started_at and worker.progress > 0 %}
+                        <small class="progress-text">{{ worker.progress }}%</small>
+                        {% if worker.job and worker.job.started_at %}
                         <small class="remaining" data-started="{{ worker.job.started_at.isoformat() }}Z" data-progress="{{ worker.progress }}"></small>
                         {% endif %}
                     </div>
