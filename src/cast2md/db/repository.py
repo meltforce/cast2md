@@ -1022,7 +1022,7 @@ class JobRepository:
     def force_reset(self, job_id: int) -> bool:
         """Force reset a running/stuck job back to queued state.
 
-        Clears started_at, resets status to queued.
+        Clears started_at, assigned_node_id, claimed_at and resets status to queued.
 
         Args:
             job_id: Job ID to reset.
@@ -1033,7 +1033,8 @@ class JobRepository:
         cursor = self.conn.execute(
             """
             UPDATE job_queue
-            SET status = ?, started_at = NULL, error_message = NULL
+            SET status = ?, started_at = NULL, error_message = NULL,
+                assigned_node_id = NULL, claimed_at = NULL, progress_percent = 0
             WHERE id = ? AND status = ?
             """,
             (JobStatus.QUEUED.value, job_id, JobStatus.RUNNING.value),
