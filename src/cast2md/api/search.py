@@ -300,7 +300,7 @@ def get_episode_detail(
         feed_id=episode.feed_id,
         feed_title=feed_title,
         published_at=episode.published_at.isoformat() if episode.published_at else None,
-        duration=episode.duration,
+        duration=episode.duration_seconds,
         description=episode.description,
         transcript_matches=transcript_matches,
     )
