@@ -569,5 +569,216 @@ def cmd_mcp(sse: bool, host: str, port: int):
         run_stdio()
 
 
+# --- Distributed Transcription Node Commands ---
+
+
+@cli.group()
+def node():
+    """Manage this machine as a transcriber node."""
+    pass
+
+
+@node.command("register")
+@click.option("--server", "-s", required=True, help="URL of the cast2md server")
+@click.option("--name", "-n", required=True, help="Name for this node")
+def cmd_node_register(server: str, name: str):
+    """Register this machine as a transcriber node.
+
+    This stores credentials locally in ~/.cast2md/node.json.
+
+    Example:
+        cast2md node register --server http://192.168.1.100:8000 --name "M4 MacBook Pro"
+    """
+    import httpx
+
+    from cast2md.node.config import get_config_path, load_config, save_config, NodeConfig
+
+    # Check if already registered
+    existing = load_config()
+    if existing:
+        click.echo(f"Already registered as '{existing.name}' with server {existing.server_url}")
+        if not click.confirm("Re-register with new server?"):
+            return
+
+    # Normalize server URL
+    if not server.startswith("http"):
+        server = f"http://{server}"
+    server = server.rstrip("/")
+
+    click.echo(f"Registering with server: {server}")
+
+    # Get whisper config to send
+    settings = get_settings()
+
+    try:
+        response = httpx.post(
+            f"{server}/api/nodes/register",
+            json={
+                "name": name,
+                "url": f"http://localhost:8001",  # Node's local server
+                "whisper_model": settings.whisper_model,
+                "whisper_backend": settings.whisper_backend,
+            },
+            timeout=10.0,
+        )
+
+        if response.status_code != 200:
+            click.echo(f"Error: Registration failed: {response.status_code} - {response.text}", err=True)
+            raise SystemExit(1)
+
+        data = response.json()
+        node_id = data["node_id"]
+        api_key = data["api_key"]
+
+        # Save configuration
+        config = NodeConfig(
+            server_url=server,
+            node_id=node_id,
+            api_key=api_key,
+            name=name,
+        )
+        save_config(config)
+
+        click.echo(f"Registered successfully!")
+        click.echo(f"  Node ID: {node_id[:8]}...")
+        click.echo(f"  Config saved to: {get_config_path()}")
+        click.echo()
+        click.echo("Start the node with: cast2md node start")
+
+    except httpx.RequestError as e:
+        click.echo(f"Error: Could not reach server: {e}", err=True)
+        raise SystemExit(1)
+
+
+@node.command("start")
+@click.option("--port", "-p", default=8001, help="Port for node status UI")
+def cmd_node_start(port: int):
+    """Start the transcriber node worker.
+
+    The node will poll the server for jobs, download audio files,
+    transcribe them locally, and upload the results.
+    """
+    import logging
+    import threading
+
+    from cast2md.node.config import load_config
+    from cast2md.node.server import run_server
+    from cast2md.node.worker import TranscriberNodeWorker
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    )
+
+    config = load_config()
+    if not config:
+        click.echo("Error: Node not configured.", err=True)
+        click.echo("Run 'cast2md node register --server <url> --name \"Name\"' first.")
+        raise SystemExit(1)
+
+    click.echo(f"Starting transcriber node '{config.name}'")
+    click.echo(f"Server: {config.server_url}")
+    click.echo(f"Status UI: http://localhost:{port}")
+    click.echo("Press Ctrl+C to stop")
+
+    # Create worker
+    worker = TranscriberNodeWorker(config)
+
+    # Start web server in background thread
+    server_thread = threading.Thread(
+        target=run_server,
+        kwargs={"host": "0.0.0.0", "port": port, "worker": worker},
+        daemon=True,
+    )
+    server_thread.start()
+
+    # Run worker (blocking)
+    try:
+        worker.run()
+    except KeyboardInterrupt:
+        click.echo("\nShutting down...")
+    finally:
+        worker.stop()
+
+
+@node.command("status")
+def cmd_node_status():
+    """Show node status and configuration."""
+    from cast2md.node.config import get_config_path, load_config
+
+    config = load_config()
+    if not config:
+        click.echo("Node not registered.")
+        click.echo(f"Config path: {get_config_path()}")
+        click.echo()
+        click.echo("Register with: cast2md node register --server <url> --name \"Name\"")
+        return
+
+    click.echo("Node Configuration")
+    click.echo("=" * 40)
+    click.echo(f"Name: {config.name}")
+    click.echo(f"Node ID: {config.node_id}")
+    click.echo(f"Server: {config.server_url}")
+    click.echo(f"Config: {get_config_path()}")
+
+    # Try to check server connectivity
+    click.echo()
+    click.echo("Server Connection")
+    click.echo("-" * 40)
+
+    import httpx
+    try:
+        response = httpx.post(
+            f"{config.server_url}/api/nodes/{config.node_id}/heartbeat",
+            headers={"X-Transcriber-Key": config.api_key},
+            json={},
+            timeout=5.0,
+        )
+        if response.status_code == 200:
+            click.echo("Status: Connected")
+        else:
+            click.echo(f"Status: Error ({response.status_code})")
+    except httpx.RequestError as e:
+        click.echo(f"Status: Unreachable ({e})")
+
+
+@node.command("unregister")
+@click.option("--force", "-f", is_flag=True, help="Skip confirmation")
+def cmd_node_unregister(force: bool):
+    """Unregister this node and delete local credentials."""
+    import httpx
+
+    from cast2md.node.config import delete_config, load_config
+
+    config = load_config()
+    if not config:
+        click.echo("Node not registered.")
+        return
+
+    if not force:
+        if not click.confirm(f"Unregister node '{config.name}' from {config.server_url}?"):
+            return
+
+    # Try to delete from server
+    try:
+        response = httpx.delete(
+            f"{config.server_url}/api/nodes/{config.node_id}",
+            headers={"X-Transcriber-Key": config.api_key},
+            timeout=5.0,
+        )
+        if response.status_code == 200:
+            click.echo("Removed from server")
+        else:
+            click.echo(f"Warning: Could not remove from server ({response.status_code})")
+    except httpx.RequestError as e:
+        click.echo(f"Warning: Could not reach server: {e}")
+
+    # Delete local config
+    if delete_config():
+        click.echo("Local credentials deleted")
+    else:
+        click.echo("No local config found")
+
+
 if __name__ == "__main__":
     cli()

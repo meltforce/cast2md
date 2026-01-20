@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Transcriber Node{% endblock %}</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+    <style>
+        :root {
+            --pico-font-size: 16px;
+        }
+        body > nav {
+            padding: 1rem 2rem;
+        }
+        main.container {
+            padding-top: 2rem;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 0.25rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.875rem;
+            font-weight: 500;
+        }
+        .status-online {
+            background: #22c55e;
+            color: white;
+        }
+        .status-offline {
+            background: #ef4444;
+            color: white;
+        }
+        .status-busy {
+            background: #f59e0b;
+            color: white;
+        }
+        .stat-card {
+            text-align: center;
+            padding: 1.5rem;
+        }
+        .stat-card h3 {
+            margin: 0;
+            font-size: 2rem;
+        }
+        .stat-card p {
+            margin: 0.5rem 0 0;
+            color: var(--pico-muted-color);
+        }
+    </style>
+</head>
+<body>
+    <nav class="container-fluid">
+        <ul>
+            <li><strong>Transcriber Node</strong></li>
+        </ul>
+        <ul>
+            <li><a href="/">Status</a></li>
+        </ul>
+    </nav>
+    <main class="container">
+        {% block content %}{% endblock %}
+    </main>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

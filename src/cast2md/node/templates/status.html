@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+
+{% block title %}Status - Transcriber Node{% endblock %}
+
+{% block content %}
+<hgroup>
+    <h1>Node Status</h1>
+    <p>{{ config.name if config else 'Unknown Node' }}</p>
+</hgroup>
+
+{% if not config %}
+<article>
+    <header>
+        <h3>Not Configured</h3>
+    </header>
+    <p>This node is not registered with a server.</p>
+    <p>Run <code>cast2md node register --server &lt;server_url&gt; --name "Node Name"</code> to register.</p>
+</article>
+{% else %}
+
+<article>
+    <header>
+        <h3>Configuration</h3>
+    </header>
+    <table>
+        <tbody>
+            <tr>
+                <td><strong>Node ID</strong></td>
+                <td><code>{{ config.node_id[:8] }}...</code></td>
+            </tr>
+            <tr>
+                <td><strong>Server</strong></td>
+                <td><a href="{{ config.server_url }}">{{ config.server_url }}</a></td>
+            </tr>
+            <tr>
+                <td><strong>Worker Status</strong></td>
+                <td>
+                    {% if is_running %}
+                    <span class="status-badge status-online">Running</span>
+                    {% else %}
+                    <span class="status-badge status-offline">Stopped</span>
+                    {% endif %}
+                </td>
+            </tr>
+        </tbody>
+    </table>
+</article>
+
+{% if current_job %}
+<article>
+    <header>
+        <h3>Current Job</h3>
+    </header>
+    <div class="stat-card">
+        <h3>{{ current_job.episode_title }}</h3>
+        <p>Job #{{ current_job.job_id }}</p>
+        <p><span class="status-badge status-busy">Transcribing...</span></p>
+    </div>
+</article>
+{% else %}
+<article>
+    <header>
+        <h3>Current Job</h3>
+    </header>
+    <div class="stat-card">
+        <p>
+            {% if is_running %}
+            Waiting for jobs...
+            {% else %}
+            Worker not running
+            {% endif %}
+        </p>
+    </div>
+</article>
+{% endif %}
+
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Auto-refresh every 5 seconds if worker is running
+{% if is_running %}
+setTimeout(() => window.location.reload(), 5000);
+{% endif %}
+</script>
+{% endblock %}

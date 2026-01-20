@@ -107,6 +107,57 @@
         <button class="secondary outline" onclick="resetModels()">Reset to Default Models</button>
     </div>
 </article>
+
+<article>
+    <header>
+        <h3>Transcriber Nodes</h3>
+    </header>
+
+    <p>Remote nodes can process transcription jobs in parallel with this server.
+       Enable distributed transcription in settings above to use this feature.</p>
+
+    <table id="nodesTable">
+        <thead>
+            <tr>
+                <th>Name</th>
+                <th>Status</th>
+                <th>Model</th>
+                <th>Last Heartbeat</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            <!-- Populated by JavaScript -->
+        </tbody>
+    </table>
+
+    <details style="margin-top: 1rem;">
+        <summary>Add Node Manually</summary>
+        <form id="addNodeForm" style="margin-top: 1rem;">
+            <div class="grid">
+                <label>
+                    Name
+                    <input type="text" name="name" required placeholder="e.g., M4 MacBook Pro">
+                </label>
+                <label>
+                    URL
+                    <input type="text" name="url" required placeholder="e.g., http://192.168.1.100:8001">
+                </label>
+            </div>
+            <div class="grid">
+                <label>
+                    Whisper Model (optional)
+                    <input type="text" name="whisper_model" placeholder="e.g., large-v3-turbo">
+                </label>
+                <label>
+                    Priority
+                    <input type="number" name="priority" value="10" min="1" max="100">
+                </label>
+            </div>
+            <button type="submit">Add Node</button>
+        </form>
+    </details>
+</article>
 {% endblock %}
 
 {% block scripts %}
@@ -405,8 +456,115 @@ async function resetModels() {
     }
 }
 
-// Load settings and models on page load
+// Nodes management
+async function loadNodes() {
+    try {
+        const response = await fetch('/api/nodes');
+        const data = await response.json();
+
+        const tbody = document.querySelector('#nodesTable tbody');
+        tbody.innerHTML = '';
+
+        if (data.nodes.length === 0) {
+            const row = document.createElement('tr');
+            row.innerHTML = '<td colspan="5" style="text-align: center;">No nodes registered</td>';
+            tbody.appendChild(row);
+            return;
+        }
+
+        for (const node of data.nodes) {
+            const row = document.createElement('tr');
+            const lastHeartbeat = node.last_heartbeat
+                ? new Date(node.last_heartbeat).toLocaleString()
+                : 'Never';
+
+            let statusClass = 'status-pending';
+            if (node.status === 'online') statusClass = 'status-completed';
+            else if (node.status === 'busy') statusClass = 'status-downloading';
+            else if (node.status === 'offline') statusClass = 'status-failed';
+
+            row.innerHTML = `
+                <td><strong>${node.name}</strong><br><small><code>${node.id.slice(0, 8)}...</code></small></td>
+                <td><span class="status-badge ${statusClass}">${node.status}</span></td>
+                <td>${node.whisper_model || '-'}</td>
+                <td>${lastHeartbeat}</td>
+                <td>
+                    <button class="outline secondary" style="padding: 0.25rem 0.5rem; font-size: 0.875rem;"
+                            onclick="testNode('${node.id}')">Test</button>
+                    <button class="outline secondary" style="padding: 0.25rem 0.5rem; font-size: 0.875rem;"
+                            onclick="deleteNode('${node.id}')">Delete</button>
+                </td>
+            `;
+            tbody.appendChild(row);
+        }
+    } catch (error) {
+        console.error('Error loading nodes:', error);
+    }
+}
+
+document.getElementById('addNodeForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const formData = new FormData(e.target);
+    const node = {
+        name: formData.get('name'),
+        url: formData.get('url'),
+        whisper_model: formData.get('whisper_model') || null,
+        priority: parseInt(formData.get('priority')) || 10,
+    };
+
+    try {
+        const response = await fetch('/api/nodes', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(node)
+        });
+        const data = await response.json();
+
+        if (response.ok) {
+            alert(`Node added! API Key: ${data.api_key}\n\nSave this key - it won't be shown again.`);
+            e.target.reset();
+            loadNodes();
+        } else {
+            alert('Error: ' + data.detail);
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+});
+
+async function testNode(nodeId) {
+    try {
+        const response = await fetch(`/api/nodes/${nodeId}/test`, {method: 'POST'});
+        const data = await response.json();
+        alert(data.message);
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
+
+async function deleteNode(nodeId) {
+    if (!confirm('Delete this node?')) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/nodes/${nodeId}`, {method: 'DELETE'});
+        const data = await response.json();
+
+        if (response.ok) {
+            alert(data.message);
+            loadNodes();
+        } else {
+            alert('Error: ' + data.detail);
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
+
+// Load settings, models, and nodes on page load
 loadSettings();
 loadModels();
+loadNodes();
 </script>
 {% endblock %}

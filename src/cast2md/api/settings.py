@@ -80,6 +80,26 @@ def _get_configurable_settings() -> dict:
             "label": "ntfy Topic",
             "description": "Topic name for notifications (required if enabled)",
         },
+        "distributed_transcription_enabled": {
+            "type": "bool",
+            "label": "Enable Distributed Transcription",
+            "description": "Allow remote nodes to process transcription jobs",
+            "full_width": True,
+        },
+        "node_heartbeat_timeout_seconds": {
+            "type": "int",
+            "label": "Node Heartbeat Timeout (seconds)",
+            "description": "Mark nodes offline after this many seconds without heartbeat",
+            "min": 30,
+            "max": 300,
+        },
+        "remote_job_timeout_hours": {
+            "type": "int",
+            "label": "Remote Job Timeout (hours)",
+            "description": "Reclaim jobs from nodes after this many hours",
+            "min": 1,
+            "max": 24,
+        },
     }
 
 

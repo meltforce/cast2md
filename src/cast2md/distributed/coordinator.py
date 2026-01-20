@@ -1,0 +1,188 @@
+"""Remote transcription coordinator for managing distributed nodes."""
+
+import logging
+import threading
+import time
+from typing import Optional
+
+from cast2md.db.connection import get_db
+from cast2md.db.models import NodeStatus
+from cast2md.db.repository import JobRepository, TranscriberNodeRepository
+
+logger = logging.getLogger(__name__)
+
+
+class RemoteTranscriptionCoordinator:
+    """Coordinates remote transcription nodes.
+
+    Responsibilities:
+    - Monitor node heartbeats and mark offline after timeout
+    - Reclaim stuck jobs from offline/unresponsive nodes
+    - Track node status for the UI
+    """
+
+    _instance: Optional["RemoteTranscriptionCoordinator"] = None
+    _lock = threading.Lock()
+
+    def __new__(cls) -> "RemoteTranscriptionCoordinator":
+        if cls._instance is None:
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = super().__new__(cls)
+                    cls._instance._initialized = False
+        return cls._instance
+
+    def __init__(self):
+        if self._initialized:
+            return
+
+        self._initialized = True
+        self._running = False
+        self._thread: Optional[threading.Thread] = None
+        self._stop_event = threading.Event()
+
+        # Configuration (can be overridden via settings)
+        self._heartbeat_timeout_seconds = 60
+        self._job_timeout_hours = 2
+        self._check_interval_seconds = 30
+
+    def start(self):
+        """Start the coordinator background thread."""
+        if self._running:
+            logger.warning("Coordinator already running")
+            return
+
+        self._running = True
+        self._stop_event.clear()
+
+        self._thread = threading.Thread(
+            target=self._run,
+            name="transcription-coordinator",
+            daemon=True,
+        )
+        self._thread.start()
+        logger.info("Started remote transcription coordinator")
+
+    def stop(self, timeout: float = 10.0):
+        """Stop the coordinator."""
+        if not self._running:
+            return
+
+        logger.info("Stopping coordinator...")
+        self._stop_event.set()
+        self._running = False
+
+        if self._thread:
+            self._thread.join(timeout=timeout)
+            self._thread = None
+
+        logger.info("Coordinator stopped")
+
+    def _run(self):
+        """Main coordinator loop."""
+        while not self._stop_event.is_set():
+            try:
+                self._check_nodes()
+                self._reclaim_stale_jobs()
+            except Exception as e:
+                logger.error(f"Coordinator error: {e}")
+
+            # Wait for next check interval
+            self._stop_event.wait(timeout=self._check_interval_seconds)
+
+    def _check_nodes(self):
+        """Check node heartbeats and mark stale nodes as offline."""
+        with get_db() as conn:
+            node_repo = TranscriberNodeRepository(conn)
+
+            # Get nodes that haven't sent a heartbeat recently
+            stale_nodes = node_repo.get_stale_nodes(
+                timeout_seconds=self._heartbeat_timeout_seconds
+            )
+
+            for node in stale_nodes:
+                logger.warning(f"Node '{node.name}' ({node.id}) is stale, marking offline")
+                node_repo.mark_offline(node.id)
+
+                # If node had a job, that job will be reclaimed in _reclaim_stale_jobs
+
+    def _reclaim_stale_jobs(self):
+        """Reclaim jobs that have been running too long on nodes."""
+        with get_db() as conn:
+            job_repo = JobRepository(conn)
+
+            # Reclaim jobs that have been running > timeout on any node
+            reclaimed = job_repo.reclaim_stale_jobs(
+                timeout_hours=self._job_timeout_hours
+            )
+
+            if reclaimed > 0:
+                logger.info(f"Reclaimed {reclaimed} stale jobs from nodes")
+
+    def configure(
+        self,
+        heartbeat_timeout_seconds: int | None = None,
+        job_timeout_hours: int | None = None,
+        check_interval_seconds: int | None = None,
+    ):
+        """Update coordinator configuration.
+
+        Args:
+            heartbeat_timeout_seconds: Seconds after which a node is considered stale.
+            job_timeout_hours: Hours after which a running job is reclaimed.
+            check_interval_seconds: How often to check for stale nodes/jobs.
+        """
+        if heartbeat_timeout_seconds is not None:
+            self._heartbeat_timeout_seconds = heartbeat_timeout_seconds
+        if job_timeout_hours is not None:
+            self._job_timeout_hours = job_timeout_hours
+        if check_interval_seconds is not None:
+            self._check_interval_seconds = check_interval_seconds
+
+    @property
+    def is_running(self) -> bool:
+        """Check if coordinator is running."""
+        return self._running
+
+    def get_status(self) -> dict:
+        """Get coordinator status information."""
+        with get_db() as conn:
+            node_repo = TranscriberNodeRepository(conn)
+            nodes = node_repo.get_all()
+            status_counts = node_repo.count_by_status()
+
+        online_count = status_counts.get(NodeStatus.ONLINE.value, 0)
+        busy_count = status_counts.get(NodeStatus.BUSY.value, 0)
+        offline_count = status_counts.get(NodeStatus.OFFLINE.value, 0)
+
+        return {
+            "running": self._running,
+            "total_nodes": len(nodes),
+            "online_nodes": online_count,
+            "busy_nodes": busy_count,
+            "offline_nodes": offline_count,
+            "heartbeat_timeout_seconds": self._heartbeat_timeout_seconds,
+            "job_timeout_hours": self._job_timeout_hours,
+            "nodes": [
+                {
+                    "id": n.id,
+                    "name": n.name,
+                    "status": n.status.value,
+                    "current_job_id": n.current_job_id,
+                    "last_heartbeat": n.last_heartbeat.isoformat() if n.last_heartbeat else None,
+                }
+                for n in nodes
+            ],
+        }
+
+
+# Global instance
+_coordinator: Optional[RemoteTranscriptionCoordinator] = None
+
+
+def get_coordinator() -> RemoteTranscriptionCoordinator:
+    """Get or create the global coordinator instance."""
+    global _coordinator
+    if _coordinator is None:
+        _coordinator = RemoteTranscriptionCoordinator()
+    return _coordinator

@@ -258,6 +258,24 @@ def get_transcription_service() -> TranscriptionService:
     return TranscriptionService()
 
 
+def transcribe_audio(audio_path: str, include_timestamps: bool = True, title: str = "") -> str:
+    """Transcribe an audio file and return the transcript as markdown.
+
+    This is a convenience function for remote nodes that just need the transcript text.
+
+    Args:
+        audio_path: Path to the audio file.
+        include_timestamps: Whether to include timestamps in output.
+        title: Optional title for the transcript.
+
+    Returns:
+        Markdown formatted transcript text.
+    """
+    service = get_transcription_service()
+    result = service.transcribe(Path(audio_path))
+    return result.to_markdown(title=title, include_timestamps=include_timestamps)
+
+
 def transcribe_episode(episode: Episode, feed: Feed, include_timestamps: bool = True) -> Path:
     """Transcribe an episode and save the result.
 

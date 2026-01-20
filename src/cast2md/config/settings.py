@@ -44,6 +44,11 @@ class Settings(BaseSettings):
     ntfy_url: str = "https://ntfy.sh"
     ntfy_topic: str = ""  # Required if enabled
 
+    # Distributed transcription
+    distributed_transcription_enabled: bool = False
+    node_heartbeat_timeout_seconds: int = 60
+    remote_job_timeout_hours: int = 2
+
     def ensure_directories(self) -> None:
         """Create required directories if they don't exist."""
         self.database_path.parent.mkdir(parents=True, exist_ok=True)

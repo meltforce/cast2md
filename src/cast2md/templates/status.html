@@ -77,6 +77,72 @@
     </div>
 </article>
 
+{% if queue_status.distributed_enabled and queue_status.coordinator %}
+<!-- Remote Nodes Status -->
+<article>
+    <header>
+        <h3>Remote Transcriber Nodes
+            {% if queue_status.coordinator.running %}
+            <span class="status-badge status-completed">Coordinating</span>
+            {% else %}
+            <span class="status-badge status-failed">Inactive</span>
+            {% endif %}
+        </h3>
+    </header>
+    <div class="stats-grid">
+        <div class="stat-card">
+            <h3>{{ queue_status.coordinator.total_nodes }}</h3>
+            <p>Total Nodes</p>
+        </div>
+        <div class="stat-card">
+            <h3>{{ queue_status.coordinator.online_nodes }}</h3>
+            <p>Online</p>
+        </div>
+        <div class="stat-card">
+            <h3>{{ queue_status.coordinator.busy_nodes }}</h3>
+            <p>Busy</p>
+        </div>
+        <div class="stat-card">
+            <h3>{{ queue_status.coordinator.offline_nodes }}</h3>
+            <p>Offline</p>
+        </div>
+    </div>
+
+    {% if queue_status.coordinator.nodes %}
+    <table style="margin-top: 1rem;">
+        <thead>
+            <tr>
+                <th>Node</th>
+                <th>Status</th>
+                <th>Current Job</th>
+                <th>Last Heartbeat</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for node in queue_status.coordinator.nodes %}
+            <tr>
+                <td><strong>{{ node.name }}</strong></td>
+                <td>
+                    {% if node.status == 'online' %}
+                    <span class="status-badge status-completed">online</span>
+                    {% elif node.status == 'busy' %}
+                    <span class="status-badge status-downloading">busy</span>
+                    {% else %}
+                    <span class="status-badge status-failed">offline</span>
+                    {% endif %}
+                </td>
+                <td>{% if node.current_job_id %}Job #{{ node.current_job_id }}{% else %}-{% endif %}</td>
+                <td>{% if node.last_heartbeat %}{{ node.last_heartbeat }}{% else %}Never{% endif %}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p style="margin-top: 1rem;">No nodes registered. Add nodes via <a href="/settings">Settings</a> or using the CLI.</p>
+    {% endif %}
+</article>
+{% endif %}
+
 {% if running_downloads or running_transcriptions %}
 <article>
     <header><h3>Currently Processing</h3></header>
