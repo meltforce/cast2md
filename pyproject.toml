@@ -32,6 +32,7 @@ dependencies = [
     "jinja2>=3.1.0",
     "apscheduler>=3.10.0",
     "bleach>=6.0",
+    "mcp[cli]>=1.2.0",
 ]
 
 [project.optional-dependencies]

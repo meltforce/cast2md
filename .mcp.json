@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "podcasts": {
+      "command": "/Library/Frameworks/Python.framework/Versions/3.11/bin/cast2md",
+      "args": ["mcp"]
+    }
+  }
+}
