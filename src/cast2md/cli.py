@@ -2,6 +2,8 @@
 
 import shutil
 import sqlite3
+import time
+import webbrowser
 from datetime import datetime
 from pathlib import Path
 
@@ -691,6 +693,10 @@ def cmd_node_start(port: int):
         daemon=True,
     )
     server_thread.start()
+
+    # Give server time to start, then open browser
+    time.sleep(0.5)
+    webbrowser.open(f"http://localhost:{port}")
 
     # Run worker (blocking)
     try:

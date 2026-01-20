@@ -4,6 +4,7 @@ import logging
 from pathlib import Path
 from typing import Optional
 
+import httpx
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
@@ -77,6 +78,38 @@ def create_app(worker: Optional[TranscriberNodeWorker] = None) -> FastAPI:
     async def health():
         """Health check endpoint."""
         return {"status": "healthy"}
+
+    @app.get("/queue", response_class=HTMLResponse)
+    async def queue_page(request: Request):
+        """Show queue status from main server."""
+        config = load_config()
+        queue_data = None
+        error = None
+
+        if config:
+            try:
+                async with httpx.AsyncClient() as client:
+                    response = await client.get(
+                        f"{config.server_url}/api/queue/status",
+                        headers={"X-Transcriber-Key": config.api_key},
+                        timeout=10.0,
+                    )
+                    if response.status_code == 200:
+                        queue_data = response.json()
+                    else:
+                        error = f"Server returned {response.status_code}"
+            except Exception as e:
+                error = str(e)
+
+        return templates.TemplateResponse(
+            "queue.html",
+            {
+                "request": request,
+                "config": config,
+                "queue": queue_data,
+                "error": error,
+            },
+        )
 
     return app
 

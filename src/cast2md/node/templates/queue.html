@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+
+{% block title %}Queue - Transcriber Node{% endblock %}
+
+{% block content %}
+<hgroup>
+    <h1>Transcription Queue</h1>
+    <p>Jobs from {{ config.server_url if config else 'server' }}</p>
+</hgroup>
+
+{% if not config %}
+<article>
+    <header>
+        <h3>Not Configured</h3>
+    </header>
+    <p>This node is not registered with a server.</p>
+    <p>Run <code>cast2md node register --server &lt;server_url&gt; --name "Node Name"</code> to register.</p>
+</article>
+{% elif error %}
+<article>
+    <header>
+        <h3>Error Loading Queue</h3>
+    </header>
+    <p>{{ error }}</p>
+</article>
+{% elif queue %}
+
+<div class="grid">
+    <article class="stat-card">
+        <h3>{{ queue.transcribe_queue.queued }}</h3>
+        <p>Queued</p>
+    </article>
+    <article class="stat-card">
+        <h3>{{ queue.transcribe_queue.running }}</h3>
+        <p>Running</p>
+    </article>
+    <article class="stat-card">
+        <h3>{{ queue.transcribe_queue.completed }}</h3>
+        <p>Completed</p>
+    </article>
+    <article class="stat-card">
+        <h3>{{ queue.transcribe_queue.failed }}</h3>
+        <p>Failed</p>
+    </article>
+</div>
+
+{% if queue.transcribe_queue.running_jobs %}
+<article>
+    <header>
+        <h3>Running Jobs</h3>
+    </header>
+    <table>
+        <thead>
+            <tr>
+                <th>Job ID</th>
+                <th>Episode</th>
+                <th>Priority</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for job in queue.transcribe_queue.running_jobs %}
+            <tr>
+                <td>{{ job.job_id }}</td>
+                <td>{{ job.episode_title }}</td>
+                <td>{{ job.priority }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</article>
+{% endif %}
+
+{% if queue.transcribe_queue.queued_jobs %}
+<article>
+    <header>
+        <h3>Queued Jobs</h3>
+    </header>
+    <table>
+        <thead>
+            <tr>
+                <th>Job ID</th>
+                <th>Episode</th>
+                <th>Priority</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for job in queue.transcribe_queue.queued_jobs %}
+            <tr>
+                <td>{{ job.job_id }}</td>
+                <td>{{ job.episode_title }}</td>
+                <td>{{ job.priority }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</article>
+{% endif %}
+
+{% if not queue.transcribe_queue.running_jobs and not queue.transcribe_queue.queued_jobs %}
+<article>
+    <div class="stat-card">
+        <p>No transcription jobs in queue</p>
+    </div>
+</article>
+{% endif %}
+
+{% else %}
+<article>
+    <header>
+        <h3>Loading...</h3>
+    </header>
+    <p>Unable to load queue status.</p>
+</article>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Auto-refresh every 10 seconds
+setTimeout(() => window.location.reload(), 10000);
+</script>
+{% endblock %}

@@ -55,6 +55,12 @@
         <h3>{{ current_job.episode_title }}</h3>
         <p>Job #{{ current_job.job_id }}</p>
         <p><span class="status-badge status-busy">Transcribing...</span></p>
+        {% if current_job.elapsed_seconds is not none %}
+        <p style="margin-top: 0.5rem;">
+            <small>Elapsed: <span id="elapsed">{{ current_job.elapsed_seconds // 60 }}:{{ '%02d' % (current_job.elapsed_seconds % 60) }}</span></small>
+        </p>
+        {% endif %}
+        <progress style="margin-top: 1rem;"></progress>
     </div>
 </article>
 {% else %}
@@ -79,6 +85,18 @@
 
 {% block scripts %}
 <script>
+{% if current_job and current_job.elapsed_seconds is not none %}
+// Update elapsed time every second
+let elapsed = {{ current_job.elapsed_seconds }};
+const elapsedSpan = document.getElementById('elapsed');
+setInterval(() => {
+    elapsed++;
+    const mins = Math.floor(elapsed / 60);
+    const secs = elapsed % 60;
+    elapsedSpan.textContent = mins + ':' + String(secs).padStart(2, '0');
+}, 1000);
+{% endif %}
+
 // Auto-refresh every 5 seconds if worker is running
 {% if is_running %}
 setTimeout(() => window.location.reload(), 5000);
