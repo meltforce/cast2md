@@ -93,6 +93,16 @@ CREATE VIRTUAL TABLE IF NOT EXISTS transcript_fts USING fts5(
     segment_end UNINDEXED,   -- End time in seconds
     tokenize='porter unicode61 remove_diacritics 1'
 );
+
+-- FTS5 virtual table for episode title/description search
+-- Enables word-boundary search (not substring matching)
+CREATE VIRTUAL TABLE IF NOT EXISTS episode_fts USING fts5(
+    title,                   -- Episode title (searchable)
+    description,             -- Episode description (searchable)
+    episode_id UNINDEXED,    -- Reference to episode (not searchable)
+    feed_id UNINDEXED,       -- Reference to feed for filtering (not searchable)
+    tokenize='porter unicode61 remove_diacritics 1'
+);
 """
 
 
