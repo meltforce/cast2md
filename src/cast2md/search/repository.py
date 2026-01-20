@@ -348,6 +348,7 @@ class TranscriptSearchRepository:
         """
 
         # Query 2: Get episodes with transcript matches and count
+        # Note: bm25() can't be used with aggregate functions, so we get best rank via subquery
         transcript_fts_sql = f"""
             SELECT
                 e.id as episode_id,
@@ -355,13 +356,16 @@ class TranscriptSearchRepository:
                 e.feed_id,
                 COALESCE(f.custom_title, f.title) as feed_title,
                 e.published_at,
-                MIN(bm25(transcript_fts)) as rank,
-                COUNT(*) as match_count
-            FROM transcript_fts t
-            JOIN episode e ON t.episode_id = e.id
+                (SELECT bm25(transcript_fts) FROM transcript_fts
+                 WHERE text MATCH ? AND episode_id = e.id
+                 ORDER BY bm25(transcript_fts) LIMIT 1) as rank,
+                (SELECT COUNT(*) FROM transcript_fts
+                 WHERE text MATCH ? AND episode_id = e.id) as match_count
+            FROM episode e
             JOIN feed f ON e.feed_id = f.id
-            WHERE t.text MATCH ?{transcript_feed_filter}
-            GROUP BY e.id
+            WHERE e.id IN (
+                SELECT DISTINCT episode_id FROM transcript_fts WHERE text MATCH ?
+            ){transcript_feed_filter}
         """
 
         # Combine and aggregate results in Python
@@ -388,7 +392,7 @@ class TranscriptSearchRepository:
             # Get transcript FTS matches
             cursor = self.conn.execute(
                 transcript_fts_sql,
-                [fts_query] + transcript_feed_params,
+                [fts_query, fts_query, fts_query] + transcript_feed_params,
             )
             for row in cursor.fetchall():
                 ep_id = row[0]
