@@ -5,7 +5,7 @@ import platform
 import threading
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 from cast2md.config.settings import get_settings
 
@@ -168,11 +168,16 @@ class TranscriptionService:
                 compute_type=settings.whisper_compute_type,
             )
 
-    def transcribe(self, audio_path: Path) -> TranscriptResult:
+    def transcribe(
+        self,
+        audio_path: Path,
+        progress_callback: Optional[Callable[[int], None]] = None,
+    ) -> TranscriptResult:
         """Transcribe an audio file.
 
         Args:
             audio_path: Path to the audio file.
+            progress_callback: Optional callback that receives progress percentage (0-100).
 
         Returns:
             TranscriptResult with segments and metadata.
@@ -181,11 +186,16 @@ class TranscriptionService:
         processed_path = preprocess_audio(audio_path)
 
         if self.backend == "mlx":
+            # mlx-whisper returns all segments at once, no streaming progress
             return self._transcribe_mlx(processed_path)
         else:
-            return self._transcribe_faster_whisper(processed_path)
+            return self._transcribe_faster_whisper(processed_path, progress_callback)
 
-    def _transcribe_faster_whisper(self, audio_path: Path) -> TranscriptResult:
+    def _transcribe_faster_whisper(
+        self,
+        audio_path: Path,
+        progress_callback: Optional[Callable[[int], None]] = None,
+    ) -> TranscriptResult:
         """Transcribe using faster-whisper backend."""
         segments_iter, info = self.model.transcribe(
             str(audio_path),
@@ -195,14 +205,22 @@ class TranscriptionService:
             ),
         )
 
-        segments = [
-            TranscriptSegment(
-                start=seg.start,
-                end=seg.end,
-                text=seg.text,
+        segments = []
+        duration = info.duration if info.duration else 0
+
+        for seg in segments_iter:
+            segments.append(
+                TranscriptSegment(
+                    start=seg.start,
+                    end=seg.end,
+                    text=seg.text,
+                )
             )
-            for seg in segments_iter
-        ]
+            # Report progress based on segment end time vs total duration
+            if progress_callback and duration > 0:
+                progress = int((seg.end / duration) * 100)
+                progress = min(99, progress)  # Cap at 99 until complete
+                progress_callback(progress)
 
         return TranscriptResult(
             segments=segments,
@@ -258,7 +276,12 @@ def get_transcription_service() -> TranscriptionService:
     return TranscriptionService()
 
 
-def transcribe_audio(audio_path: str, include_timestamps: bool = True, title: str = "") -> str:
+def transcribe_audio(
+    audio_path: str,
+    include_timestamps: bool = True,
+    title: str = "",
+    progress_callback: Optional[Callable[[int], None]] = None,
+) -> str:
     """Transcribe an audio file and return the transcript as markdown.
 
     This is a convenience function for remote nodes that just need the transcript text.
@@ -267,22 +290,29 @@ def transcribe_audio(audio_path: str, include_timestamps: bool = True, title: st
         audio_path: Path to the audio file.
         include_timestamps: Whether to include timestamps in output.
         title: Optional title for the transcript.
+        progress_callback: Optional callback that receives progress percentage (0-100).
 
     Returns:
         Markdown formatted transcript text.
     """
     service = get_transcription_service()
-    result = service.transcribe(Path(audio_path))
+    result = service.transcribe(Path(audio_path), progress_callback=progress_callback)
     return result.to_markdown(title=title, include_timestamps=include_timestamps)
 
 
-def transcribe_episode(episode: Episode, feed: Feed, include_timestamps: bool = True) -> Path:
+def transcribe_episode(
+    episode: Episode,
+    feed: Feed,
+    include_timestamps: bool = True,
+    progress_callback: Optional[Callable[[int], None]] = None,
+) -> Path:
     """Transcribe an episode and save the result.
 
     Args:
         episode: Episode to transcribe (must have audio_path set).
         feed: Feed the episode belongs to.
         include_timestamps: Whether to include timestamps in output (default True).
+        progress_callback: Optional callback that receives progress percentage (0-100).
 
     Returns:
         Path to the transcript file.
@@ -317,7 +347,7 @@ def transcribe_episode(episode: Episode, feed: Feed, include_timestamps: bool = 
         try:
             # Run transcription
             service = get_transcription_service()
-            result = service.transcribe(audio_path)
+            result = service.transcribe(audio_path, progress_callback=progress_callback)
 
             # Write transcript to file
             markdown = result.to_markdown(

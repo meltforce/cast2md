@@ -8,8 +8,13 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
 from cast2md.db.connection import get_db
-from cast2md.db.models import EpisodeStatus, JobType
-from cast2md.db.repository import EpisodeRepository, FeedRepository, JobRepository
+from cast2md.db.models import EpisodeStatus, JobType, NodeStatus
+from cast2md.db.repository import (
+    EpisodeRepository,
+    FeedRepository,
+    JobRepository,
+    TranscriberNodeRepository,
+)
 from cast2md.worker import get_worker_manager
 
 router = APIRouter(tags=["web"])
@@ -302,6 +307,7 @@ def status_page(request: Request):
         episode_repo = EpisodeRepository(conn)
         feed_repo = FeedRepository(conn)
         job_repo = JobRepository(conn)
+        node_repo = TranscriberNodeRepository(conn)
 
         status_counts = episode_repo.count_by_status()
         feeds = feed_repo.get_all()
@@ -353,9 +359,75 @@ def status_page(request: Request):
             and ep.id not in queued_transcribe_episode_ids
         ]
 
+        # Get all remote nodes for the unified workers table
+        nodes = node_repo.get_all()
+
     # Get worker status
     worker_manager = get_worker_manager()
     queue_status = worker_manager.get_status()
+
+    # Build unified workers list
+    workers = []
+
+    # Add local download workers
+    download_job_index = 0
+    for i in range(queue_status["download_workers"]):
+        job = None
+        episode = None
+        if download_job_index < len(running_download_episodes):
+            item = running_download_episodes[download_job_index]
+            job = item["job"]
+            episode = item["episode"]
+            download_job_index += 1
+
+        workers.append({
+            "name": f"Local DL {i+1}",
+            "type": "download",
+            "status": "busy" if job else "idle",
+            "job": job,
+            "episode": episode,
+            "progress": None,  # Downloads don't track progress (indeterminate)
+        })
+
+    # Add local transcription worker
+    local_tx_job = None
+    local_tx_episode = None
+    for item in running_transcribe_episodes:
+        if not item["job"].assigned_node_id:
+            local_tx_job = item["job"]
+            local_tx_episode = item["episode"]
+            break
+
+    workers.append({
+        "name": "Local TX",
+        "type": "transcription",
+        "status": "busy" if local_tx_job else "idle",
+        "job": local_tx_job,
+        "episode": local_tx_episode,
+        "progress": local_tx_job.progress_percent if local_tx_job else None,
+    })
+
+    # Add remote nodes (only if distributed transcription is enabled)
+    if queue_status.get("distributed_enabled"):
+        for node in nodes:
+            # Find if this node has a running job
+            node_job = None
+            node_episode = None
+            for item in running_transcribe_episodes:
+                if item["job"].assigned_node_id == node.id:
+                    node_job = item["job"]
+                    node_episode = item["episode"]
+                    break
+
+            workers.append({
+                "name": node.name,
+                "type": "transcription",
+                "status": node.status.value,
+                "job": node_job,
+                "episode": node_episode,
+                "progress": node_job.progress_percent if node_job else None,
+                "last_heartbeat": node.last_heartbeat,
+            })
 
     return templates.TemplateResponse(
         "status.html",
@@ -373,6 +445,7 @@ def status_page(request: Request):
             "queued_transcriptions": queued_transcribe_episodes,
             "running_downloads": running_download_episodes,
             "running_transcriptions": running_transcribe_episodes,
+            "workers": workers,
         },
     )
 

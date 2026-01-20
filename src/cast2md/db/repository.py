@@ -832,10 +832,29 @@ class JobRepository:
         self.conn.execute(
             """
             UPDATE job_queue
-            SET status = ?, completed_at = ?
+            SET status = ?, completed_at = ?, progress_percent = 100
             WHERE id = ?
             """,
             (JobStatus.COMPLETED.value, now, job_id),
+        )
+        self.conn.commit()
+
+    def update_progress(self, job_id: int, progress_percent: int) -> None:
+        """Update job progress percentage.
+
+        Args:
+            job_id: Job ID to update.
+            progress_percent: Progress percentage (0-100).
+        """
+        # Clamp to valid range
+        progress_percent = max(0, min(100, progress_percent))
+        self.conn.execute(
+            """
+            UPDATE job_queue
+            SET progress_percent = ?
+            WHERE id = ?
+            """,
+            (progress_percent, job_id),
         )
         self.conn.commit()
 

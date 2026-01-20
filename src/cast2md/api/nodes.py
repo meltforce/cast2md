@@ -114,6 +114,12 @@ class JobFailRequest(BaseModel):
     error_message: str
 
 
+class JobProgressRequest(BaseModel):
+    """Request to update job progress."""
+
+    progress_percent: int
+
+
 class MessageResponse(BaseModel):
     """Generic message response."""
 
@@ -354,6 +360,37 @@ def complete_job(
         node_repo.update_status(node.id, NodeStatus.ONLINE, current_job_id=None)
 
     return MessageResponse(message="Job completed successfully")
+
+
+@router.post("/jobs/{job_id}/progress", response_model=MessageResponse)
+def update_job_progress(
+    job_id: int,
+    request: JobProgressRequest,
+    api_key: str = Depends(verify_node_api_key),
+):
+    """Update job progress.
+
+    The node calls this periodically during transcription to report progress.
+    """
+    with get_db() as conn:
+        job_repo = JobRepository(conn)
+        node_repo = TranscriberNodeRepository(conn)
+
+        node = node_repo.get_by_api_key(api_key)
+        if not node:
+            raise HTTPException(status_code=401, detail="Invalid API key")
+
+        job = job_repo.get_by_id(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="Job not found")
+
+        if job.assigned_node_id != node.id:
+            raise HTTPException(status_code=403, detail="Job not assigned to this node")
+
+        # Update progress
+        job_repo.update_progress(job_id, request.progress_percent)
+
+    return MessageResponse(message="Progress updated")
 
 
 @router.post("/jobs/{job_id}/fail", response_model=MessageResponse)

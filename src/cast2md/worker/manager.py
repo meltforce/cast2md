@@ -238,9 +238,23 @@ class WorkerManager:
                 job_repo.mark_failed(job_id, "Episode not downloaded", retry=False)
                 return
 
+        # Create progress callback that updates the database
+        last_progress = [0]  # Use list to allow mutation in closure
+
+        def progress_callback(progress: int):
+            # Only update if progress changed significantly (avoid too many DB writes)
+            if progress > last_progress[0] + 2 or progress >= 99:
+                last_progress[0] = progress
+                try:
+                    with get_db() as conn:
+                        job_repo = JobRepository(conn)
+                        job_repo.update_progress(job_id, progress)
+                except Exception as e:
+                    logger.debug(f"Failed to update progress for job {job_id}: {e}")
+
         try:
             # Perform the transcription (uses its own db connection)
-            transcribe_episode(episode, feed)
+            transcribe_episode(episode, feed, progress_callback=progress_callback)
 
             with get_db() as conn:
                 job_repo = JobRepository(conn)

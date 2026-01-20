@@ -40,10 +40,10 @@
     </div>
 </div>
 
-<!-- Worker Status -->
+<!-- Active Workers -->
 <article>
     <header>
-        <h3>Workers
+        <h3>Active Workers
             {% if queue_status.running %}
             <span class="status-badge status-completed">Running</span>
             {% else %}
@@ -51,147 +51,60 @@
             {% endif %}
         </h3>
     </header>
-    <div class="stats-grid">
-        <div class="stat-card">
-            <h3>{{ queue_status.download_workers }}</h3>
-            <p>Download Workers</p>
-            {% for item in running_downloads %}
-            <small style="display:block; margin-top:0.5rem;">
-                <span class="status-badge status-downloading">DL</span>
-                <a href="/episodes/{{ item.episode.id }}">{{ item.episode.title[:30] }}{% if item.episode.title|length > 30 %}...{% endif %}</a>
-                <span class="elapsed" data-started="{{ item.job.started_at.isoformat() }}Z"></span>
-            </small>
-            {% endfor %}
-        </div>
-        <div class="stat-card">
-            <h3>{{ queue_status.transcribe_workers }}</h3>
-            <p>Transcription Workers</p>
-            {% for item in running_transcriptions %}
-            {% if not item.job.assigned_node_id %}
-            <small style="display:block; margin-top:0.5rem;">
-                <span class="status-badge status-transcribing">TX</span>
-                <a href="/episodes/{{ item.episode.id }}">{{ item.episode.title[:30] }}{% if item.episode.title|length > 30 %}...{% endif %}</a>
-                <span class="elapsed" data-started="{{ item.job.started_at.isoformat() }}Z"></span>
-            </small>
-            {% endif %}
-            {% endfor %}
-        </div>
-    </div>
-</article>
-
-{% if queue_status.distributed_enabled and queue_status.coordinator %}
-<!-- Remote Nodes Status -->
-<article>
-    <header>
-        <h3>Remote Transcriber Nodes
-            {% if queue_status.coordinator.running %}
-            <span class="status-badge status-completed">Coordinating</span>
-            {% else %}
-            <span class="status-badge status-failed">Inactive</span>
-            {% endif %}
-        </h3>
-    </header>
-    <div class="stats-grid">
-        <div class="stat-card">
-            <h3>{{ queue_status.coordinator.total_nodes }}</h3>
-            <p>Total Nodes</p>
-        </div>
-        <div class="stat-card">
-            <h3>{{ queue_status.coordinator.online_nodes }}</h3>
-            <p>Online</p>
-        </div>
-        <div class="stat-card">
-            <h3>{{ queue_status.coordinator.busy_nodes }}</h3>
-            <p>Busy</p>
-        </div>
-        <div class="stat-card">
-            <h3>{{ queue_status.coordinator.offline_nodes }}</h3>
-            <p>Offline</p>
-        </div>
-    </div>
-
-    {% if queue_status.coordinator.nodes %}
-    <table style="margin-top: 1rem;">
+    <table>
         <thead>
             <tr>
-                <th>Node</th>
+                <th>Worker</th>
                 <th>Status</th>
                 <th>Current Job</th>
-                <th>Last Heartbeat</th>
+                <th>Progress</th>
             </tr>
         </thead>
         <tbody>
-            {% for node in queue_status.coordinator.nodes %}
+            {% for worker in workers %}
             <tr>
-                <td><strong>{{ node.name }}</strong></td>
+                <td><strong>{{ worker.name }}</strong></td>
                 <td>
-                    {% if node.status == 'online' %}
-                    <span class="status-badge status-completed">online</span>
-                    {% elif node.status == 'busy' %}
+                    {% if worker.status == 'busy' %}
                     <span class="status-badge status-downloading">busy</span>
-                    {% else %}
+                    {% elif worker.status == 'online' %}
+                    <span class="status-badge status-completed">online</span>
+                    {% elif worker.status == 'offline' %}
                     <span class="status-badge status-failed">offline</span>
+                    {% else %}
+                    <span class="status-badge status-pending">idle</span>
                     {% endif %}
                 </td>
                 <td>
-                    {% if node.current_job_id %}
-                        {% for item in running_transcriptions %}
-                        {% if item.job.id == node.current_job_id %}
-                        <a href="/episodes/{{ item.episode.id }}">{{ item.episode.title[:30] }}{% if item.episode.title|length > 30 %}...{% endif %}</a>
-                        <span class="elapsed" data-started="{{ item.job.started_at.isoformat() }}Z"></span>
-                        {% endif %}
-                        {% endfor %}
+                    {% if worker.episode %}
+                    <a href="/episodes/{{ worker.episode.id }}">{{ worker.episode.title[:40] }}{% if worker.episode.title|length > 40 %}...{% endif %}</a>
+                    {% if worker.job and worker.job.started_at %}
+                    <span class="elapsed" data-started="{{ worker.job.started_at.isoformat() }}Z"></span>
+                    {% endif %}
                     {% else %}
                     -
                     {% endif %}
                 </td>
-                <td>{% if node.last_heartbeat %}<span class="local-time" data-utc="{{ node.last_heartbeat }}">{{ node.last_heartbeat }}</span>{% else %}Never{% endif %}</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-    {% else %}
-    <p style="margin-top: 1rem;">No nodes registered. Add nodes via <a href="/settings">Settings</a> or using the CLI.</p>
-    {% endif %}
-</article>
-{% endif %}
-
-{% if running_downloads or running_transcriptions %}
-<article>
-    <header><h3>Currently Processing</h3></header>
-    <table>
-        <thead>
-            <tr><th>Episode</th><th>Task</th><th>Worker</th><th>Status</th></tr>
-        </thead>
-        <tbody>
-            {% for item in running_downloads %}
-            <tr>
-                <td><a href="/episodes/{{ item.episode.id }}">{{ item.episode.title }}</a></td>
-                <td>Download</td>
-                <td>Local</td>
-                <td><span class="status-badge status-downloading">running</span></td>
-            </tr>
-            {% endfor %}
-            {% for item in running_transcriptions %}
-            <tr>
-                <td><a href="/episodes/{{ item.episode.id }}">{{ item.episode.title }}</a></td>
-                <td>Transcription</td>
                 <td>
-                    {% if item.job.assigned_node_id %}
-                        {% for node in queue_status.coordinator.nodes %}
-                        {% if node.id == item.job.assigned_node_id %}{{ node.name }}{% endif %}
-                        {% endfor %}
+                    {% if worker.progress is not none %}
+                    <div class="progress-container">
+                        <progress value="{{ worker.progress }}" max="100"></progress>
+                        <small>{{ worker.progress }}%</small>
+                    </div>
+                    {% elif worker.status == 'busy' %}
+                    <div class="progress-container">
+                        <progress class="indeterminate"></progress>
+                        <small>...</small>
+                    </div>
                     {% else %}
-                    Local
+                    -
                     {% endif %}
                 </td>
-                <td><span class="status-badge status-transcribing">running</span></td>
             </tr>
             {% endfor %}
         </tbody>
     </table>
 </article>
-{% endif %}
 
 {% if queued_downloads %}
 <article>
