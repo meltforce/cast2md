@@ -661,6 +661,8 @@ def cmd_node_start(port: int):
     transcribe them locally, and upload the results.
     """
     import logging
+    import signal
+    import sys
     import threading
 
     from cast2md.node.config import load_config
@@ -685,6 +687,16 @@ def cmd_node_start(port: int):
 
     # Create worker
     worker = TranscriberNodeWorker(config)
+
+    # Setup signal handlers for graceful shutdown
+    def handle_shutdown(signum, frame):
+        sig_name = signal.Signals(signum).name
+        click.echo(f"\nReceived {sig_name}, shutting down...")
+        worker.stop()
+        sys.exit(0)
+
+    signal.signal(signal.SIGTERM, handle_shutdown)
+    signal.signal(signal.SIGINT, handle_shutdown)
 
     # Start web server in background thread
     server_thread = threading.Thread(

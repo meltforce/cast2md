@@ -447,6 +447,40 @@ def fail_job(
     return MessageResponse(message="Job marked as failed")
 
 
+@router.post("/jobs/{job_id}/release", response_model=MessageResponse)
+def release_job(
+    job_id: int,
+    api_key: str = Depends(verify_node_api_key),
+):
+    """Release a job back to queue.
+
+    Called by a node on shutdown to release its current job so it can
+    be picked up by another node (or the same node after restart).
+    """
+    with get_db() as conn:
+        job_repo = JobRepository(conn)
+        node_repo = TranscriberNodeRepository(conn)
+
+        node = node_repo.get_by_api_key(api_key)
+        if not node:
+            raise HTTPException(status_code=401, detail="Invalid API key")
+
+        job = job_repo.get_by_id(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="Job not found")
+
+        if job.assigned_node_id != node.id:
+            raise HTTPException(status_code=403, detail="Job not assigned to this node")
+
+        # Reset job to queued
+        job_repo.force_reset(job_id)
+
+        # Clear node's current job
+        node_repo.update_status(node.id, NodeStatus.ONLINE, current_job_id=None)
+
+    return MessageResponse(message="Job released back to queue")
+
+
 # === Admin Endpoints (for UI/management) ===
 
 

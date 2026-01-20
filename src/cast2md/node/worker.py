@@ -117,6 +117,13 @@ class TranscriberNodeWorker:
         self._stop_event.set()
         self._running = False
 
+        # If we have a current job, notify server to release it
+        if self._current_job_id:
+            try:
+                self._release_current_job()
+            except Exception as e:
+                logger.warning(f"Failed to release job on shutdown: {e}")
+
         if self._heartbeat_thread:
             self._heartbeat_thread.join(timeout=timeout / 2)
         if self._poll_thread:
@@ -126,6 +133,26 @@ class TranscriberNodeWorker:
         self._poll_thread = None
         self._client.close()
         logger.info("Worker stopped")
+
+    def _release_current_job(self):
+        """Notify server to release our current job back to queue."""
+        if not self._current_job_id:
+            return
+
+        logger.info(f"Releasing job {self._current_job_id} back to queue...")
+        try:
+            response = self._client.post(
+                f"/api/nodes/jobs/{self._current_job_id}/release",
+                timeout=5.0,
+            )
+            if response.status_code == 200:
+                logger.info(f"Released job {self._current_job_id} back to queue")
+            else:
+                logger.warning(f"Failed to release job: {response.status_code}")
+        except httpx.RequestError as e:
+            logger.warning(f"Failed to release job: {e}")
+        finally:
+            self._current_job_id = None
 
     def run(self):
         """Run the worker (blocking)."""
