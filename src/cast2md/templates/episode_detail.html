@@ -107,7 +107,9 @@
             <a href="/api/episodes/{{ episode.id }}/transcript?format=json" role="button" class="outline secondary" style="padding: 0.25rem 0.5rem; font-size: 0.875rem;">JSON</a>
         </div>
     </header>
-    <pre class="transcript">{{ transcript_content }}</pre>
+    <div class="transcript-container" id="transcript">
+        {{ transcript_content|render_transcript|safe }}
+    </div>
 </article>
 {% endif %}
 {% endblock %}
@@ -145,5 +147,27 @@ async function queueTranscribe(episodeId) {
         alert('Error: ' + error.message);
     }
 }
+
+// Timestamp navigation
+document.addEventListener('DOMContentLoaded', function() {
+    const params = new URLSearchParams(window.location.search);
+    const timestamp = params.get('t');
+
+    if (timestamp) {
+        const targetId = 'ts-' + Math.floor(parseFloat(timestamp));
+        const element = document.getElementById(targetId);
+
+        if (element) {
+            // Small delay to ensure layout is complete
+            setTimeout(() => {
+                element.scrollIntoView({ behavior: 'instant', block: 'center' });
+                element.classList.add('highlight');
+                setTimeout(() => {
+                    element.classList.remove('highlight');
+                }, 2000);
+            }, 100);
+        }
+    }
+});
 </script>
 {% endblock %}

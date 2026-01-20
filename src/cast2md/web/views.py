@@ -72,6 +72,55 @@ def truncate_html(text: str | None, length: int = 300) -> str:
     return truncated + "..."
 
 
+def render_transcript_html(content: str) -> str:
+    """Convert transcript markdown to HTML with timestamp IDs.
+
+    Parses transcript segments and renders them as structured HTML
+    with clickable timestamps and data attributes for audio sync.
+
+    Args:
+        content: Raw transcript markdown content.
+
+    Returns:
+        HTML string with structured transcript segments.
+    """
+    from html import escape
+
+    from cast2md.search.parser import parse_transcript_segments
+
+    segments = parse_transcript_segments(content)
+    html_parts = []
+
+    # Extract header (title + language) before first timestamp
+    header_match = re.match(r'^(.*?)(?=\*\*\[)', content, re.DOTALL)
+    if header_match:
+        header = header_match.group(1).strip()
+        # Extract title from markdown header
+        title_match = re.search(r'^# (.+)$', header, re.MULTILINE)
+        if title_match:
+            html_parts.append(f'<h3 class="transcript-title">{escape(title_match.group(1))}</h3>')
+        # Extract language metadata
+        meta_match = re.search(r'^\*(.+)\*$', header, re.MULTILINE)
+        if meta_match:
+            html_parts.append(f'<p class="transcript-meta">{escape(meta_match.group(1))}</p>')
+
+    for segment in segments:
+        ts_int = int(segment.start)
+        minutes = ts_int // 60
+        seconds = ts_int % 60
+        ts_display = f"{minutes:02d}:{seconds:02d}"
+
+        html_parts.append(
+            f'<div class="transcript-segment" id="ts-{ts_int}" '
+            f'data-start="{segment.start}" data-end="{segment.end}">'
+            f'<a href="#ts-{ts_int}" class="transcript-timestamp">[{ts_display}]</a>'
+            f'<span class="transcript-text">{escape(segment.text)}</span>'
+            f'</div>'
+        )
+
+    return '\n'.join(html_parts)
+
+
 def configure_templates(t: Jinja2Templates):
     """Configure templates instance."""
     global templates
@@ -80,6 +129,7 @@ def configure_templates(t: Jinja2Templates):
     templates.env.filters["strip_html"] = strip_html
     templates.env.filters["sanitize_html"] = sanitize_html
     templates.env.filters["truncate_html"] = truncate_html
+    templates.env.filters["render_transcript"] = render_transcript_html
 
 
 @router.get("/", response_class=HTMLResponse)
