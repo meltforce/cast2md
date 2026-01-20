@@ -489,9 +489,9 @@ class EpisodeRepository:
         Returns:
             (list of episode IDs, total count)
         """
-        # Convert query to FTS5 match syntax with word prefix matching
-        # e.g., "ai test" -> "ai* test*" to match word prefixes
-        fts_query = " ".join(f"{word}*" for word in query.split() if word)
+        # Use exact word matching for episode title/description search
+        # (no prefix matching - "ai" should not match "air" or "airline")
+        fts_query = " ".join(word for word in query.split() if word)
 
         if feed_id is not None:
             # Count total matches for this feed
