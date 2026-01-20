@@ -155,6 +155,7 @@ Configuration:
 | `/api/nodes/jobs/{job_id}/audio` | GET | Download audio file |
 | `/api/nodes/jobs/{job_id}/complete` | POST | Submit transcript |
 | `/api/nodes/jobs/{job_id}/fail` | POST | Report failure |
+| `/api/nodes/jobs/{job_id}/release` | POST | Release job back to queue (on shutdown) |
 
 **Admin:**
 | Endpoint | Method | Description |
@@ -302,10 +303,41 @@ Nodes use the same Whisper settings as a normal cast2md installation:
 | Scenario | Detection | Resolution |
 |----------|-----------|------------|
 | Node disappears mid-job | Heartbeat timeout (60s) | Job reclaimed after 2h timeout |
+| Node graceful shutdown | Signal handler (SIGTERM/SIGINT) | Job released immediately via API |
 | Network fails on upload | Node retry with backoff | Store locally, retry on restart |
 | Server restarts | Node continues, resubmits | Accept result if job exists |
 | Audio corrupted | Transcription error | Mark failed, can retry |
 | Node crashes | No heartbeat | Marked offline, job reclaimed |
+
+## Graceful Shutdown
+
+Both the main server and transcriber nodes implement graceful shutdown to prevent orphaned jobs.
+
+### Server Shutdown
+
+On SIGTERM/SIGINT, the server:
+1. Signal handler triggers FastAPI lifespan shutdown
+2. Workers are stopped gracefully (30s timeout)
+3. On restart, `reset_orphaned_jobs()` resets any jobs left in "running" state back to "queued"
+
+### Node Shutdown
+
+On SIGTERM/SIGINT (or Ctrl+C), the node:
+1. Signal handler calls `worker.stop()`
+2. If a job is in progress, `_release_current_job()` is called
+3. Node POSTs to `/api/nodes/jobs/{job_id}/release`
+4. Server resets the job to "queued" state immediately
+5. Job becomes available for pickup by another node (or the same node after restart)
+
+This avoids the 2-hour timeout wait for job reclamation when a node is intentionally stopped.
+
+**Release Endpoint:**
+```
+POST /api/nodes/jobs/{job_id}/release
+Authorization: X-Transcriber-Key: <api_key>
+
+Response: {"message": "Job released back to queue"}
+```
 
 ## Security Considerations
 
