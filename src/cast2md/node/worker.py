@@ -55,6 +55,7 @@ class TranscriberNodeWorker:
         # Current job tracking
         self._current_job_id: Optional[int] = None
         self._current_episode_title: Optional[str] = None
+        self._job_start_time: Optional[float] = None
 
     @property
     def config(self) -> NodeConfig:
@@ -70,9 +71,13 @@ class TranscriberNodeWorker:
     def current_job(self) -> Optional[dict]:
         """Get current job info if any."""
         if self._current_job_id:
+            elapsed_seconds = None
+            if self._job_start_time:
+                elapsed_seconds = int(time.time() - self._job_start_time)
             return {
                 "job_id": self._current_job_id,
                 "episode_title": self._current_episode_title,
+                "elapsed_seconds": elapsed_seconds,
             }
         return None
 
@@ -207,6 +212,7 @@ class TranscriberNodeWorker:
 
         self._current_job_id = job_id
         self._current_episode_title = episode_title
+        self._job_start_time = time.time()
 
         try:
             logger.info(f"Processing job {job_id}: {episode_title}")
@@ -236,6 +242,7 @@ class TranscriberNodeWorker:
         finally:
             self._current_job_id = None
             self._current_episode_title = None
+            self._job_start_time = None
 
     def _download_audio(self, audio_url: str, temp_dir: Path) -> Optional[Path]:
         """Download audio file from server.
