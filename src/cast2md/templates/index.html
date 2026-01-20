@@ -49,7 +49,7 @@
             {% for item in feeds %}
             <tr>
                 <td>
-                    <a href="/feeds/{{ item.feed.id }}">{{ item.feed.title }}</a>
+                    <a href="/feeds/{{ item.feed.id }}">{{ item.feed.display_title }}</a>
                 </td>
                 <td>{{ item.episode_count }}</td>
                 <td>
@@ -61,7 +61,7 @@
                 </td>
                 <td class="actions">
                     <button class="outline" onclick="refreshFeed({{ item.feed.id }})">Refresh</button>
-                    <button class="outline secondary" onclick="deleteFeed({{ item.feed.id }}, '{{ item.feed.title }}')">Delete</button>
+                    <button class="outline secondary" onclick="deleteFeed({{ item.feed.id }}, '{{ item.feed.display_title }}')">Delete</button>
                 </td>
             </tr>
             {% endfor %}

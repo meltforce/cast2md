@@ -1,6 +1,7 @@
 """Feed API endpoints."""
 
 import io
+import json
 import zipfile
 from pathlib import Path
 
@@ -26,8 +27,7 @@ class FeedCreate(BaseModel):
 class FeedUpdate(BaseModel):
     """Request model for updating a feed."""
 
-    title: str | None = None
-    enabled: bool | None = None
+    custom_title: str | None = None
 
 
 class FeedResponse(BaseModel):
@@ -38,6 +38,11 @@ class FeedResponse(BaseModel):
     title: str
     description: str | None
     image_url: str | None
+    custom_title: str | None
+    display_title: str
+    author: str | None
+    link: str | None
+    categories: list[str]
     last_polled: str | None
     episode_count: int = 0
     created_at: str
@@ -51,6 +56,11 @@ class FeedResponse(BaseModel):
             title=feed.title,
             description=feed.description,
             image_url=feed.image_url,
+            custom_title=feed.custom_title,
+            display_title=feed.display_title,
+            author=feed.author,
+            link=feed.link,
+            categories=feed.category_list,
             last_polled=feed.last_polled.isoformat() if feed.last_polled else None,
             episode_count=episode_count,
             created_at=feed.created_at.isoformat(),
@@ -113,11 +123,15 @@ def create_feed(feed_data: FeedCreate):
         if existing:
             raise HTTPException(status_code=409, detail="Feed already exists")
 
+        categories_json = json.dumps(parsed.categories) if parsed.categories else None
         feed = repo.create(
             url=url,
             title=parsed.title,
             description=parsed.description,
             image_url=parsed.image_url,
+            author=parsed.author,
+            link=parsed.link,
+            categories=categories_json,
         )
 
     # Discover episodes and auto-queue only the latest one
@@ -148,17 +162,35 @@ def get_feed(feed_id: int):
 
 @router.patch("/{feed_id}", response_model=FeedResponse)
 def update_feed(feed_id: int, feed_data: FeedUpdate):
-    """Update a feed."""
+    """Update feed custom title and rename storage directories."""
     with get_db() as conn:
         repo = FeedRepository(conn)
-        feed = repo.get_by_id(feed_id)
+        episode_repo = EpisodeRepository(conn)
 
+        feed = repo.get_by_id(feed_id)
         if not feed:
             raise HTTPException(status_code=404, detail="Feed not found")
 
-        # For now, we don't have update methods in repository
-        # This would need to be added for full CRUD support
-        raise HTTPException(status_code=501, detail="Update not implemented yet")
+        # Get old display_title before update
+        old_display_title = feed.display_title
+        new_custom_title = feed_data.custom_title
+
+        # Determine new display_title
+        new_display_title = new_custom_title if new_custom_title else feed.title
+
+        # Rename directories if display_title changed
+        if old_display_title != new_display_title:
+            try:
+                from cast2md.storage.filesystem import rename_podcast_directories
+                rename_podcast_directories(old_display_title, new_display_title)
+            except OSError as e:
+                raise HTTPException(status_code=409, detail=str(e))
+
+        # Update database
+        feed = repo.update(feed_id, custom_title=new_custom_title)
+
+        episode_count = episode_repo.count_by_feed(feed_id)
+        return FeedResponse.from_feed(feed, episode_count)
 
 
 @router.delete("/{feed_id}", response_model=MessageResponse)

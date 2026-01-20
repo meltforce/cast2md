@@ -1,5 +1,6 @@
 """Data models for the database layer."""
 
+import json
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
@@ -42,9 +43,28 @@ class Feed:
     title: str
     description: Optional[str]
     image_url: Optional[str]
+    author: Optional[str]
+    link: Optional[str]
+    categories: Optional[str]  # JSON string
+    custom_title: Optional[str]
     last_polled: Optional[datetime]
     created_at: datetime
     updated_at: datetime
+
+    @property
+    def display_title(self) -> str:
+        """Return custom_title if set, otherwise the RSS title."""
+        return self.custom_title or self.title
+
+    @property
+    def category_list(self) -> list[str]:
+        """Parse categories JSON to list."""
+        if not self.categories:
+            return []
+        try:
+            return json.loads(self.categories)
+        except (json.JSONDecodeError, TypeError):
+            return []
 
     @classmethod
     def from_row(cls, row: tuple) -> "Feed":
@@ -55,9 +75,13 @@ class Feed:
             title=row[2],
             description=row[3],
             image_url=row[4],
-            last_polled=datetime.fromisoformat(row[5]) if row[5] else None,
-            created_at=datetime.fromisoformat(row[6]),
-            updated_at=datetime.fromisoformat(row[7]),
+            author=row[5],
+            link=row[6],
+            categories=row[7],
+            custom_title=row[8],
+            last_polled=datetime.fromisoformat(row[9]) if row[9] else None,
+            created_at=datetime.fromisoformat(row[10]),
+            updated_at=datetime.fromisoformat(row[11]),
         )
 
 
@@ -77,6 +101,8 @@ class Episode:
     audio_path: Optional[str]
     transcript_path: Optional[str]
     transcript_url: Optional[str]  # Podcast 2.0 transcript URL
+    link: Optional[str]
+    author: Optional[str]
     error_message: Optional[str]
     created_at: datetime
     updated_at: datetime
@@ -97,9 +123,11 @@ class Episode:
             audio_path=row[9],
             transcript_path=row[10],
             transcript_url=row[11],
-            error_message=row[12],
-            created_at=datetime.fromisoformat(row[13]),
-            updated_at=datetime.fromisoformat(row[14]),
+            link=row[12],
+            author=row[13],
+            error_message=row[14],
+            created_at=datetime.fromisoformat(row[15]),
+            updated_at=datetime.fromisoformat(row[16]),
         )
 
 

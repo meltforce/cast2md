@@ -3,26 +3,60 @@
 {% block title %}{{ episode.title }} - cast2md{% endblock %}
 
 {% block content %}
-<hgroup>
-    <h1>{{ episode.title }}</h1>
-    <p>From <a href="/feeds/{{ feed.id }}">{{ feed.title }}</a></p>
-</hgroup>
-
-<div class="episode-meta">
-    <span class="status-badge status-{{ episode.status.value }}">{{ episode.status.value }}</span>
-    &nbsp;|&nbsp;
-    Published: {{ episode.published_at.strftime('%Y-%m-%d %H:%M') if episode.published_at else 'Unknown' }}
-    {% if episode.duration_seconds %}
-    &nbsp;|&nbsp;
-    Duration: {{ '%d:%02d' % (episode.duration_seconds // 60, episode.duration_seconds % 60) }}
-    {% endif %}
-</div>
+<article class="episode-header">
+    <div style="display: flex; gap: 1.5rem;">
+        {% if feed.image_url %}
+        <img src="{{ feed.image_url }}" alt="{{ feed.display_title }}" style="width: 100px; height: 100px; border-radius: 8px; object-fit: cover;">
+        {% endif %}
+        <div style="flex: 1;">
+            <h1 style="margin-bottom: 0.5rem;">{{ episode.title }}</h1>
+            <p style="margin-bottom: 0.5rem;">
+                <a href="/feeds/{{ feed.id }}">{{ feed.display_title }}</a>
+                {% if feed.author %}<span class="muted" style="color: var(--muted-color);"> by {{ feed.author }}</span>{% endif %}
+            </p>
+            <div class="episode-meta">
+                <span class="status-badge status-{{ episode.status.value }}">{{ episode.status.value }}</span>
+                &nbsp;|&nbsp;
+                {{ episode.published_at.strftime('%B %d, %Y') if episode.published_at else 'Unknown date' }}
+                {% if episode.duration_seconds %}
+                &nbsp;|&nbsp;
+                {{ '%d:%02d' % (episode.duration_seconds // 60, episode.duration_seconds % 60) }}
+                {% endif %}
+            </div>
+            <div style="margin-top: 0.75rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                {% if episode.link %}
+                <a href="{{ episode.link }}" target="_blank" role="button" class="outline secondary" style="padding: 0.25rem 0.75rem; font-size: 0.875rem;">Original Episode</a>
+                {% endif %}
+                {% if feed.link %}
+                <a href="{{ feed.link }}" target="_blank" role="button" class="outline secondary" style="padding: 0.25rem 0.75rem; font-size: 0.875rem;">Podcast Website</a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</article>
 
 {% if episode.description %}
-<details>
-    <summary>Description</summary>
-    <p>{{ episode.description|strip_html }}</p>
-</details>
+<article>
+    <header><h3>Show Notes</h3></header>
+    <div class="shownotes-preview" style="color: var(--secondary); margin-bottom: 1rem;">
+        {{ episode.description|truncate_html(300) }}
+    </div>
+    <button class="outline secondary" onclick="document.getElementById('shownotesModal').showModal()">
+        Read full show notes
+    </button>
+</article>
+
+<dialog id="shownotesModal">
+    <article style="max-width: 800px; max-height: 80vh; overflow-y: auto;">
+        <header>
+            <button aria-label="Close" rel="prev" onclick="this.closest('dialog').close()"></button>
+            <h3>Show Notes</h3>
+        </header>
+        <div class="shownotes">
+            {{ episode.description|sanitize_html|safe }}
+        </div>
+    </article>
+</dialog>
 {% endif %}
 
 <article>
@@ -70,7 +104,7 @@
 </article>
 {% endif %}
 
-<p><a href="/feeds/{{ feed.id }}">&larr; Back to {{ feed.title }}</a></p>
+<p><a href="/feeds/{{ feed.id }}">&larr; Back to {{ feed.display_title }}</a></p>
 {% endblock %}
 
 {% block scripts %}

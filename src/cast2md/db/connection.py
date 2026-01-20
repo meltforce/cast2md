@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Generator
 
 from cast2md.config.settings import get_settings
+from cast2md.db.migrations import run_migrations
 from cast2md.db.schema import get_schema
 
 
@@ -54,7 +55,7 @@ def get_db() -> Generator[sqlite3.Connection, None, None]:
 
 
 def init_db(db_path: Path | None = None) -> None:
-    """Initialize the database with schema.
+    """Initialize the database with schema and run migrations.
 
     Args:
         db_path: Path to database file. Uses settings if not provided.
@@ -70,5 +71,8 @@ def init_db(db_path: Path | None = None) -> None:
     try:
         conn.executescript(get_schema())
         conn.commit()
+
+        # Run migrations for existing databases
+        run_migrations(conn)
     finally:
         conn.close()
