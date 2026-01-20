@@ -819,7 +819,7 @@ class JobRepository:
         self.conn.execute(
             """
             UPDATE job_queue
-            SET status = ?, started_at = ?, attempts = attempts + 1
+            SET status = ?, started_at = ?, attempts = attempts + 1, progress_percent = 0
             WHERE id = ?
             """,
             (JobStatus.RUNNING.value, now, job_id),
