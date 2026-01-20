@@ -151,7 +151,8 @@ def get_feeds() -> list[dict[str, Any]]:
     with get_client() as client:
         resp = client.get("/api/feeds")
         resp.raise_for_status()
-        return resp.json()
+        data = resp.json()
+        return data.get("feeds", data) if isinstance(data, dict) else data
 
 
 def get_feed(feed_id: int) -> dict | None:
