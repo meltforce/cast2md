@@ -54,7 +54,7 @@
         <header style="padding-bottom: 0.5rem; margin-bottom: 0.5rem; border-bottom: 1px solid var(--muted-border-color);">
             <div style="display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 0.5rem;">
                 <div>
-                    <a href="/episodes/{{ result.episode_id }}" style="font-weight: bold;">{{ result.episode_title }}</a>
+                    <a href="/episodes/{{ result.episode_id }}?t={{ result.segment_start|int }}" style="font-weight: bold;">{{ result.episode_title }}</a>
                     <span style="color: var(--muted-color); font-size: 0.875rem;">
                         &mdash; {{ result.feed_title }}
                     </span>
@@ -65,11 +65,11 @@
             </div>
         </header>
         <div style="display: flex; align-items: flex-start; gap: 1rem;">
-            <div style="background: var(--muted-border-color); padding: 0.25rem 0.5rem; border-radius: 4px; font-family: monospace; font-size: 0.875rem; white-space: nowrap;">
+            <a href="/episodes/{{ result.episode_id }}?t={{ result.segment_start|int }}" style="background: var(--muted-border-color); padding: 0.25rem 0.5rem; border-radius: 4px; font-family: monospace; font-size: 0.875rem; white-space: nowrap; text-decoration: none; color: inherit;">
                 {% set minutes = (result.segment_start // 60)|int %}
                 {% set seconds = (result.segment_start % 60)|int %}
                 {{ '%02d:%02d'|format(minutes, seconds) }}
-            </div>
+            </a>
             <div style="flex: 1;">
                 <p style="margin: 0;">{{ result.snippet|safe }}</p>
             </div>

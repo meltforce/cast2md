@@ -71,6 +71,49 @@
             padding: 1rem;
             border-radius: 0.5rem;
         }
+        .transcript-container {
+            max-height: 600px;
+            overflow-y: auto;
+            background: var(--pico-card-background-color);
+            padding: 1rem;
+            border-radius: 0.5rem;
+        }
+        .transcript-title {
+            margin-bottom: 0.5rem;
+        }
+        .transcript-meta {
+            font-size: 0.875rem;
+            color: var(--pico-muted-color);
+            margin-bottom: 1rem;
+        }
+        .transcript-segment {
+            display: flex;
+            gap: 1rem;
+            padding: 0.5rem 0;
+            border-bottom: 1px solid var(--pico-muted-border-color);
+            scroll-margin-top: 1rem;
+        }
+        .transcript-segment:last-child {
+            border-bottom: none;
+        }
+        .transcript-segment:target,
+        .transcript-segment.highlight {
+            background: rgba(255, 220, 100, 0.3);
+            transition: background 0.3s ease;
+        }
+        .transcript-timestamp {
+            font-family: monospace;
+            font-size: 0.875rem;
+            color: var(--pico-primary);
+            white-space: nowrap;
+            text-decoration: none;
+        }
+        .transcript-timestamp:hover {
+            text-decoration: underline;
+        }
+        .transcript-text {
+            flex: 1;
+        }
         .episode-meta {
             color: var(--pico-muted-color);
             font-size: 0.875rem;
