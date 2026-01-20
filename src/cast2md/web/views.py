@@ -393,3 +393,63 @@ def queue_management(request: Request, status: str | None = None):
             "stuck_threshold_hours": stuck_threshold_hours,
         },
     )
+
+
+@router.get("/search", response_class=HTMLResponse)
+def transcript_search_page(
+    request: Request,
+    q: str | None = None,
+    feed_id: int | None = None,
+    page: int = 1,
+    per_page: int = 20,
+):
+    """Transcript search page."""
+    from cast2md.search.repository import TranscriptSearchRepository
+
+    results = []
+    total = 0
+    total_pages = 1
+    index_stats = {"total_segments": 0, "indexed_episodes": 0}
+    feeds = []
+
+    with get_db() as conn:
+        feed_repo = FeedRepository(conn)
+        search_repo = TranscriptSearchRepository(conn)
+
+        # Get all feeds for dropdown
+        feeds = feed_repo.get_all()
+
+        # Get index stats
+        index_stats = {
+            "total_segments": search_repo.get_indexed_count(),
+            "indexed_episodes": len(search_repo.get_indexed_episodes()),
+        }
+
+        # Perform search if query provided
+        if q:
+            offset = (page - 1) * per_page
+            response = search_repo.search(
+                query=q,
+                feed_id=feed_id,
+                limit=per_page,
+                offset=offset,
+            )
+            results = response.results
+            total = response.total
+            total_pages = max(1, (total + per_page - 1) // per_page)
+
+    return templates.TemplateResponse(
+        "search.html",
+        {
+            "request": request,
+            "query": q or "",
+            "feed_id": feed_id,
+            "feeds": feeds,
+            "results": results,
+            "total": total,
+            "page": page,
+            "per_page": per_page,
+            "total_pages": total_pages,
+            "index_stats": index_stats,
+        },
+    )
