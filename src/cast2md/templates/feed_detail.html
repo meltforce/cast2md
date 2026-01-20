@@ -17,7 +17,7 @@
 
 <p>
     {% if feed.link %}<a href="{{ feed.link }}" target="_blank">Website</a> | {% endif %}
-    <strong>{{ total }}</strong> episodes
+    <strong>{{ total_all }}</strong> episodes
     &nbsp;|&nbsp;
     Last polled: {{ feed.last_polled.strftime('%Y-%m-%d %H:%M') if feed.last_polled else 'Never' }}
     &nbsp;|&nbsp;
@@ -85,6 +85,38 @@
     </div>
 </article>
 
+<!-- Search and Filter Section -->
+<article style="margin-bottom: 1rem; padding: 1rem; background: var(--card-background-color);">
+    <form id="searchForm" method="get" style="display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;">
+        <div style="display: flex; align-items: center; gap: 0.5rem; flex: 1; min-width: 200px;">
+            <input type="text" name="q" id="searchInput" placeholder="Search episodes..."
+                   value="{{ query }}" style="margin: 0; padding: 0.5rem;">
+        </div>
+        <div style="display: flex; align-items: center; gap: 0.5rem;">
+            <label style="margin: 0; font-size: 0.875rem;">Status:</label>
+            <select name="status" id="statusFilter" style="padding: 0.25rem 0.5rem; margin: 0; width: auto;">
+                <option value="">All</option>
+                {% for s in statuses %}
+                <option value="{{ s }}" {% if status_filter == s %}selected{% endif %}>{{ s|capitalize }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <input type="hidden" name="per_page" value="{{ per_page }}">
+        <button type="submit" style="padding: 0.5rem 1rem; margin: 0;">Search</button>
+        {% if query or status_filter %}
+        <a href="?per_page={{ per_page }}" role="button" class="outline secondary" style="padding: 0.5rem 1rem; margin: 0;">Clear Filters</a>
+        {% endif %}
+    </form>
+    {% if query or status_filter %}
+    <p style="margin: 0.5rem 0 0 0; font-size: 0.875rem;">
+        Showing <strong>{{ total }}</strong> results
+        {% if query %} for "<strong>{{ query }}</strong>"{% endif %}
+        {% if status_filter %} with status <strong>{{ status_filter }}</strong>{% endif %}
+        ({{ total_all }} total episodes)
+    </p>
+    {% endif %}
+</article>
+
 <table>
     <thead>
         <tr>
@@ -123,35 +155,155 @@
                 {% endif %}
             </td>
         </tr>
+        {% else %}
+        <tr>
+            <td colspan="5" style="text-align: center; padding: 2rem;">
+                {% if query or status_filter %}
+                No episodes found matching your search criteria.
+                {% else %}
+                No episodes in this feed.
+                {% endif %}
+            </td>
+        </tr>
         {% endfor %}
     </tbody>
 </table>
 
-{% if total_pages > 1 %}
-<nav>
-    <ul>
+<!-- Pagination Section -->
+{% if total_pages > 0 %}
+<nav style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1rem; margin-top: 1rem;">
+    <!-- Items per page selector -->
+    <div style="display: flex; align-items: center; gap: 0.5rem;">
+        <label style="margin: 0; font-size: 0.875rem;">Items per page:</label>
+        <select id="perPageSelect" style="padding: 0.25rem 0.5rem; margin: 0; width: auto;">
+            {% for pp in valid_per_page %}
+            <option value="{{ pp }}" {% if per_page == pp %}selected{% endif %}>{{ pp }}</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <!-- Page navigation -->
+    {% if total_pages > 1 %}
+    {# Build base URL with current query/status/per_page params #}
+    {% set base_params = [] %}
+    {% if query %}{% set _ = base_params.append('q=' ~ query|urlencode) %}{% endif %}
+    {% if status_filter %}{% set _ = base_params.append('status=' ~ status_filter) %}{% endif %}
+    {% set _ = base_params.append('per_page=' ~ per_page) %}
+    {% set base_url = '?' ~ base_params|join('&') ~ '&page=' %}
+
+    <div style="display: flex; align-items: center; gap: 0.25rem; flex-wrap: wrap;">
+        {# First and Previous buttons #}
         {% if page > 1 %}
-        <li><a href="?page={{ page - 1 }}">&larr; Previous</a></li>
+        <a href="{{ base_url }}1" role="button" class="outline" style="padding: 0.25rem 0.5rem; margin: 0;" title="First page">First</a>
+        <a href="{{ base_url }}{{ page - 1 }}" role="button" class="outline" style="padding: 0.25rem 0.5rem; margin: 0;">&larr; Prev</a>
+        {% else %}
+        <button class="outline" style="padding: 0.25rem 0.5rem; margin: 0;" disabled>First</button>
+        <button class="outline" style="padding: 0.25rem 0.5rem; margin: 0;" disabled>&larr; Prev</button>
         {% endif %}
-    </ul>
-    <ul>
-        <li>Page {{ page }} of {{ total_pages }}</li>
-    </ul>
-    <ul>
+
+        {# Page numbers with ellipsis #}
+        {% set show_pages = [] %}
+        {% for p in range(1, total_pages + 1) %}
+            {% if p <= 3 or p > total_pages - 3 or (p >= page - 1 and p <= page + 1) %}
+                {% set _ = show_pages.append(p) %}
+            {% endif %}
+        {% endfor %}
+
+        {% set prev_page = namespace(value=0) %}
+        {% for p in show_pages %}
+            {% if p > prev_page.value + 1 %}
+            <span style="padding: 0.25rem;">...</span>
+            {% endif %}
+            {% if p == page %}
+            <button style="padding: 0.25rem 0.5rem; margin: 0; font-weight: bold;">{{ p }}</button>
+            {% else %}
+            <a href="{{ base_url }}{{ p }}" role="button" class="outline" style="padding: 0.25rem 0.5rem; margin: 0;">{{ p }}</a>
+            {% endif %}
+            {% set prev_page.value = p %}
+        {% endfor %}
+
+        {# Next and Last buttons #}
         {% if page < total_pages %}
-        <li><a href="?page={{ page + 1 }}">Next &rarr;</a></li>
+        <a href="{{ base_url }}{{ page + 1 }}" role="button" class="outline" style="padding: 0.25rem 0.5rem; margin: 0;">Next &rarr;</a>
+        <a href="{{ base_url }}{{ total_pages }}" role="button" class="outline" style="padding: 0.25rem 0.5rem; margin: 0;" title="Last page">Last</a>
+        {% else %}
+        <button class="outline" style="padding: 0.25rem 0.5rem; margin: 0;" disabled>Next &rarr;</button>
+        <button class="outline" style="padding: 0.25rem 0.5rem; margin: 0;" disabled>Last</button>
         {% endif %}
-    </ul>
+    </div>
+
+    <!-- Go to page input -->
+    <div style="display: flex; align-items: center; gap: 0.5rem;">
+        <label style="margin: 0; font-size: 0.875rem;">Page:</label>
+        <input type="number" id="gotoPageInput" min="1" max="{{ total_pages }}" value="{{ page }}"
+               style="width: 4rem; padding: 0.25rem 0.5rem; margin: 0;">
+        <span style="font-size: 0.875rem;">of {{ total_pages }}</span>
+        <button class="outline" style="padding: 0.25rem 0.5rem; margin: 0;" onclick="gotoPage()">Go</button>
+    </div>
+    {% endif %}
 </nav>
 {% endif %}
 {% endblock %}
 
 {% block scripts %}
 <script>
+// Build URL with current query params
+function buildPageUrl(pageNum) {
+    const params = new URLSearchParams(window.location.search);
+    params.set('page', pageNum);
+    return '?' + params.toString();
+}
+
+// Initialize: Apply stored per_page preference
+document.addEventListener('DOMContentLoaded', function() {
+    const storedPerPage = localStorage.getItem('cast2md_per_page');
+    const currentPerPage = {{ per_page }};
+    const params = new URLSearchParams(window.location.search);
+
+    // If there's a stored preference and it's not already applied via URL
+    if (storedPerPage && !params.has('per_page') && parseInt(storedPerPage) !== currentPerPage) {
+        params.set('per_page', storedPerPage);
+        params.delete('page'); // Reset to page 1 when changing per_page
+        window.location.search = params.toString();
+    }
+});
+
 // Update export link when format changes
 document.getElementById('exportFormat').addEventListener('change', function() {
     const format = this.value;
     document.getElementById('exportLink').href = `/api/feeds/{{ feed.id }}/export?format=${format}`;
+});
+
+// Per-page selector change
+document.getElementById('perPageSelect').addEventListener('change', function() {
+    const perPage = this.value;
+    localStorage.setItem('cast2md_per_page', perPage);
+
+    const params = new URLSearchParams(window.location.search);
+    params.set('per_page', perPage);
+    params.delete('page'); // Reset to page 1 when changing per_page
+    window.location.search = params.toString();
+});
+
+// Go to specific page
+function gotoPage() {
+    const input = document.getElementById('gotoPageInput');
+    const pageNum = parseInt(input.value);
+    const totalPages = {{ total_pages }};
+
+    if (pageNum >= 1 && pageNum <= totalPages) {
+        window.location.href = buildPageUrl(pageNum);
+    } else {
+        alert(`Please enter a page number between 1 and ${totalPages}`);
+    }
+}
+
+// Handle Enter key on goto page input
+document.getElementById('gotoPageInput')?.addEventListener('keypress', function(e) {
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        gotoPage();
+    }
 });
 
 async function saveFeedTitle(event) {

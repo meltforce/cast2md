@@ -209,6 +209,21 @@ class EpisodeRepository:
         )
         return [Episode.from_row(row) for row in cursor.fetchall()]
 
+    def get_by_feed_paginated(
+        self, feed_id: int, limit: int = 25, offset: int = 0
+    ) -> list[Episode]:
+        """Get episodes with proper SQL OFFSET pagination."""
+        cursor = self.conn.execute(
+            f"""
+            SELECT {self.EPISODE_COLUMNS} FROM episode
+            WHERE feed_id = ?
+            ORDER BY published_at DESC
+            LIMIT ? OFFSET ?
+            """,
+            (feed_id, limit, offset),
+        )
+        return [Episode.from_row(row) for row in cursor.fetchall()]
+
     def get_by_status(self, status: EpisodeStatus, limit: int = 100) -> list[Episode]:
         """Get episodes by status."""
         cursor = self.conn.execute(
@@ -281,6 +296,56 @@ class EpisodeRepository:
             (feed_id,),
         )
         return cursor.fetchone()[0]
+
+    def search_by_feed(
+        self,
+        feed_id: int,
+        query: str | None = None,
+        status: EpisodeStatus | None = None,
+        limit: int = 25,
+        offset: int = 0,
+    ) -> tuple[list[Episode], int]:
+        """Search episodes by title/description with optional status filter.
+
+        Returns: (episodes, total_count)
+        """
+        conditions = ["feed_id = ?"]
+        params: list = [feed_id]
+
+        if query:
+            conditions.append(
+                "(title LIKE ? COLLATE NOCASE OR description LIKE ? COLLATE NOCASE)"
+            )
+            search_term = f"%{query}%"
+            params.extend([search_term, search_term])
+
+        if status:
+            conditions.append("status = ?")
+            params.append(status.value)
+
+        where_clause = " AND ".join(conditions)
+
+        # Get total count
+        count_cursor = self.conn.execute(
+            f"SELECT COUNT(*) FROM episode WHERE {where_clause}",
+            params,
+        )
+        total = count_cursor.fetchone()[0]
+
+        # Get paginated results
+        params.extend([limit, offset])
+        cursor = self.conn.execute(
+            f"""
+            SELECT {self.EPISODE_COLUMNS} FROM episode
+            WHERE {where_clause}
+            ORDER BY published_at DESC
+            LIMIT ? OFFSET ?
+            """,
+            params,
+        )
+        episodes = [Episode.from_row(row) for row in cursor.fetchall()]
+
+        return episodes, total
 
     def count_by_status(self) -> dict[str, int]:
         """Count episodes by status."""
