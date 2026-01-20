@@ -536,6 +536,50 @@ class EpisodeRepository:
         episode_ids = [row[0] for row in cursor.fetchall()]
         return episode_ids, total
 
+    def search_episodes_fts_full(
+        self,
+        query: str,
+        feed_id: int | None = None,
+        limit: int = 25,
+        offset: int = 0,
+    ) -> tuple[list[Episode], int]:
+        """Search episodes using FTS5 and return full Episode objects.
+
+        Args:
+            query: Search query (will be converted to FTS5 syntax).
+            feed_id: Optional feed ID to filter results.
+            limit: Maximum results per page.
+            offset: Pagination offset.
+
+        Returns:
+            (list of Episode objects, total count)
+        """
+        episode_ids, total = self.search_episodes_fts(
+            query=query,
+            feed_id=feed_id,
+            limit=limit,
+            offset=offset,
+        )
+
+        if not episode_ids:
+            return [], total
+
+        # Fetch full Episode objects, preserving FTS ranking order
+        placeholders = ",".join("?" for _ in episode_ids)
+        id_order = " ".join(f"WHEN {eid} THEN {i}" for i, eid in enumerate(episode_ids))
+
+        cursor = self.conn.execute(
+            f"""
+            SELECT {self.EPISODE_COLUMNS} FROM episode
+            WHERE id IN ({placeholders})
+            ORDER BY CASE id {id_order} END
+            """,
+            episode_ids,
+        )
+
+        episodes = [Episode.from_row(row) for row in cursor.fetchall()]
+        return episodes, total
+
 
 class JobRepository:
     """Repository for Job queue operations."""
