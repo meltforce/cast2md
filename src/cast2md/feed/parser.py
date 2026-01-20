@@ -20,6 +20,8 @@ class ParsedEpisode:
     duration_seconds: Optional[int]
     published_at: Optional[datetime]
     transcript_url: Optional[str]
+    link: Optional[str] = None
+    author: Optional[str] = None
 
 
 @dataclass
@@ -30,6 +32,9 @@ class ParsedFeed:
     description: Optional[str]
     image_url: Optional[str]
     episodes: list[ParsedEpisode]
+    author: Optional[str] = None
+    link: Optional[str] = None
+    categories: list[str] = None
 
 
 def parse_duration(duration_str: str | None) -> int | None:
@@ -173,6 +178,42 @@ def parse_published_date(entry: dict) -> datetime | None:
     return None
 
 
+def extract_categories(feed: dict) -> list[str]:
+    """Extract categories from feed.
+
+    Args:
+        feed: Feedparser feed dict.
+
+    Returns:
+        List of category strings.
+    """
+    categories = []
+
+    # Try itunes:category (can be nested)
+    itunes_categories = feed.get("itunes_category")
+    if itunes_categories:
+        if isinstance(itunes_categories, list):
+            for cat in itunes_categories:
+                if isinstance(cat, dict):
+                    categories.append(cat.get("text", ""))
+                elif isinstance(cat, str):
+                    categories.append(cat)
+        elif isinstance(itunes_categories, dict):
+            categories.append(itunes_categories.get("text", ""))
+        elif isinstance(itunes_categories, str):
+            categories.append(itunes_categories)
+
+    # Try tags (general RSS)
+    tags = feed.get("tags", [])
+    for tag in tags:
+        if isinstance(tag, dict):
+            term = tag.get("term")
+            if term and term not in categories:
+                categories.append(term)
+
+    return [c for c in categories if c]  # Filter empty strings
+
+
 def parse_feed(feed_content: str) -> ParsedFeed:
     """Parse RSS feed content.
 
@@ -203,6 +244,11 @@ def parse_feed(feed_content: str) -> ParsedFeed:
     if not image_url and feed.get("itunes_image"):
         image_url = feed["itunes_image"].get("href")
 
+    # Extract extended metadata
+    author = feed.get("itunes_author") or feed.get("author")
+    link = feed.get("link")
+    categories = extract_categories(feed)
+
     # Parse episodes
     episodes = []
     for entry in parsed.entries:
@@ -218,6 +264,10 @@ def parse_feed(feed_content: str) -> ParsedFeed:
             entry.get("itunes_duration") or entry.get("duration")
         )
 
+        # Get episode-specific metadata
+        episode_link = entry.get("link")
+        episode_author = entry.get("itunes_author") or entry.get("author")
+
         episode = ParsedEpisode(
             guid=guid,
             title=entry.get("title", "Untitled Episode"),
@@ -226,6 +276,8 @@ def parse_feed(feed_content: str) -> ParsedFeed:
             duration_seconds=duration,
             published_at=parse_published_date(entry),
             transcript_url=extract_transcript_url(entry),
+            link=episode_link,
+            author=episode_author,
         )
         episodes.append(episode)
 
@@ -234,4 +286,7 @@ def parse_feed(feed_content: str) -> ParsedFeed:
         description=description,
         image_url=image_url,
         episodes=episodes,
+        author=author,
+        link=link,
+        categories=categories,
     )

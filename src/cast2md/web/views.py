@@ -2,6 +2,7 @@
 
 import re
 
+import bleach
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
@@ -16,6 +17,10 @@ router = APIRouter(tags=["web"])
 # Templates will be configured in main.py
 templates: Jinja2Templates = None
 
+# Allowed HTML tags for shownotes
+ALLOWED_TAGS = ["a", "p", "br", "strong", "b", "em", "i", "ul", "ol", "li", "h1", "h2", "h3", "h4"]
+ALLOWED_ATTRIBUTES = {"a": ["href", "title", "target"]}
+
 
 def strip_html(text: str | None) -> str:
     """Strip HTML tags from text."""
@@ -28,12 +33,53 @@ def strip_html(text: str | None) -> str:
     return clean
 
 
+def sanitize_html(text: str | None) -> str:
+    """Sanitize HTML to allow only safe tags.
+
+    Allows: a, p, br, strong, b, em, i, ul, ol, li, h1-h4
+    """
+    if not text:
+        return ""
+    return bleach.clean(
+        text,
+        tags=ALLOWED_TAGS,
+        attributes=ALLOWED_ATTRIBUTES,
+        strip=True,
+    )
+
+
+def truncate_html(text: str | None, length: int = 300) -> str:
+    """Truncate text, stripping HTML first for safe truncation.
+
+    Args:
+        text: Text (possibly with HTML) to truncate.
+        length: Maximum length.
+
+    Returns:
+        Truncated plain text with ellipsis if needed.
+    """
+    if not text:
+        return ""
+    # Strip HTML for truncation to avoid broken tags
+    plain = strip_html(text)
+    if len(plain) <= length:
+        return plain
+    # Find last space before cutoff
+    truncated = plain[:length]
+    last_space = truncated.rfind(' ')
+    if last_space > length // 2:
+        truncated = truncated[:last_space]
+    return truncated + "..."
+
+
 def configure_templates(t: Jinja2Templates):
     """Configure templates instance."""
     global templates
     templates = t
-    # Add custom filter
+    # Add custom filters
     templates.env.filters["strip_html"] = strip_html
+    templates.env.filters["sanitize_html"] = sanitize_html
+    templates.env.filters["truncate_html"] = truncate_html
 
 
 @router.get("/", response_class=HTMLResponse)

@@ -181,3 +181,41 @@ def get_temp_download_path(filename: str) -> Path:
     settings = get_settings()
     settings.temp_download_path.mkdir(parents=True, exist_ok=True)
     return settings.temp_download_path / f".downloading_{filename}"
+
+
+def rename_podcast_directories(old_name: str, new_name: str) -> bool:
+    """Rename podcast directories when custom_title changes.
+
+    Renames:
+        {storage_path}/audio/{old_name}/ → {storage_path}/audio/{new_name}/
+        {storage_path}/transcripts/{old_name}/ → {storage_path}/transcripts/{new_name}/
+
+    Args:
+        old_name: The old podcast name (display title).
+        new_name: The new podcast name (display title).
+
+    Returns:
+        True if any directories were renamed, False if source didn't exist.
+
+    Raises:
+        OSError: If target directory already exists.
+    """
+    settings = get_settings()
+    safe_old = sanitize_podcast_name(old_name)
+    safe_new = sanitize_podcast_name(new_name)
+
+    if safe_old == safe_new:
+        return False  # No change needed
+
+    renamed = False
+    for subdir in ["audio", "transcripts"]:
+        old_path = settings.storage_path / subdir / safe_old
+        new_path = settings.storage_path / subdir / safe_new
+
+        if old_path.exists():
+            if new_path.exists():
+                raise OSError(f"Target directory already exists: {new_path}")
+            old_path.rename(new_path)
+            renamed = True
+
+    return renamed

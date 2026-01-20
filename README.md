@@ -5,11 +5,15 @@ Podcast transcription service - download episodes via RSS and transcribe with Wh
 ## Features
 
 - **RSS Feed Management**: Add podcast feeds and automatically discover new episodes
+- **Extended Metadata**: Extracts author, website link, and categories from RSS feeds
+- **Custom Feed Titles**: Override RSS titles with custom names (auto-renames storage directories)
 - **Automatic Downloads**: Queue and download episodes with configurable workers
 - **Whisper Transcription**: Transcribe audio using faster-whisper with CPU or GPU
 - **Web Interface**: Simple UI to manage feeds, view episodes, and monitor progress
+- **Show Notes Display**: Preview and full modal view with sanitized HTML
 - **REST API**: Full API for integration with other tools
 - **Background Processing**: Scheduled feed polling and queue-based transcription
+- **Database Migrations**: Automatic schema migrations for seamless upgrades
 - **NAS Storage**: Store transcripts and audio on network storage
 
 ## Architecture
@@ -184,12 +188,25 @@ cast2md restore /path/to/backup.db
 | `/api/health` | GET | Health check |
 | `/api/feeds` | GET | List all feeds |
 | `/api/feeds` | POST | Add new feed |
+| `/api/feeds/{id}` | GET | Get feed details |
+| `/api/feeds/{id}` | PATCH | Update feed (custom_title) |
 | `/api/feeds/{id}` | DELETE | Remove feed |
-| `/api/feeds/{id}/poll` | POST | Poll feed for new episodes |
-| `/api/episodes` | GET | List episodes |
+| `/api/feeds/{id}/refresh` | POST | Poll feed for new episodes |
+| `/api/feeds/{id}/export` | GET | Export all transcripts as ZIP |
 | `/api/episodes/{id}` | GET | Get episode details |
 | `/api/episodes/{id}/download` | POST | Queue episode for download |
 | `/api/episodes/{id}/transcribe` | POST | Queue episode for transcription |
+| `/api/episodes/{id}/transcript` | GET | Download transcript (format: md, txt, srt, vtt, json) |
+
+#### Feed Response Fields
+
+Feed responses include extended metadata:
+- `title`: Original RSS feed title
+- `custom_title`: User-defined override (nullable)
+- `display_title`: Shows custom_title if set, otherwise title
+- `author`: Podcast author from iTunes tags
+- `link`: Podcast website URL
+- `categories`: Array of category strings
 
 ## Deployment Files
 
@@ -241,7 +258,9 @@ cast2md backup -o /mnt/nas/cast2md/backups/cast2md_$(date +%Y%m%d).db
 - [ ] Configure backup retention policy
 
 ### GUI Polish
-- [ ] Improve episode list with pagination
+- [x] Show notes preview with full modal view
+- [x] Extended podcast metadata (author, website, categories)
+- [x] Editable feed titles with storage directory renaming
 - [ ] Add transcript viewer/editor
 - [ ] Dark mode support
 - [ ] Mobile-responsive improvements

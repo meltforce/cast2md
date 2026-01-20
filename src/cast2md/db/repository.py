@@ -14,25 +14,38 @@ class FeedRepository:
     def __init__(self, conn: sqlite3.Connection):
         self.conn = conn
 
-    def create(self, url: str, title: str, description: str | None = None,
-               image_url: str | None = None) -> Feed:
+    def create(
+        self,
+        url: str,
+        title: str,
+        description: str | None = None,
+        image_url: str | None = None,
+        author: str | None = None,
+        link: str | None = None,
+        categories: str | None = None,
+    ) -> Feed:
         """Create a new feed."""
         now = datetime.utcnow().isoformat()
         cursor = self.conn.execute(
             """
-            INSERT INTO feed (url, title, description, image_url, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO feed (url, title, description, image_url, author, link, categories,
+                              created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (url, title, description, image_url, now, now),
+            (url, title, description, image_url, author, link, categories, now, now),
         )
         self.conn.commit()
 
         return self.get_by_id(cursor.lastrowid)
 
+    # Columns in the order expected by Feed.from_row
+    FEED_COLUMNS = """id, url, title, description, image_url, author, link,
+                      categories, custom_title, last_polled, created_at, updated_at"""
+
     def get_by_id(self, feed_id: int) -> Optional[Feed]:
         """Get feed by ID."""
         cursor = self.conn.execute(
-            "SELECT * FROM feed WHERE id = ?",
+            f"SELECT {self.FEED_COLUMNS} FROM feed WHERE id = ?",
             (feed_id,),
         )
         row = cursor.fetchone()
@@ -41,7 +54,7 @@ class FeedRepository:
     def get_by_url(self, url: str) -> Optional[Feed]:
         """Get feed by URL."""
         cursor = self.conn.execute(
-            "SELECT * FROM feed WHERE url = ?",
+            f"SELECT {self.FEED_COLUMNS} FROM feed WHERE url = ?",
             (url,),
         )
         row = cursor.fetchone()
@@ -49,7 +62,7 @@ class FeedRepository:
 
     def get_all(self) -> list[Feed]:
         """Get all feeds."""
-        cursor = self.conn.execute("SELECT * FROM feed ORDER BY title")
+        cursor = self.conn.execute(f"SELECT {self.FEED_COLUMNS} FROM feed ORDER BY title")
         return [Feed.from_row(row) for row in cursor.fetchall()]
 
     def update_last_polled(self, feed_id: int) -> None:
@@ -67,9 +80,64 @@ class FeedRepository:
         self.conn.commit()
         return cursor.rowcount > 0
 
+    def update(self, feed_id: int, custom_title: str | None = None) -> Feed | None:
+        """Update feed custom title.
+
+        Args:
+            feed_id: Feed ID to update.
+            custom_title: Custom title override (None or empty to clear).
+
+        Returns:
+            Updated feed or None if not found.
+        """
+        now = datetime.utcnow().isoformat()
+        # Allow setting to NULL by using empty string or None
+        title_value = custom_title if custom_title else None
+        self.conn.execute(
+            """
+            UPDATE feed
+            SET custom_title = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (title_value, now, feed_id),
+        )
+        self.conn.commit()
+        return self.get_by_id(feed_id)
+
+    def update_metadata(
+        self,
+        feed_id: int,
+        author: str | None = None,
+        link: str | None = None,
+        categories: str | None = None,
+    ) -> None:
+        """Update feed metadata from RSS poll.
+
+        Args:
+            feed_id: Feed ID to update.
+            author: Feed author.
+            link: Feed website link.
+            categories: JSON string of categories.
+        """
+        now = datetime.utcnow().isoformat()
+        self.conn.execute(
+            """
+            UPDATE feed
+            SET author = ?, link = ?, categories = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (author, link, categories, now, feed_id),
+        )
+        self.conn.commit()
+
 
 class EpisodeRepository:
     """Repository for Episode CRUD operations."""
+
+    # Columns in the order expected by Episode.from_row
+    EPISODE_COLUMNS = """id, feed_id, guid, title, description, audio_url, duration_seconds,
+                         published_at, status, audio_path, transcript_path, transcript_url,
+                         link, author, error_message, created_at, updated_at"""
 
     def __init__(self, conn: sqlite3.Connection):
         self.conn = conn
@@ -84,6 +152,8 @@ class EpisodeRepository:
         duration_seconds: int | None = None,
         published_at: datetime | None = None,
         transcript_url: str | None = None,
+        link: str | None = None,
+        author: str | None = None,
     ) -> Episode:
         """Create a new episode."""
         now = datetime.utcnow().isoformat()
@@ -94,14 +164,14 @@ class EpisodeRepository:
             INSERT INTO episode (
                 feed_id, guid, title, description, audio_url,
                 duration_seconds, published_at, status, transcript_url,
-                created_at, updated_at
+                link, author, created_at, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 feed_id, guid, title, description, audio_url,
                 duration_seconds, published_str, EpisodeStatus.PENDING.value,
-                transcript_url, now, now,
+                transcript_url, link, author, now, now,
             ),
         )
         self.conn.commit()
@@ -111,7 +181,7 @@ class EpisodeRepository:
     def get_by_id(self, episode_id: int) -> Optional[Episode]:
         """Get episode by ID."""
         cursor = self.conn.execute(
-            "SELECT * FROM episode WHERE id = ?",
+            f"SELECT {self.EPISODE_COLUMNS} FROM episode WHERE id = ?",
             (episode_id,),
         )
         row = cursor.fetchone()
@@ -120,7 +190,7 @@ class EpisodeRepository:
     def get_by_guid(self, feed_id: int, guid: str) -> Optional[Episode]:
         """Get episode by feed ID and GUID."""
         cursor = self.conn.execute(
-            "SELECT * FROM episode WHERE feed_id = ? AND guid = ?",
+            f"SELECT {self.EPISODE_COLUMNS} FROM episode WHERE feed_id = ? AND guid = ?",
             (feed_id, guid),
         )
         row = cursor.fetchone()
@@ -129,8 +199,8 @@ class EpisodeRepository:
     def get_by_feed(self, feed_id: int, limit: int = 50) -> list[Episode]:
         """Get episodes for a feed, ordered by published date descending."""
         cursor = self.conn.execute(
-            """
-            SELECT * FROM episode
+            f"""
+            SELECT {self.EPISODE_COLUMNS} FROM episode
             WHERE feed_id = ?
             ORDER BY published_at DESC
             LIMIT ?
@@ -142,8 +212,8 @@ class EpisodeRepository:
     def get_by_status(self, status: EpisodeStatus, limit: int = 100) -> list[Episode]:
         """Get episodes by status."""
         cursor = self.conn.execute(
-            """
-            SELECT * FROM episode
+            f"""
+            SELECT {self.EPISODE_COLUMNS} FROM episode
             WHERE status = ?
             ORDER BY created_at ASC
             LIMIT ?

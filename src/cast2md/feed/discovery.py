@@ -1,5 +1,6 @@
 """Episode discovery from RSS feeds."""
 
+import json
 import logging
 from dataclasses import dataclass
 
@@ -125,6 +126,15 @@ def discover_new_episodes(
         feed_repo = FeedRepository(conn)
         job_repo = JobRepository(conn)
 
+        # Update feed metadata on every poll
+        categories_json = json.dumps(parsed.categories) if parsed.categories else None
+        feed_repo.update_metadata(
+            feed_id=feed.id,
+            author=parsed.author,
+            link=parsed.link,
+            categories=categories_json,
+        )
+
         for ep in parsed.episodes:
             # Skip if already exists
             if episode_repo.exists(feed.id, ep.guid):
@@ -139,6 +149,8 @@ def discover_new_episodes(
                 duration_seconds=ep.duration_seconds,
                 published_at=ep.published_at,
                 transcript_url=ep.transcript_url,
+                link=ep.link,
+                author=ep.author,
             )
             new_episode_ids.append(episode.id)
 

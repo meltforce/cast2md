@@ -1,17 +1,22 @@
 {% extends "base.html" %}
 
-{% block title %}{{ feed.title }} - cast2md{% endblock %}
+{% block title %}{{ feed.display_title }} - cast2md{% endblock %}
 
 {% block content %}
+<p><a href="/">&larr; Back to feeds</a></p>
+
 <hgroup>
-    <h1>{{ feed.title }}</h1>
+    <h1>
+        {{ feed.display_title }}
+        <button class="outline" style="padding: 0.25rem 0.5rem; font-size: 0.75rem; vertical-align: middle; margin-left: 0.5rem;" onclick="document.getElementById('editTitleModal').showModal()">Edit</button>
+    </h1>
+    {% if feed.author %}<p style="margin-bottom: 0.25rem;">by {{ feed.author }}</p>{% endif %}
     {% set desc = feed.description|strip_html %}
     <p>{{ desc[:200] + '...' if desc and desc|length > 200 else desc or 'No description' }}</p>
 </hgroup>
 
 <p>
-    <a href="/">&larr; Back to feeds</a>
-    &nbsp;|&nbsp;
+    {% if feed.link %}<a href="{{ feed.link }}" target="_blank">Website</a> | {% endif %}
     <strong>{{ total }}</strong> episodes
     &nbsp;|&nbsp;
     Last polled: {{ feed.last_polled.strftime('%Y-%m-%d %H:%M') if feed.last_polled else 'Never' }}
@@ -19,6 +24,29 @@
     <button class="outline" style="padding: 0.25rem 0.5rem; font-size: 0.875rem;" onclick="refreshFeed({{ feed.id }})">Refresh Feed</button>
     <button class="outline" style="padding: 0.25rem 0.5rem; font-size: 0.875rem; display: none;" onclick="queueSelected()" id="queueSelectedBtn">Queue Selected (<span id="selectedCount">0</span>)</button>
 </p>
+
+<dialog id="editTitleModal">
+    <article>
+        <header>
+            <button aria-label="Close" rel="prev" onclick="this.closest('dialog').close()"></button>
+            <h3>Edit Feed Title</h3>
+        </header>
+        <form onsubmit="saveFeedTitle(event)">
+            <label>
+                Original RSS Title
+                <input value="{{ feed.title }}" disabled>
+            </label>
+            <label>
+                Custom Title (leave blank to use RSS title)
+                <input type="text" id="customTitleInput" value="{{ feed.custom_title or '' }}" placeholder="{{ feed.title }}">
+            </label>
+            <footer style="display: flex; gap: 0.5rem; justify-content: flex-end;">
+                <button type="button" class="secondary" onclick="this.closest('dialog').close()">Cancel</button>
+                <button type="submit">Save</button>
+            </footer>
+        </form>
+    </article>
+</dialog>
 
 <article style="margin-bottom: 1rem; padding: 1rem; background: var(--card-background-color);">
     <div style="display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;">
@@ -125,6 +153,28 @@ document.getElementById('exportFormat').addEventListener('change', function() {
     const format = this.value;
     document.getElementById('exportLink').href = `/api/feeds/{{ feed.id }}/export?format=${format}`;
 });
+
+async function saveFeedTitle(event) {
+    event.preventDefault();
+    const customTitle = document.getElementById('customTitleInput').value.trim();
+
+    try {
+        const response = await fetch(`/api/feeds/{{ feed.id }}`, {
+            method: 'PATCH',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({custom_title: customTitle || null})
+        });
+
+        if (response.ok) {
+            window.location.reload();
+        } else {
+            const data = await response.json();
+            alert('Error: ' + data.detail);
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
 
 async function refreshFeed(feedId) {
     try {
