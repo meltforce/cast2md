@@ -65,6 +65,33 @@ class Settings(BaseSettings):
 # Cached settings instance
 _settings: Settings | None = None
 
+# Node-specific settings that come from .env, not database.
+# Remote nodes are slim installations without a database.
+NODE_SPECIFIC_SETTINGS = frozenset({
+    "whisper_model",
+    "whisper_device",
+    "whisper_compute_type",
+    "whisper_backend",
+})
+
+# Default values for comparison (to detect env file overrides)
+_DEFAULTS = {
+    "whisper_model": "base",
+    "whisper_device": "auto",
+    "whisper_compute_type": "int8",
+    "whisper_backend": "auto",
+    "max_concurrent_downloads": 2,
+    "max_retry_attempts": 3,
+    "request_timeout": 30,
+    "stuck_threshold_hours": 2,
+    "ntfy_enabled": False,
+    "ntfy_url": "https://ntfy.sh",
+    "ntfy_topic": "",
+    "distributed_transcription_enabled": False,
+    "node_heartbeat_timeout_seconds": 60,
+    "remote_job_timeout_hours": 2,
+}
+
 
 def get_settings() -> Settings:
     """Get settings instance, applying database overrides if available."""
@@ -76,19 +103,15 @@ def get_settings() -> Settings:
 
 
 def _apply_db_overrides() -> None:
-    """Apply settings overrides from database (if available)."""
+    """Apply settings overrides from database (if available).
+
+    Note: Node-specific settings (whisper_model, whisper_device, etc.) are
+    excluded because remote nodes are slim installations without a database.
+    These settings must come from the local .env file on each node/server.
+    """
     global _settings
     if _settings is None:
         return
-
-    # Node-specific settings should come from local env, not database
-    # (each node has different hardware/whisper capabilities)
-    node_specific_keys = {
-        "whisper_model",
-        "whisper_device",
-        "whisper_compute_type",
-        "whisper_backend",
-    }
 
     try:
         # Only import here to avoid circular imports
@@ -100,8 +123,8 @@ def _apply_db_overrides() -> None:
             overrides = repo.get_all()
 
             for key, value in overrides.items():
-                if key in node_specific_keys:
-                    continue  # Skip node-specific settings
+                if key in NODE_SPECIFIC_SETTINGS:
+                    continue  # Node-specific settings come from .env
                 if hasattr(_settings, key):
                     current_value = getattr(_settings, key)
                     field_type = type(current_value)
@@ -127,3 +150,39 @@ def reload_settings() -> Settings:
     _settings = Settings()
     _apply_db_overrides()
     return _settings
+
+
+def get_setting_source(key: str, current_value, db_value: str | None) -> str:
+    """Determine the actual source of a setting value.
+
+    Args:
+        key: Setting key name.
+        current_value: Current effective value from Settings.
+        db_value: Value stored in database (or None).
+
+    Returns:
+        One of: "env_file", "database", "default"
+    """
+    # Node-specific settings always come from env file (DB is ignored)
+    if key in NODE_SPECIFIC_SETTINGS:
+        default = _DEFAULTS.get(key)
+        # Convert current_value to comparable type
+        if hasattr(current_value, "__fspath__"):
+            current_value = str(current_value)
+        if current_value != default:
+            return "env_file"
+        return "default"
+
+    # For other settings, check if DB override is applied
+    if db_value is not None:
+        return "database"
+
+    # Check if value differs from default (meaning it's from env file)
+    default = _DEFAULTS.get(key)
+    if default is not None:
+        if hasattr(current_value, "__fspath__"):
+            current_value = str(current_value)
+        if current_value != default:
+            return "env_file"
+
+    return "default"

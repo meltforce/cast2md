@@ -245,19 +245,39 @@ async function loadSettings() {
 
         for (const [key, info] of Object.entries(currentSettings)) {
             const row = document.createElement('tr');
+
+            // Determine source badge styling
+            let sourceClass = 'status-pending';
+            let sourceText = info.source;
+            if (info.source === 'database') {
+                sourceClass = 'status-completed';
+            } else if (info.source === 'env_file') {
+                sourceClass = 'status-downloading';
+            }
+
+            // Add warning if node-specific setting has ignored DB value
+            let warning = '';
+            if (info.is_node_specific && info.db_value) {
+                warning = '<br><small style="color: var(--pico-del-color);">DB value ignored (node-specific)</small>';
+            }
+
+            // Show reset button if there's a DB value (even if ignored)
+            const hasDbValue = info.db_value !== null && info.db_value !== undefined;
+
             row.innerHTML = `
                 <td>
                     <strong>${info.label}</strong><br>
                     <small>${info.description}</small>
+                    ${info.is_node_specific ? '<br><small><em>Configure in .env file</em></small>' : ''}
                 </td>
-                <td><code>${info.value}</code></td>
+                <td><code>${info.value}</code>${warning}</td>
                 <td>
-                    <span class="status-badge ${info.source === 'database' ? 'status-completed' : 'status-pending'}">
-                        ${info.source}
+                    <span class="status-badge ${sourceClass}">
+                        ${sourceText}
                     </span>
                 </td>
                 <td>
-                    ${info.has_override ? `<button class="outline secondary" style="padding: 0.25rem 0.5rem; font-size: 0.875rem;" onclick="resetSetting('${key}')">Reset</button>` : ''}
+                    ${hasDbValue ? `<button class="outline secondary" style="padding: 0.25rem 0.5rem; font-size: 0.875rem;" onclick="resetSetting('${key}')">Reset</button>` : ''}
                 </td>
             `;
             tbody.appendChild(row);

@@ -3,7 +3,12 @@
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from cast2md.config.settings import get_settings, reload_settings
+from cast2md.config.settings import (
+    get_settings,
+    get_setting_source,
+    reload_settings,
+    NODE_SPECIFIC_SETTINGS,
+)
 from cast2md.db.connection import get_db
 from cast2md.db.repository import SettingsRepository, WhisperModelRepository
 from cast2md.notifications.ntfy import send_notification, NotificationType
@@ -136,18 +141,26 @@ def get_all_settings():
     settings = {}
     for key, meta in configurable.items():
         # Get the current effective value
-        env_value = getattr(env_settings, key, None)
+        current_value = getattr(env_settings, key, None)
         db_value = db_overrides.get(key)
 
-        # Convert Path objects to strings
-        if hasattr(env_value, "__fspath__"):
-            env_value = str(env_value)
+        # Convert Path objects to strings for display
+        display_value = current_value
+        if hasattr(display_value, "__fspath__"):
+            display_value = str(display_value)
+
+        # Determine actual source of the value
+        source = get_setting_source(key, current_value, db_value)
+
+        # For node-specific settings, the effective value is always from env/default
+        # (DB value is stored but ignored)
+        is_node_specific = key in NODE_SPECIFIC_SETTINGS
 
         settings[key] = {
-            "value": db_value if db_value is not None else env_value,
-            "default": env_value,
-            "source": "database" if db_value is not None else "environment",
-            "has_override": db_value is not None,
+            "value": display_value,
+            "db_value": db_value,  # What's stored in DB (may be ignored)
+            "source": source,
+            "is_node_specific": is_node_specific,
             **meta,
         }
 
