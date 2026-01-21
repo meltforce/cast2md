@@ -28,10 +28,31 @@
             <button type="submit">Search</button>
         </div>
     </form>
+    <div style="margin-top: 0.75rem; display: flex; gap: 1.5rem; flex-wrap: wrap; font-size: 0.875rem;">
+        <label style="display: flex; align-items: center; gap: 0.35rem; cursor: pointer;">
+            <input type="radio" name="mode" value="hybrid" {% if mode == 'hybrid' %}checked{% endif %} form="search-form">
+            <span>Hybrid</span>
+        </label>
+        <label style="display: flex; align-items: center; gap: 0.35rem; cursor: pointer;">
+            <input type="radio" name="mode" value="keyword" {% if mode == 'keyword' %}checked{% endif %} form="search-form">
+            <span>Keyword</span>
+        </label>
+        <label style="display: flex; align-items: center; gap: 0.35rem; cursor: pointer;">
+            <input type="radio" name="mode" value="semantic" {% if mode == 'semantic' %}checked{% endif %} form="search-form">
+            <span>Semantic</span>
+        </label>
+    </div>
     <details style="margin-top: 1rem;">
-        <summary style="cursor: pointer; font-size: 0.875rem;">Search syntax help</summary>
+        <summary style="cursor: pointer; font-size: 0.875rem;">Search help</summary>
         <div style="padding: 0.5rem; font-size: 0.875rem; color: var(--muted-color);">
-            <ul style="margin: 0.5rem 0;">
+            <p style="margin: 0 0 0.5rem;"><strong>Search modes:</strong></p>
+            <ul style="margin: 0 0 0.75rem;">
+                <li><strong>Hybrid</strong> - Combines keyword and semantic search for best results</li>
+                <li><strong>Keyword</strong> - Traditional full-text search (exact word matching)</li>
+                <li><strong>Semantic</strong> - Finds related content even without exact matches</li>
+            </ul>
+            <p style="margin: 0 0 0.5rem;"><strong>Keyword syntax:</strong></p>
+            <ul style="margin: 0;">
                 <li><code>kubernetes</code> - Simple search</li>
                 <li><code>"machine learning"</code> - Exact phrase</li>
                 <li><code>python AND async</code> - Both terms required</li>
@@ -44,8 +65,11 @@
 
 <p style="font-size: 0.875rem; color: var(--muted-color);">
     Index: {{ index_stats.indexed_episodes }} episodes, {{ index_stats.total_segments }} segments
+    {% if index_stats.embedded_episodes > 0 %}
+        ({{ index_stats.embedded_episodes }} with embeddings)
+    {% endif %}
     {% if query %}
-        | Found <strong>{{ total }}</strong> episode{{ 's' if total != 1 else '' }}
+        | Found <strong>{{ total }}</strong> result{{ 's' if total != 1 else '' }}
     {% endif %}
 </p>
 
@@ -53,30 +77,35 @@
     {% if results %}
     <div class="search-results">
         {% for result in results %}
-        <article class="search-result" onclick="openEpisodeModal({{ result.episode_id }}, '{{ query|e }}')" style="cursor: pointer;">
-            <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 0.5rem;">
-                <div style="flex: 1; min-width: 200px;">
-                    <strong>{{ result.episode_title }}</strong>
-                    <span style="color: var(--muted-color); font-size: 0.875rem;">
-                        &mdash; {{ result.feed_title }}
-                    </span>
-                </div>
-                <div style="display: flex; gap: 0.5rem; align-items: center;">
-                    {% if result.published_at %}
-                    <span style="font-size: 0.875rem; color: var(--muted-color);">
-                        {{ result.published_at[:10] }}
-                    </span>
-                    {% endif %}
-                    <div style="display: flex; gap: 0.25rem;">
-                        {% for source in result.match_sources %}
-                        <span class="match-badge match-{{ source }}">{{ source }}</span>
-                        {% endfor %}
-                        {% if result.transcript_match_count > 0 %}
-                        <span class="match-count">{{ result.transcript_match_count }}</span>
+        <article class="search-result" style="cursor: pointer;">
+            <a href="/episodes/{{ result.episode_id }}?t={{ result.segment_start|int }}" style="text-decoration: none; color: inherit; display: block;">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 0.5rem;">
+                    <div style="flex: 1; min-width: 200px;">
+                        <strong>{{ result.episode_title }}</strong>
+                        <span style="color: var(--muted-color); font-size: 0.875rem;">
+                            &mdash; {{ result.feed_title }}
+                        </span>
+                    </div>
+                    <div style="display: flex; gap: 0.5rem; align-items: center;">
+                        {% if result.published_at %}
+                        <span style="font-size: 0.875rem; color: var(--muted-color);">
+                            {{ result.published_at[:10] }}
+                        </span>
                         {% endif %}
+                        <div style="display: flex; gap: 0.25rem;">
+                            <span class="match-badge match-{{ result.match_type }}">{{ result.match_type }}</span>
+                        </div>
                     </div>
                 </div>
-            </div>
+                {% if result.text %}
+                <div style="margin-top: 0.5rem; font-size: 0.875rem; color: var(--muted-color);">
+                    {% set minutes = (result.segment_start|int) // 60 %}
+                    {% set seconds = (result.segment_start|int) % 60 %}
+                    <span class="match-timestamp" style="font-family: monospace; margin-right: 0.5rem;">[{{ '%02d'|format(minutes) }}:{{ '%02d'|format(seconds) }}]</span>
+                    <span class="match-text">{{ result.text|truncate(200) }}</span>
+                </div>
+                {% endif %}
+            </a>
         </article>
         {% endfor %}
     </div>
@@ -85,11 +114,11 @@
     {% if total_pages > 1 %}
     <nav style="display: flex; justify-content: center; gap: 0.5rem; margin-top: 1.5rem;">
         {% if page > 1 %}
-        <a href="?q={{ query|urlencode }}{% if feed_id %}&feed_id={{ feed_id }}{% endif %}&page={{ page - 1 }}" role="button" class="outline">&larr; Previous</a>
+        <a href="?q={{ query|urlencode }}{% if feed_id %}&feed_id={{ feed_id }}{% endif %}&mode={{ mode }}&page={{ page - 1 }}" role="button" class="outline">&larr; Previous</a>
         {% endif %}
         <span style="padding: 0.5rem 1rem; display: flex; align-items: center;">Page {{ page }} of {{ total_pages }}</span>
         {% if page < total_pages %}
-        <a href="?q={{ query|urlencode }}{% if feed_id %}&feed_id={{ feed_id }}{% endif %}&page={{ page + 1 }}" role="button" class="outline">Next &rarr;</a>
+        <a href="?q={{ query|urlencode }}{% if feed_id %}&feed_id={{ feed_id }}{% endif %}&mode={{ mode }}&page={{ page + 1 }}" role="button" class="outline">Next &rarr;</a>
         {% endif %}
     </nav>
     {% endif %}
