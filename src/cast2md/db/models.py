@@ -110,6 +110,8 @@ class Episode:
     transcript_path: Optional[str]
     transcript_url: Optional[str]  # Podcast 2.0 transcript URL
     transcript_model: Optional[str]  # Whisper model used for transcription
+    transcript_source: Optional[str]  # e.g., 'whisper', 'podcast2.0:vtt', 'manual'
+    transcript_type: Optional[str]  # MIME type of original transcript
     link: Optional[str]
     author: Optional[str]
     error_message: Optional[str]
@@ -133,11 +135,13 @@ class Episode:
             transcript_path=row[10],
             transcript_url=row[11],
             transcript_model=row[12],
-            link=row[13],
-            author=row[14],
-            error_message=row[15],
-            created_at=datetime.fromisoformat(row[16]),
-            updated_at=datetime.fromisoformat(row[17]),
+            transcript_source=row[13] if len(row) > 13 else None,
+            transcript_type=row[14] if len(row) > 14 else None,
+            link=row[15] if len(row) > 15 else None,
+            author=row[16] if len(row) > 16 else None,
+            error_message=row[17] if len(row) > 17 else None,
+            created_at=datetime.fromisoformat(row[18]) if len(row) > 18 else datetime.now(),
+            updated_at=datetime.fromisoformat(row[19]) if len(row) > 19 else datetime.now(),
         )
 
 

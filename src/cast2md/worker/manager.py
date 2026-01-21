@@ -15,6 +15,8 @@ from cast2md.notifications.ntfy import (
     notify_transcription_complete,
     notify_transcription_failed,
 )
+from cast2md.storage.filesystem import ensure_podcast_directories, get_transcript_path
+from cast2md.transcription.providers import try_fetch_transcript
 from cast2md.transcription.service import transcribe_episode
 
 logger = logging.getLogger(__name__)
@@ -281,19 +283,80 @@ class WorkerManager:
             notify_transcription_failed(episode.title, feed.title, str(e))
 
     def _queue_transcription(self, conn, episode_id: int):
-        """Queue a transcription job for an episode."""
+        """Queue a transcription job for an episode.
+
+        First tries to download transcript from external providers (e.g., Podcast 2.0).
+        Only queues Whisper transcription if no external transcript is available.
+        """
+        episode_repo = EpisodeRepository(conn)
+        feed_repo = FeedRepository(conn)
         job_repo = JobRepository(conn)
 
         # Check if already queued
         if job_repo.has_pending_job(episode_id, JobType.TRANSCRIBE):
             return
 
+        episode = episode_repo.get_by_id(episode_id)
+        if not episode:
+            logger.warning(f"Episode {episode_id} not found")
+            return
+
+        feed = feed_repo.get_by_id(episode.feed_id)
+        if not feed:
+            logger.warning(f"Feed {episode.feed_id} not found")
+            return
+
+        # Try to fetch transcript from external providers
+        result = try_fetch_transcript(episode, feed)
+        if result:
+            try:
+                # Save the downloaded transcript
+                _, transcripts_dir = ensure_podcast_directories(feed.title)
+                transcript_path = get_transcript_path(
+                    feed.title,
+                    episode.title,
+                    episode.published_at,
+                )
+
+                transcript_path.write_text(result.content, encoding="utf-8")
+
+                # Update episode with transcript info
+                episode_repo.update_transcript_from_download(
+                    episode.id, str(transcript_path), result.source
+                )
+                episode_repo.update_status(episode.id, EpisodeStatus.COMPLETED)
+
+                # Index transcript for full-text search
+                try:
+                    from cast2md.search.repository import TranscriptSearchRepository
+                    search_repo = TranscriptSearchRepository(conn)
+                    search_repo.index_episode(episode.id, str(transcript_path))
+                except Exception as index_error:
+                    logger.warning(
+                        f"Failed to index downloaded transcript for episode {episode.id}: {index_error}"
+                    )
+
+                logger.info(
+                    f"Downloaded transcript ({result.source}) for episode: {episode.title}"
+                )
+
+                # Send success notification
+                notify_transcription_complete(episode.title, feed.title)
+                return
+
+            except Exception as e:
+                logger.warning(
+                    f"Failed to save downloaded transcript for episode {episode.title}: {e}"
+                )
+                # Fall through to queue Whisper transcription
+
+        # No external transcript available, queue Whisper transcription
         job_repo.create(
             episode_id=episode_id,
             job_type=JobType.TRANSCRIBE,
             priority=1,  # High priority for newly downloaded
         )
-        logger.info(f"Queued transcription for episode {episode_id}")
+        logger.info(f"Queued Whisper transcription for episode {episode_id}")
 
     @property
     def is_running(self) -> bool:
