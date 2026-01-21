@@ -85,6 +85,16 @@
     </div>
 </article>
 
+<article id="retranscribeSection" style="margin-bottom: 1rem; padding: 1rem; background: var(--card-background-color); display: none;">
+    <div style="display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;">
+        <strong>Re-transcription:</strong>
+        <span id="retranscribeInfo" style="color: var(--muted-color);"></span>
+        <button id="retranscribeBtn" class="outline" style="padding: 0.25rem 0.5rem; font-size: 0.875rem; margin: 0;" onclick="batchRetranscribe({{ feed.id }})">
+            Re-transcribe All Outdated
+        </button>
+    </div>
+</article>
+
 <!-- Search and Filter Section -->
 <article style="margin-bottom: 1rem; padding: 1rem; background: var(--card-background-color);">
     <form id="searchForm" method="get" style="display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;">
@@ -259,7 +269,7 @@ function buildPageUrl(pageNum) {
     return '?' + params.toString();
 }
 
-// Initialize: Apply stored per_page preference
+// Initialize: Apply stored per_page preference and load retranscribe info
 document.addEventListener('DOMContentLoaded', function() {
     const storedPerPage = localStorage.getItem('cast2md_per_page');
     const currentPerPage = {{ per_page }};
@@ -271,7 +281,46 @@ document.addEventListener('DOMContentLoaded', function() {
         params.delete('page'); // Reset to page 1 when changing per_page
         window.location.search = params.toString();
     }
+
+    // Load retranscription info
+    loadRetranscribeInfo({{ feed.id }});
 });
+
+async function loadRetranscribeInfo(feedId) {
+    try {
+        const response = await fetch(`/api/queue/retranscribe/info/${feedId}`);
+        const data = await response.json();
+
+        if (response.ok && data.needs_retranscription > 0) {
+            document.getElementById('retranscribeSection').style.display = 'block';
+            document.getElementById('retranscribeInfo').textContent =
+                `${data.needs_retranscription} episode(s) can be updated to "${data.current_model}"`;
+        }
+    } catch (error) {
+        console.error('Failed to load retranscribe info:', error);
+    }
+}
+
+async function batchRetranscribe(feedId) {
+    const infoText = document.getElementById('retranscribeInfo').textContent;
+    if (!confirm(`Re-transcribe all outdated episodes?\n\n${infoText}\n\nThis will replace existing transcripts.`)) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/queue/batch/feed/${feedId}/retranscribe`, {method: 'POST'});
+        const data = await response.json();
+
+        if (response.ok) {
+            alert(data.message);
+            window.location.reload();
+        } else {
+            alert('Error: ' + data.detail);
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
 
 // Update export link when format changes
 document.getElementById('exportFormat').addEventListener('change', function() {

@@ -146,7 +146,7 @@ class EpisodeRepository:
     # Columns in the order expected by Episode.from_row
     EPISODE_COLUMNS = """id, feed_id, guid, title, description, audio_url, duration_seconds,
                          published_at, status, audio_path, transcript_path, transcript_url,
-                         link, author, error_message, created_at, updated_at"""
+                         transcript_model, link, author, error_message, created_at, updated_at"""
 
     def __init__(self, conn: sqlite3.Connection):
         self.conn = conn
@@ -315,6 +315,66 @@ class EpisodeRepository:
             (transcript_path, now, episode_id),
         )
         self.conn.commit()
+
+    def update_transcript_path_and_model(
+        self, episode_id: int, transcript_path: str, transcript_model: str
+    ) -> None:
+        """Update episode transcript path and model atomically."""
+        now = datetime.now().isoformat()
+        self.conn.execute(
+            """
+            UPDATE episode
+            SET transcript_path = ?, transcript_model = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (transcript_path, transcript_model, now, episode_id),
+        )
+        self.conn.commit()
+
+    def get_retranscribable_episodes(
+        self, feed_id: int, current_model: str
+    ) -> list[Episode]:
+        """Get completed episodes where transcript_model differs from current model.
+
+        Args:
+            feed_id: Feed ID to filter by.
+            current_model: The current whisper model to compare against.
+
+        Returns:
+            List of episodes that can be re-transcribed.
+        """
+        cursor = self.conn.execute(
+            f"""
+            SELECT {self.EPISODE_COLUMNS} FROM episode
+            WHERE feed_id = ?
+              AND status = ?
+              AND (transcript_model IS NULL OR transcript_model != ?)
+            ORDER BY published_at DESC
+            """,
+            (feed_id, EpisodeStatus.COMPLETED.value, current_model),
+        )
+        return [Episode.from_row(row) for row in cursor.fetchall()]
+
+    def count_retranscribable_episodes(self, feed_id: int, current_model: str) -> int:
+        """Count completed episodes where transcript_model differs from current model.
+
+        Args:
+            feed_id: Feed ID to filter by.
+            current_model: The current whisper model to compare against.
+
+        Returns:
+            Count of episodes that can be re-transcribed.
+        """
+        cursor = self.conn.execute(
+            """
+            SELECT COUNT(*) FROM episode
+            WHERE feed_id = ?
+              AND status = ?
+              AND (transcript_model IS NULL OR transcript_model != ?)
+            """,
+            (feed_id, EpisodeStatus.COMPLETED.value, current_model),
+        )
+        return cursor.fetchone()[0]
 
     def update_paths_for_feed_rename(
         self, feed_id: int, old_dir_name: str, new_dir_name: str

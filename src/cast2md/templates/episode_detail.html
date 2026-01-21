@@ -98,7 +98,12 @@
 {% if transcript_content %}
 <article>
     <header style="display: flex; justify-content: space-between; align-items: center;">
-        <h3 style="margin: 0;">Transcript</h3>
+        <h3 style="margin: 0;">
+            Transcript
+            {% if episode.transcript_model %}
+            <span style="font-size: 0.75rem; font-weight: normal; color: var(--muted-color);">({{ episode.transcript_model }})</span>
+            {% endif %}
+        </h3>
         <div style="display: flex; gap: 0.5rem;">
             <a href="/api/episodes/{{ episode.id }}/transcript?format=md" role="button" class="outline secondary" style="padding: 0.25rem 0.5rem; font-size: 0.875rem;">MD</a>
             <a href="/api/episodes/{{ episode.id }}/transcript?format=txt" role="button" class="outline secondary" style="padding: 0.25rem 0.5rem; font-size: 0.875rem;">TXT</a>
@@ -110,6 +115,13 @@
     <div class="transcript-container" id="transcript">
         {{ transcript_content|render_transcript|safe }}
     </div>
+    {% if current_model and (not episode.transcript_model or episode.transcript_model != current_model) %}
+    <footer style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--muted-border-color);">
+        <button class="outline" onclick="confirmRetranscribe({{ episode.id }}, '{{ current_model }}')">
+            Re-transcribe with {{ current_model }}
+        </button>
+    </footer>
+    {% endif %}
 </article>
 {% endif %}
 {% endblock %}
@@ -135,6 +147,26 @@ async function queueProcess(episodeId) {
 async function queueTranscribe(episodeId) {
     try {
         const response = await fetch(`/api/queue/episodes/${episodeId}/transcribe`, {method: 'POST'});
+        const data = await response.json();
+
+        if (response.ok) {
+            alert(data.message);
+            window.location.reload();
+        } else {
+            alert('Error: ' + data.detail);
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
+
+async function confirmRetranscribe(episodeId, currentModel) {
+    if (!confirm(`Re-transcribe this episode using "${currentModel}"?\n\nThis will replace the existing transcript.`)) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/queue/episodes/${episodeId}/retranscribe`, {method: 'POST'});
         const data = await response.json();
 
         if (response.ok) {

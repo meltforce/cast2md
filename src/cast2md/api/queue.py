@@ -913,3 +913,142 @@ def batch_delete_completed(older_than_days: int = 7):
         skipped=0,
         message=f"Deleted {count} old completed/failed jobs",
     )
+
+
+# Re-transcription endpoints
+
+
+class RetranscribeInfoResponse(BaseModel):
+    """Response model for retranscribe info."""
+
+    current_model: str
+    needs_retranscription: int
+
+
+@router.get("/retranscribe/info/{feed_id}", response_model=RetranscribeInfoResponse)
+def get_retranscribe_info(feed_id: int):
+    """Get retranscription info for a feed.
+
+    Returns the current model and count of episodes that need re-transcription.
+    """
+    from cast2md.config.settings import get_settings
+
+    settings = get_settings()
+    current_model = settings.whisper_model
+
+    with get_db() as conn:
+        episode_repo = EpisodeRepository(conn)
+        count = episode_repo.count_retranscribable_episodes(feed_id, current_model)
+
+    return RetranscribeInfoResponse(
+        current_model=current_model,
+        needs_retranscription=count,
+    )
+
+
+@router.post("/episodes/{episode_id}/retranscribe", response_model=MessageResponse)
+def queue_retranscribe(episode_id: int, request: QueueEpisodeRequest | None = None):
+    """Queue an episode for re-transcription with the current model.
+
+    Resets the episode status to DOWNLOADED and creates a transcribe job.
+    Returns 409 if the episode already uses the current model.
+    """
+    from cast2md.config.settings import get_settings
+    from cast2md.db.models import EpisodeStatus
+
+    priority = request.priority if request else 10
+    settings = get_settings()
+    current_model = settings.whisper_model
+
+    with get_db() as conn:
+        episode_repo = EpisodeRepository(conn)
+        job_repo = JobRepository(conn)
+
+        episode = episode_repo.get_by_id(episode_id)
+        if not episode:
+            raise HTTPException(status_code=404, detail="Episode not found")
+
+        # Must be completed
+        if episode.status != EpisodeStatus.COMPLETED:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Episode must be completed to re-transcribe (current: {episode.status.value})"
+            )
+
+        # Must have audio
+        if not episode.audio_path:
+            raise HTTPException(status_code=400, detail="Episode has no audio file")
+
+        # Check if model differs
+        if episode.transcript_model == current_model:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Episode already transcribed with {current_model}"
+            )
+
+        # Check if already queued
+        if job_repo.has_pending_job(episode_id, JobType.TRANSCRIBE):
+            raise HTTPException(status_code=409, detail="Transcription already queued")
+
+        # Reset status to DOWNLOADED so it can be re-transcribed
+        episode_repo.update_status(episode_id, EpisodeStatus.DOWNLOADED)
+
+        # Create transcription job
+        job = job_repo.create(
+            episode_id=episode_id,
+            job_type=JobType.TRANSCRIBE,
+            priority=priority,
+        )
+
+    return MessageResponse(
+        message=f"Re-transcription queued with model {current_model}",
+        job_id=job.id
+    )
+
+
+@router.post("/batch/feed/{feed_id}/retranscribe", response_model=BatchQueueResponse)
+def batch_retranscribe_feed(feed_id: int, request: BatchQueueRequest | None = None):
+    """Queue all completed episodes with outdated transcripts for re-transcription."""
+    from cast2md.config.settings import get_settings
+    from cast2md.db.models import EpisodeStatus
+
+    priority = request.priority if request else 10
+    settings = get_settings()
+    current_model = settings.whisper_model
+
+    with get_db() as conn:
+        episode_repo = EpisodeRepository(conn)
+        job_repo = JobRepository(conn)
+
+        episodes = episode_repo.get_retranscribable_episodes(feed_id, current_model)
+
+        queued = 0
+        skipped = 0
+
+        for episode in episodes:
+            # Skip if no audio
+            if not episode.audio_path:
+                skipped += 1
+                continue
+
+            # Skip if already queued
+            if job_repo.has_pending_job(episode.id, JobType.TRANSCRIBE):
+                skipped += 1
+                continue
+
+            # Reset status to DOWNLOADED
+            episode_repo.update_status(episode.id, EpisodeStatus.DOWNLOADED)
+
+            # Create transcription job
+            job_repo.create(
+                episode_id=episode.id,
+                job_type=JobType.TRANSCRIBE,
+                priority=priority,
+            )
+            queued += 1
+
+    return BatchQueueResponse(
+        queued=queued,
+        skipped=skipped,
+        message=f"Queued {queued} episodes for re-transcription with {current_model} ({skipped} skipped)",
+    )
