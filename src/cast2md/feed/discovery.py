@@ -149,6 +149,7 @@ def discover_new_episodes(
                 duration_seconds=ep.duration_seconds,
                 published_at=ep.published_at,
                 transcript_url=ep.transcript_url,
+                transcript_type=ep.transcript_type,
                 link=ep.link,
                 author=ep.author,
             )

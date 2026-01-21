@@ -40,6 +40,16 @@ MIGRATIONS = [
             "ALTER TABLE episode ADD COLUMN transcript_model TEXT",
         ],
     },
+    {
+        "version": 5,
+        "description": "Add transcript_source and transcript_type for external transcript support",
+        "sql": [
+            "ALTER TABLE episode ADD COLUMN transcript_source TEXT",
+            "ALTER TABLE episode ADD COLUMN transcript_type TEXT",
+            # Backfill existing completed episodes with transcript_source = 'whisper'
+            "UPDATE episode SET transcript_source = 'whisper' WHERE transcript_model IS NOT NULL AND transcript_source IS NULL",
+        ],
+    },
 ]
 
 

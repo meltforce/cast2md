@@ -146,7 +146,8 @@ class EpisodeRepository:
     # Columns in the order expected by Episode.from_row
     EPISODE_COLUMNS = """id, feed_id, guid, title, description, audio_url, duration_seconds,
                          published_at, status, audio_path, transcript_path, transcript_url,
-                         transcript_model, link, author, error_message, created_at, updated_at"""
+                         transcript_model, transcript_source, transcript_type, link, author,
+                         error_message, created_at, updated_at"""
 
     def __init__(self, conn: sqlite3.Connection):
         self.conn = conn
@@ -161,6 +162,7 @@ class EpisodeRepository:
         duration_seconds: int | None = None,
         published_at: datetime | None = None,
         transcript_url: str | None = None,
+        transcript_type: str | None = None,
         link: str | None = None,
         author: str | None = None,
     ) -> Episode:
@@ -173,14 +175,14 @@ class EpisodeRepository:
             INSERT INTO episode (
                 feed_id, guid, title, description, audio_url,
                 duration_seconds, published_at, status, transcript_url,
-                link, author, created_at, updated_at
+                transcript_type, link, author, created_at, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 feed_id, guid, title, description, audio_url,
                 duration_seconds, published_str, EpisodeStatus.PENDING.value,
-                transcript_url, link, author, now, now,
+                transcript_url, transcript_type, link, author, now, now,
             ),
         )
         episode_id = cursor.lastrowid
@@ -319,15 +321,41 @@ class EpisodeRepository:
     def update_transcript_path_and_model(
         self, episode_id: int, transcript_path: str, transcript_model: str
     ) -> None:
-        """Update episode transcript path and model atomically."""
+        """Update episode transcript path and model atomically.
+
+        Sets transcript_source to 'whisper' for Whisper-transcribed episodes.
+        """
         now = datetime.now().isoformat()
         self.conn.execute(
             """
             UPDATE episode
-            SET transcript_path = ?, transcript_model = ?, updated_at = ?
+            SET transcript_path = ?, transcript_model = ?, transcript_source = 'whisper',
+                updated_at = ?
             WHERE id = ?
             """,
             (transcript_path, transcript_model, now, episode_id),
+        )
+        self.conn.commit()
+
+    def update_transcript_from_download(
+        self, episode_id: int, transcript_path: str, source: str
+    ) -> None:
+        """Update episode with downloaded transcript.
+
+        Args:
+            episode_id: Episode ID to update.
+            transcript_path: Path to the transcript file.
+            source: Source identifier (e.g., 'podcast2.0:vtt', 'podcast2.0:srt').
+        """
+        now = datetime.now().isoformat()
+        self.conn.execute(
+            """
+            UPDATE episode
+            SET transcript_path = ?, transcript_source = ?, transcript_model = NULL,
+                updated_at = ?
+            WHERE id = ?
+            """,
+            (transcript_path, source, now, episode_id),
         )
         self.conn.commit()
 

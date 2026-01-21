@@ -100,7 +100,9 @@
     <header style="display: flex; justify-content: space-between; align-items: center;">
         <h3 style="margin: 0;">
             Transcript
-            {% if episode.transcript_model %}
+            {% if episode.transcript_source and episode.transcript_source.startswith('podcast2.0') %}
+            <span style="font-size: 0.75rem; font-weight: normal; color: var(--muted-color);" title="Downloaded from {{ episode.transcript_url }}">(Downloaded from publisher)</span>
+            {% elif episode.transcript_model %}
             <span style="font-size: 0.75rem; font-weight: normal; color: var(--muted-color);">({{ episode.transcript_model }})</span>
             {% endif %}
         </h3>
@@ -115,7 +117,8 @@
     <div class="transcript-container" id="transcript">
         {{ transcript_content|render_transcript|safe }}
     </div>
-    {% if current_model and (not episode.transcript_model or episode.transcript_model != current_model) %}
+    {% set is_downloaded = episode.transcript_source and episode.transcript_source.startswith('podcast2.0') %}
+    {% if not is_downloaded and current_model and (not episode.transcript_model or episode.transcript_model != current_model) %}
     <footer style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--muted-border-color);">
         <button class="outline" onclick="confirmRetranscribe({{ episode.id }}, '{{ current_model }}')">
             Re-transcribe with {{ current_model }}

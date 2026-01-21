@@ -20,6 +20,7 @@ class ParsedEpisode:
     duration_seconds: Optional[int]
     published_at: Optional[datetime]
     transcript_url: Optional[str]
+    transcript_type: Optional[str] = None  # MIME type from podcast:transcript
     link: Optional[str] = None
     author: Optional[str] = None
 
@@ -112,43 +113,63 @@ def extract_audio_url(entry: dict) -> str | None:
     return None
 
 
-def extract_transcript_url(entry: dict) -> str | None:
-    """Extract Podcast 2.0 transcript URL from RSS entry.
+def extract_transcript_url(entry: dict) -> tuple[str | None, str | None]:
+    """Extract Podcast 2.0 transcript URL and MIME type from RSS entry.
 
-    Looks for podcast:transcript elements.
+    Looks for podcast:transcript elements. Prefers VTT/SRT formats.
 
     Args:
         entry: Feedparser entry dict.
 
     Returns:
-        Transcript URL or None if not found.
+        Tuple of (transcript URL, MIME type) or (None, None) if not found.
     """
     # Check for podcast:transcript namespace
     # Feedparser returns a dict for single transcript, list for multiple
     transcripts = entry.get("podcast_transcript")
     if transcripts is None:
-        return None
+        return None, None
 
     # Normalize to list
     if isinstance(transcripts, dict):
         transcripts = [transcripts]
 
     if not isinstance(transcripts, list):
-        return None
+        return None, None
 
+    # Preference order for transcript formats
+    # VTT and SRT have timestamps which we can use
+    preferred_types = ["text/vtt", "application/x-subrip", "text/srt", "application/json", "text/plain", "text/html"]
+
+    # First pass: look for preferred formats
+    for preferred in preferred_types:
+        for transcript in transcripts:
+            url = transcript.get("url")
+            t_type = transcript.get("type", "")
+            if url and preferred.lower() in t_type.lower():
+                return url, t_type
+
+    # Second pass: check URL extension for format hints
     for transcript in transcripts:
         url = transcript.get("url")
-        if url:
-            # Prefer SRT or VTT formats
-            t_type = transcript.get("type", "")
-            if "srt" in t_type or "vtt" in t_type or "text" in t_type:
-                return url
+        if not url:
+            continue
+        t_type = transcript.get("type", "")
+        url_lower = url.lower()
+        if url_lower.endswith(".vtt"):
+            return url, t_type or "text/vtt"
+        elif url_lower.endswith(".srt"):
+            return url, t_type or "application/x-subrip"
+        elif url_lower.endswith(".json"):
+            return url, t_type or "application/json"
+        elif url_lower.endswith(".txt"):
+            return url, t_type or "text/plain"
 
     # Return first if no preferred format found
     if transcripts and transcripts[0].get("url"):
-        return transcripts[0]["url"]
+        return transcripts[0]["url"], transcripts[0].get("type")
 
-    return None
+    return None, None
 
 
 def parse_published_date(entry: dict) -> datetime | None:
@@ -268,6 +289,9 @@ def parse_feed(feed_content: str) -> ParsedFeed:
         episode_link = entry.get("link")
         episode_author = entry.get("itunes_author") or entry.get("author")
 
+        # Extract transcript URL and MIME type
+        transcript_url, transcript_type = extract_transcript_url(entry)
+
         episode = ParsedEpisode(
             guid=guid,
             title=entry.get("title", "Untitled Episode"),
@@ -275,7 +299,8 @@ def parse_feed(feed_content: str) -> ParsedFeed:
             audio_url=audio_url,
             duration_seconds=duration,
             published_at=parse_published_date(entry),
-            transcript_url=extract_transcript_url(entry),
+            transcript_url=transcript_url,
+            transcript_type=transcript_type,
             link=episode_link,
             author=episode_author,
         )

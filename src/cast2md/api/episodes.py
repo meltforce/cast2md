@@ -30,6 +30,9 @@ class EpisodeResponse(BaseModel):
     status: str
     audio_path: str | None
     transcript_path: str | None
+    transcript_url: str | None
+    transcript_source: str | None
+    transcript_model: str | None
     error_message: str | None
     created_at: str
     updated_at: str
@@ -48,6 +51,9 @@ class EpisodeResponse(BaseModel):
             status=episode.status.value,
             audio_path=episode.audio_path,
             transcript_path=episode.transcript_path,
+            transcript_url=episode.transcript_url,
+            transcript_source=episode.transcript_source,
+            transcript_model=episode.transcript_model,
             error_message=episode.error_message,
             created_at=episode.created_at.isoformat(),
             updated_at=episode.updated_at.isoformat(),
