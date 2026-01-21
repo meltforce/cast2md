@@ -364,6 +364,78 @@
         dialog#episodeDetailModal .modal-footer a {
             margin: 0;
         }
+        /* Toast notification styles */
+        .toast-container {
+            position: fixed;
+            top: 1rem;
+            right: 1rem;
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            max-width: 400px;
+        }
+        .toast {
+            padding: 1rem 1.25rem;
+            border-radius: 0.5rem;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+            display: flex;
+            align-items: flex-start;
+            gap: 0.75rem;
+            animation: toast-in 0.3s ease-out;
+            cursor: pointer;
+        }
+        .toast.toast-out {
+            animation: toast-out 0.3s ease-in forwards;
+        }
+        @keyframes toast-in {
+            from { opacity: 0; transform: translateX(100%); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+        @keyframes toast-out {
+            from { opacity: 1; transform: translateX(0); }
+            to { opacity: 0; transform: translateX(100%); }
+        }
+        .toast-success {
+            background: color-mix(in srgb, #22c55e 15%, var(--pico-card-background-color));
+            border: 1px solid #22c55e;
+            color: var(--pico-color);
+        }
+        .toast-error {
+            background: color-mix(in srgb, #ef4444 15%, var(--pico-card-background-color));
+            border: 1px solid #ef4444;
+            color: var(--pico-color);
+        }
+        .toast-info {
+            background: color-mix(in srgb, var(--pico-primary) 15%, var(--pico-card-background-color));
+            border: 1px solid var(--pico-primary);
+            color: var(--pico-color);
+        }
+        .toast-icon {
+            font-size: 1.25rem;
+            line-height: 1;
+            flex-shrink: 0;
+        }
+        .toast-content {
+            flex: 1;
+            font-size: 0.9rem;
+            line-height: 1.4;
+        }
+        .toast-close {
+            background: none;
+            border: none;
+            font-size: 1.25rem;
+            cursor: pointer;
+            padding: 0;
+            margin: 0;
+            width: auto;
+            line-height: 1;
+            color: var(--pico-muted-color);
+            flex-shrink: 0;
+        }
+        .toast-close:hover {
+            color: var(--pico-color);
+        }
     </style>
 </head>
 <body>
@@ -381,7 +453,47 @@
             <li><a href="#" onclick="toggleTheme(); return false;" title="Toggle theme" id="theme-toggle">🌓</a></li>
         </ul>
     </nav>
+
+    <!-- Toast notification container -->
+    <div id="toast-container" class="toast-container"></div>
+
     <script>
+        // Toast notification system
+        function showToast(message, type = 'info', duration = 4000) {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `toast toast-${type}`;
+
+            const icons = { success: '✓', error: '✕', info: 'ℹ' };
+
+            toast.innerHTML = `
+                <span class="toast-icon">${icons[type] || icons.info}</span>
+                <span class="toast-content">${message}</span>
+                <button class="toast-close" onclick="dismissToast(this.parentElement)">×</button>
+            `;
+
+            container.appendChild(toast);
+
+            // Click anywhere on toast to dismiss
+            toast.addEventListener('click', (e) => {
+                if (e.target.className !== 'toast-close') dismissToast(toast);
+            });
+
+            // Auto-dismiss (longer for errors)
+            const timeout = type === 'error' ? Math.max(duration, 6000) : duration;
+            setTimeout(() => dismissToast(toast), timeout);
+        }
+
+        function dismissToast(toast) {
+            if (!toast || toast.classList.contains('toast-out')) return;
+            toast.classList.add('toast-out');
+            setTimeout(() => toast.remove(), 300);
+        }
+
+        function showSuccess(message) { showToast(message, 'success'); }
+        function showError(message) { showToast(message, 'error'); }
+        function showInfo(message) { showToast(message, 'info'); }
+
         // Theme toggle functionality
         function toggleTheme() {
             const html = document.documentElement;

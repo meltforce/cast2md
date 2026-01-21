@@ -422,13 +422,13 @@ async function batchRetranscribe(feedId) {
         const data = await response.json();
 
         if (response.ok) {
-            alert(data.message);
-            window.location.reload();
+            showSuccess(data.message);
+            setTimeout(() => window.location.reload(), 1500);
         } else {
-            alert('Error: ' + data.detail);
+            showError(data.detail);
         }
     } catch (error) {
-        alert('Error: ' + error.message);
+        showError(error.message);
     }
 }
 
@@ -458,7 +458,7 @@ function gotoPage() {
     if (pageNum >= 1 && pageNum <= totalPages) {
         window.location.href = buildPageUrl(pageNum);
     } else {
-        alert(`Please enter a page number between 1 and ${totalPages}`);
+        showError(`Please enter a page number between 1 and ${totalPages}`);
     }
 }
 
@@ -485,10 +485,10 @@ async function saveFeedTitle(event) {
             window.location.reload();
         } else {
             const data = await response.json();
-            alert('Error: ' + data.detail);
+            showError(data.detail);
         }
     } catch (error) {
-        alert('Error: ' + error.message);
+        showError(error.message);
     }
 }
 
@@ -513,10 +513,10 @@ async function confirmDeleteFeed() {
         if (response.ok) {
             window.location.href = '/';
         } else {
-            alert('Error: ' + data.detail);
+            showError(data.detail);
         }
     } catch (error) {
-        alert('Error: ' + error.message);
+        showError(error.message);
     }
 }
 
@@ -526,13 +526,13 @@ async function refreshFeed(feedId) {
         const data = await response.json();
 
         if (response.ok) {
-            alert(data.message);
-            window.location.reload();
+            showSuccess(data.message);
+            setTimeout(() => window.location.reload(), 1500);
         } else {
-            alert('Error: ' + data.detail);
+            showError(data.detail);
         }
     } catch (error) {
-        alert('Error: ' + error.message);
+        showError(error.message);
     }
 }
 
@@ -562,12 +562,12 @@ async function tryTranscript(episodeId, button) {
             // Restore button on error
             button.disabled = false;
             button.textContent = 'Get Transcript';
-            alert('Error: ' + data.detail);
+            showError(data.detail);
         }
     } catch (error) {
         button.disabled = false;
         button.textContent = 'Get Transcript';
-        alert('Error: ' + error.message);
+        showError(error.message);
     }
 }
 
@@ -578,13 +578,13 @@ async function downloadEpisode(episodeId) {
         const data = await response.json();
 
         if (response.ok) {
-            alert(data.message);
-            window.location.reload();
+            showSuccess(data.message);
+            setTimeout(() => window.location.reload(), 1500);
         } else {
-            alert('Error: ' + data.detail);
+            showError(data.detail);
         }
     } catch (error) {
-        alert('Error: ' + error.message);
+        showError(error.message);
     }
 }
 
@@ -609,12 +609,12 @@ async function transcribeEpisode(episodeId, button) {
         } else {
             button.disabled = false;
             button.textContent = 'Transcribe';
-            alert('Error: ' + data.detail);
+            showError(data.detail);
         }
     } catch (error) {
         button.disabled = false;
         button.textContent = 'Transcribe';
-        alert('Error: ' + error.message);
+        showError(error.message);
     }
 }
 
@@ -647,10 +647,10 @@ async function queueAllTranscripts(feedId) {
             // Start polling for updates
             startStatusPolling();
         } else {
-            alert('Error: ' + data.detail);
+            showError(data.detail);
         }
     } catch (error) {
-        alert('Error: ' + error.message);
+        showError(error.message);
     }
 }
 
@@ -674,7 +674,7 @@ async function queueSelected() {
         .map(cb => parseInt(cb.value));
 
     if (selected.length === 0) {
-        alert('No episodes selected');
+        showError('No episodes selected');
         return;
     }
 
@@ -691,13 +691,13 @@ async function queueSelected() {
         const data = await response.json();
 
         if (response.ok) {
-            alert(data.message);
-            window.location.reload();
+            showSuccess(data.message);
+            setTimeout(() => window.location.reload(), 1500);
         } else {
-            alert('Error: ' + data.detail);
+            showError(data.detail);
         }
     } catch (error) {
-        alert('Error: ' + error.message);
+        showError(error.message);
     }
 }
 
@@ -706,7 +706,7 @@ async function queueByPosition(feedId) {
     const posTo = document.getElementById('posTo').value;
 
     if (!posFrom && !posTo) {
-        alert('Please specify at least one position value');
+        showError('Please specify at least one position value');
         return;
     }
 
@@ -731,13 +731,13 @@ async function queueByPosition(feedId) {
         const data = await response.json();
 
         if (response.ok) {
-            alert(data.message);
-            window.location.reload();
+            showSuccess(data.message);
+            setTimeout(() => window.location.reload(), 1500);
         } else {
-            alert('Error: ' + data.detail);
+            showError(data.detail);
         }
     } catch (error) {
-        alert('Error: ' + error.message);
+        showError(error.message);
     }
 }
 
@@ -746,7 +746,7 @@ async function queueByDate(feedId) {
     const dateTo = document.getElementById('dateTo').value;
 
     if (!dateFrom && !dateTo) {
-        alert('Please specify at least one date');
+        showError('Please specify at least one date');
         return;
     }
 
@@ -771,13 +771,13 @@ async function queueByDate(feedId) {
         const data = await response.json();
 
         if (response.ok) {
-            alert(data.message);
-            window.location.reload();
+            showSuccess(data.message);
+            setTimeout(() => window.location.reload(), 1500);
         } else {
-            alert('Error: ' + data.detail);
+            showError(data.detail);
         }
     } catch (error) {
-        alert('Error: ' + error.message);
+        showError(error.message);
     }
 }
 </script>

@@ -138,7 +138,7 @@
 
                 {% if item.job.error_message %}
                 <button class="outline secondary" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;"
-                        onclick="showError({{ item.job.id }}, `{{ item.job.error_message | replace('`', '\\`') | replace('\n', '\\n') }}`)"
+                        onclick="showJobError({{ item.job.id }}, `{{ item.job.error_message | replace('`', '\\`') | replace('\n', '\\n') }}`)"
                         title="View error">Err</button>
                 {% endif %}
             </td>
@@ -178,10 +178,10 @@ async function cancelJob(jobId) {
         if (response.ok) {
             window.location.reload();
         } else {
-            alert('Error: ' + data.detail);
+            showError(data.detail);
         }
     } catch (error) {
-        alert('Error: ' + error.message);
+        showError(error.message);
     }
 }
 
@@ -195,10 +195,10 @@ async function resetJob(jobId) {
         if (response.ok) {
             window.location.reload();
         } else {
-            alert('Error: ' + data.detail);
+            showError(data.detail);
         }
     } catch (error) {
-        alert('Error: ' + error.message);
+        showError(error.message);
     }
 }
 
@@ -212,10 +212,10 @@ async function retryJob(jobId) {
         if (response.ok) {
             window.location.reload();
         } else {
-            alert('Error: ' + data.detail);
+            showError(data.detail);
         }
     } catch (error) {
-        alert('Error: ' + error.message);
+        showError(error.message);
     }
 }
 
@@ -229,10 +229,10 @@ async function deleteJob(jobId) {
         if (response.ok) {
             window.location.reload();
         } else {
-            alert('Error: ' + data.detail);
+            showError(data.detail);
         }
     } catch (error) {
-        alert('Error: ' + error.message);
+        showError(error.message);
     }
 }
 
@@ -244,13 +244,13 @@ async function resetAllStuck() {
         const data = await response.json();
 
         if (response.ok) {
-            alert(data.message);
-            window.location.reload();
+            showSuccess(data.message);
+            setTimeout(() => window.location.reload(), 1500);
         } else {
-            alert('Error: ' + data.detail);
+            showError(data.detail);
         }
     } catch (error) {
-        alert('Error: ' + error.message);
+        showError(error.message);
     }
 }
 
@@ -262,13 +262,13 @@ async function cancelAllQueued() {
         const data = await response.json();
 
         if (response.ok) {
-            alert(data.message);
-            window.location.reload();
+            showSuccess(data.message);
+            setTimeout(() => window.location.reload(), 1500);
         } else {
-            alert('Error: ' + data.detail);
+            showError(data.detail);
         }
     } catch (error) {
-        alert('Error: ' + error.message);
+        showError(error.message);
     }
 }
 
@@ -280,13 +280,13 @@ async function retryAllFailed() {
         const data = await response.json();
 
         if (response.ok) {
-            alert(data.message);
-            window.location.reload();
+            showSuccess(data.message);
+            setTimeout(() => window.location.reload(), 1500);
         } else {
-            alert('Error: ' + data.detail);
+            showError(data.detail);
         }
     } catch (error) {
-        alert('Error: ' + error.message);
+        showError(error.message);
     }
 }
 
@@ -296,7 +296,7 @@ async function cleanupCompleted() {
 
     const daysNum = parseInt(days);
     if (isNaN(daysNum) || daysNum < 1) {
-        alert('Please enter a valid number of days (1 or more)');
+        showError('Please enter a valid number of days (1 or more)');
         return;
     }
 
@@ -305,17 +305,17 @@ async function cleanupCompleted() {
         const data = await response.json();
 
         if (response.ok) {
-            alert(data.message);
-            window.location.reload();
+            showSuccess(data.message);
+            setTimeout(() => window.location.reload(), 1500);
         } else {
-            alert('Error: ' + data.detail);
+            showError(data.detail);
         }
     } catch (error) {
-        alert('Error: ' + error.message);
+        showError(error.message);
     }
 }
 
-function showError(jobId, errorMessage) {
+function showJobError(jobId, errorMessage) {
     document.getElementById('error-content').textContent = errorMessage;
     document.getElementById('error-modal').showModal();
 }

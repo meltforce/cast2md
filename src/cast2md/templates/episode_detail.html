@@ -153,13 +153,13 @@ async function queueProcess(episodeId) {
         const data = await response.json();
 
         if (response.ok) {
-            alert(data.message);
-            window.location.reload();
+            showSuccess(data.message);
+            setTimeout(() => window.location.reload(), 1500);
         } else {
-            alert('Error: ' + data.detail);
+            showError(data.detail);
         }
     } catch (error) {
-        alert('Error: ' + error.message);
+        showError(error.message);
     }
 }
 
@@ -169,13 +169,13 @@ async function queueTranscriptDownload(episodeId) {
         const data = await response.json();
 
         if (response.ok) {
-            alert(data.message);
-            window.location.reload();
+            showSuccess(data.message);
+            setTimeout(() => window.location.reload(), 1500);
         } else {
-            alert('Error: ' + data.detail);
+            showError(data.detail);
         }
     } catch (error) {
-        alert('Error: ' + error.message);
+        showError(error.message);
     }
 }
 
@@ -185,13 +185,13 @@ async function queueTranscribe(episodeId) {
         const data = await response.json();
 
         if (response.ok) {
-            alert(data.message);
-            window.location.reload();
+            showSuccess(data.message);
+            setTimeout(() => window.location.reload(), 1500);
         } else {
-            alert('Error: ' + data.detail);
+            showError(data.detail);
         }
     } catch (error) {
-        alert('Error: ' + error.message);
+        showError(error.message);
     }
 }
 
@@ -205,13 +205,13 @@ async function confirmRetranscribe(episodeId, currentModel) {
         const data = await response.json();
 
         if (response.ok) {
-            alert(data.message);
-            window.location.reload();
+            showSuccess(data.message);
+            setTimeout(() => window.location.reload(), 1500);
         } else {
-            alert('Error: ' + data.detail);
+            showError(data.detail);
         }
     } catch (error) {
-        alert('Error: ' + error.message);
+        showError(error.message);
     }
 }
 
@@ -225,13 +225,13 @@ async function confirmDeleteAudio(episodeId) {
         const data = await response.json();
 
         if (response.ok) {
-            alert(data.message);
-            window.location.reload();
+            showSuccess(data.message);
+            setTimeout(() => window.location.reload(), 1500);
         } else {
-            alert('Error: ' + data.detail);
+            showError(data.detail);
         }
     } catch (error) {
-        alert('Error: ' + error.message);
+        showError(error.message);
     }
 }
 
@@ -241,13 +241,13 @@ async function queueDownloadAudio(episodeId) {
         const data = await response.json();
 
         if (response.ok) {
-            alert(data.message);
-            window.location.reload();
+            showSuccess(data.message);
+            setTimeout(() => window.location.reload(), 1500);
         } else {
-            alert('Error: ' + data.detail);
+            showError(data.detail);
         }
     } catch (error) {
-        alert('Error: ' + error.message);
+        showError(error.message);
     }
 }
 
