@@ -670,12 +670,16 @@ class TranscriptSearchRepository:
         Returns:
             HybridSearchResponse with combined results.
         """
+        import time
+
         from cast2md.db.connection import is_sqlite_vec_available
         from cast2md.search.embeddings import generate_embedding, is_embeddings_available
 
         safe_query = query.strip()
         if not safe_query:
             return HybridSearchResponse(query=query, total=0, mode=mode, results=[])
+
+        t_start = time.perf_counter()
 
         # RRF constant (standard value from literature)
         K = 60
@@ -685,12 +689,15 @@ class TranscriptSearchRepository:
 
         # Keyword search (FTS5)
         if mode in ("hybrid", "keyword"):
+            t_keyword_start = time.perf_counter()
             try:
                 keyword_response = self.search(
                     query=safe_query,
                     feed_id=feed_id,
                     limit=limit * 2,  # Get more results for fusion
                 )
+                t_keyword_end = time.perf_counter()
+                logger.info(f"[TIMING] Keyword search: {t_keyword_end - t_keyword_start:.3f}s")
                 for rank, result in enumerate(keyword_response.results):
                     key = (result.episode_id, result.segment_start, result.segment_end)
                     rrf_score = 1.0 / (K + rank + 1)
@@ -721,12 +728,19 @@ class TranscriptSearchRepository:
         # Semantic search (vector similarity)
         if mode in ("hybrid", "semantic") and is_embeddings_available() and is_sqlite_vec_available():
             try:
+                t_embed_start = time.perf_counter()
                 query_embedding = generate_embedding(safe_query)
+                t_embed_end = time.perf_counter()
+                logger.info(f"[TIMING] Query embedding: {t_embed_end - t_embed_start:.3f}s")
+
+                t_vector_start = time.perf_counter()
                 vector_results = self._vector_search(
                     query_embedding=query_embedding,
                     feed_id=feed_id,
                     limit=limit * 2,
                 )
+                t_vector_end = time.perf_counter()
+                logger.info(f"[TIMING] Vector search: {t_vector_end - t_vector_start:.3f}s")
 
                 for rank, row in enumerate(vector_results):
                     key = (row[0], row[5], row[6])  # episode_id, segment_start, segment_end
@@ -780,6 +794,9 @@ class TranscriptSearchRepository:
             )
             for r in limited
         ]
+
+        t_end = time.perf_counter()
+        logger.info(f"[TIMING] Total hybrid_search: {t_end - t_start:.3f}s")
 
         return HybridSearchResponse(
             query=query,
