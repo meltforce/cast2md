@@ -12,6 +12,7 @@ from fastapi.templating import Jinja2Templates
 
 from cast2md.api.episodes import router as episodes_router
 from cast2md.api.feeds import router as feeds_router
+from cast2md.api.itunes import router as itunes_router
 from cast2md.api.nodes import router as nodes_router
 from cast2md.api.queue import router as queue_router
 from cast2md.api.search import router as search_router
@@ -128,6 +129,7 @@ if static_path.exists():
 # Include routers
 app.include_router(feeds_router)
 app.include_router(episodes_router)
+app.include_router(itunes_router)
 app.include_router(nodes_router)
 app.include_router(queue_router)
 app.include_router(search_router)
