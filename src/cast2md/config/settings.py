@@ -36,6 +36,7 @@ class Settings(BaseSettings):
 
     # Download settings
     max_concurrent_downloads: int = 2
+    max_transcript_download_workers: int = 5  # Parallel workers for fetching external transcripts
     max_retry_attempts: int = 3
     request_timeout: int = 30
 
@@ -81,6 +82,7 @@ _DEFAULTS = {
     "whisper_compute_type": "int8",
     "whisper_backend": "auto",
     "max_concurrent_downloads": 2,
+    "max_transcript_download_workers": 5,
     "max_retry_attempts": 3,
     "request_timeout": 30,
     "stuck_threshold_hours": 2,
