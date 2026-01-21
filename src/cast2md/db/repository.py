@@ -743,6 +743,7 @@ class JobRepository:
         now = datetime.utcnow().isoformat()
 
         # First, fail jobs that have exceeded max attempts
+        # Use started_at (not claimed_at) so reclaim cycles don't reset the timeout
         cursor = self.conn.execute(
             """
             UPDATE job_queue
@@ -750,7 +751,7 @@ class JobRepository:
                 completed_at = ?, assigned_node_id = NULL, claimed_at = NULL
             WHERE status = ?
               AND assigned_node_id IS NOT NULL
-              AND claimed_at < ?
+              AND started_at < ?
               AND attempts >= max_attempts
             """,
             (JobStatus.FAILED.value, now, JobStatus.RUNNING.value, threshold),
@@ -764,7 +765,7 @@ class JobRepository:
             SET status = ?, assigned_node_id = NULL, claimed_at = NULL, started_at = NULL
             WHERE status = ?
               AND assigned_node_id IS NOT NULL
-              AND claimed_at < ?
+              AND started_at < ?
               AND attempts < max_attempts
             """,
             (JobStatus.QUEUED.value, JobStatus.RUNNING.value, threshold),
@@ -836,16 +837,22 @@ class JobRepository:
         )
         return cursor.fetchone() is not None
 
-    def mark_running(self, job_id: int) -> None:
-        """Mark a job as running."""
+    def mark_running(self, job_id: int, node_id: str = "local") -> None:
+        """Mark a job as running.
+
+        Args:
+            job_id: The job ID to mark as running.
+            node_id: The node ID processing this job (default: "local" for local workers).
+        """
         now = datetime.utcnow().isoformat()
         self.conn.execute(
             """
             UPDATE job_queue
-            SET status = ?, started_at = ?, attempts = attempts + 1, progress_percent = 0
+            SET status = ?, started_at = ?, attempts = attempts + 1,
+                progress_percent = 0, assigned_node_id = ?, claimed_at = ?
             WHERE id = ?
             """,
-            (JobStatus.RUNNING.value, now, job_id),
+            (JobStatus.RUNNING.value, now, node_id, now, job_id),
         )
         self.conn.commit()
 
@@ -1529,8 +1536,14 @@ class TranscriberNodeRepository:
         )
         self.conn.commit()
 
-    def update_heartbeat(self, node_id: str) -> None:
-        """Update last heartbeat timestamp."""
+    def update_heartbeat(self, node_id: str, timestamp: datetime | None = None) -> None:
+        """Update last heartbeat timestamp.
+
+        Args:
+            node_id: The node ID to update.
+            timestamp: Optional timestamp to use (default: current time).
+        """
+        ts = (timestamp or datetime.utcnow()).isoformat()
         now = datetime.utcnow().isoformat()
         self.conn.execute(
             """
@@ -1538,7 +1551,7 @@ class TranscriberNodeRepository:
             SET last_heartbeat = ?, updated_at = ?
             WHERE id = ?
             """,
-            (now, now, node_id),
+            (ts, now, node_id),
         )
         self.conn.commit()
 

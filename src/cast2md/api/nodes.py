@@ -16,6 +16,7 @@ from cast2md.db.repository import (
     JobRepository,
     TranscriberNodeRepository,
 )
+from cast2md.distributed import get_coordinator
 
 router = APIRouter(prefix="/api/nodes", tags=["nodes"])
 
@@ -186,8 +187,14 @@ def node_heartbeat(
         if node.api_key != api_key:
             raise HTTPException(status_code=401, detail="Invalid API key for this node")
 
-        # Update heartbeat and optionally node info
-        repo.update_heartbeat(node_id)
+        # Update heartbeat via coordinator (in-memory) or direct DB if coordinator not running
+        coordinator = get_coordinator()
+        if coordinator.is_running:
+            # In-memory heartbeat (no DB write)
+            coordinator.record_heartbeat(node_id)
+        else:
+            # Fallback: direct DB write
+            repo.update_heartbeat(node_id)
 
         if request.whisper_model or request.whisper_backend:
             repo.update_info(
