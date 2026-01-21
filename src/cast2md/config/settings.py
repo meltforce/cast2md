@@ -45,6 +45,9 @@ class Settings(BaseSettings):
     # HTTP client settings
     user_agent: str = "cast2md/0.1.0 (Podcast Transcription Service)"
 
+    # iTunes search settings
+    itunes_country: str = "de"  # ISO 3166-1 alpha-2 country code for iTunes store
+
     # Notifications (ntfy)
     ntfy_enabled: bool = False
     ntfy_url: str = "https://ntfy.sh"
@@ -81,6 +84,7 @@ _DEFAULTS = {
     "max_retry_attempts": 3,
     "request_timeout": 30,
     "stuck_threshold_hours": 2,
+    "itunes_country": "de",
     "ntfy_enabled": False,
     "ntfy_url": "https://ntfy.sh",
     "ntfy_topic": "",

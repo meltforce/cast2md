@@ -97,11 +97,12 @@ class ItunesClient:
         Returns:
             List of matching podcasts.
         """
+        settings = get_settings()
         url = f"{self.BASE_URL}/search"
         params = {
             "term": term,
             "media": "podcast",
-            "country": "de",
+            "country": settings.itunes_country,
             "limit": limit,
         }
 
