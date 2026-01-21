@@ -194,6 +194,41 @@ def get_queue_status():
     )
 
 
+@router.post("/episodes/{episode_id}/transcript-download", response_model=MessageResponse)
+def queue_transcript_download(episode_id: int, request: QueueEpisodeRequest | None = None):
+    """Queue an episode for transcript download from external providers.
+
+    Tries to fetch transcript from Podcasting 2.0 and Pocket Casts.
+    If successful, marks episode as completed without needing audio.
+    If no transcript found, episode stays pending for manual audio download.
+    """
+    priority = request.priority if request else 10
+
+    with get_db() as conn:
+        episode_repo = EpisodeRepository(conn)
+        job_repo = JobRepository(conn)
+
+        episode = episode_repo.get_by_id(episode_id)
+        if not episode:
+            raise HTTPException(status_code=404, detail="Episode not found")
+
+        # Check if already has transcript
+        if episode.transcript_path:
+            raise HTTPException(status_code=409, detail="Episode already has transcript")
+
+        # Check if already queued
+        if job_repo.has_pending_job(episode_id, JobType.TRANSCRIPT_DOWNLOAD):
+            raise HTTPException(status_code=409, detail="Transcript download already queued")
+
+        job = job_repo.create(
+            episode_id=episode_id,
+            job_type=JobType.TRANSCRIPT_DOWNLOAD,
+            priority=priority,
+        )
+
+    return MessageResponse(message="Transcript download queued", job_id=job.id)
+
+
 @router.post("/episodes/{episode_id}/download", response_model=MessageResponse)
 def queue_download(episode_id: int, request: QueueEpisodeRequest | None = None):
     """Queue an episode for download."""
