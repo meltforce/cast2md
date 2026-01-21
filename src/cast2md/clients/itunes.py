@@ -101,6 +101,7 @@ class ItunesClient:
         params = {
             "term": term,
             "media": "podcast",
+            "country": "de",
             "limit": limit,
         }
 
