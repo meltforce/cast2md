@@ -1,11 +1,14 @@
 """Repository for transcript full-text search operations."""
 
+import logging
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import Literal, Optional
 
-from cast2md.search.parser import parse_transcript_file, TranscriptSegment
+from cast2md.search.parser import parse_transcript_file
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -53,6 +56,32 @@ class UnifiedSearchResponse:
     query: str
     total: int
     results: list[UnifiedSearchResult]
+
+
+@dataclass
+class HybridSearchResult:
+    """A result from hybrid (keyword + semantic) search."""
+
+    episode_id: int
+    episode_title: str
+    feed_id: int
+    feed_title: str
+    published_at: Optional[str]
+    segment_start: float
+    segment_end: float
+    text: str
+    score: float  # Combined RRF score (higher is better)
+    match_type: str  # "keyword", "semantic", or "both"
+
+
+@dataclass
+class HybridSearchResponse:
+    """Response from hybrid search."""
+
+    query: str
+    total: int
+    mode: str  # "hybrid", "semantic", or "keyword"
+    results: list[HybridSearchResult]
 
 
 class TranscriptSearchRepository:
@@ -454,3 +483,307 @@ class TranscriptSearchRepository:
         ]
 
         return UnifiedSearchResponse(query=query, total=total, results=results)
+
+    def index_episode_embeddings(
+        self, episode_id: int, transcript_path: str, model_name: str | None = None
+    ) -> int:
+        """Generate and store embeddings for a transcript's segments.
+
+        Args:
+            episode_id: Episode ID to index.
+            transcript_path: Path to transcript markdown file.
+            model_name: Embedding model name (defaults to configured model).
+
+        Returns:
+            Number of segments embedded.
+        """
+        from cast2md.search.embeddings import (
+            DEFAULT_MODEL_NAME,
+            generate_embeddings_batch,
+            text_hash,
+        )
+
+        if model_name is None:
+            model_name = DEFAULT_MODEL_NAME
+
+        path = Path(transcript_path)
+        if not path.exists():
+            return 0
+
+        # Parse transcript
+        segments = parse_transcript_file(path)
+        if not segments:
+            return 0
+
+        # Remove existing embeddings for this episode
+        self.conn.execute(
+            "DELETE FROM segment_embeddings WHERE episode_id = ?",
+            (episode_id,),
+        )
+
+        # Generate embeddings in batch
+        texts = [seg.text for seg in segments]
+        embeddings = generate_embeddings_batch(texts, model_name)
+
+        # Insert embeddings
+        for segment, embedding in zip(segments, embeddings):
+            self.conn.execute(
+                """
+                INSERT INTO segment_embeddings
+                (episode_id, segment_start, segment_end, text_hash, embedding, model_name)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    episode_id,
+                    segment.start,
+                    segment.end,
+                    text_hash(segment.text),
+                    embedding,
+                    model_name,
+                ),
+            )
+
+        self.conn.commit()
+        return len(segments)
+
+    def remove_episode_embeddings(self, episode_id: int) -> int:
+        """Remove all embeddings for an episode.
+
+        Args:
+            episode_id: Episode ID to remove.
+
+        Returns:
+            Number of embeddings removed.
+        """
+        cursor = self.conn.execute(
+            "DELETE FROM segment_embeddings WHERE episode_id = ?",
+            (episode_id,),
+        )
+        self.conn.commit()
+        return cursor.rowcount
+
+    def get_embedded_episodes(self) -> set[int]:
+        """Get set of episode IDs that have embeddings."""
+        cursor = self.conn.execute(
+            "SELECT DISTINCT episode_id FROM segment_embeddings"
+        )
+        return {row[0] for row in cursor.fetchall()}
+
+    def get_embedding_count(self) -> int:
+        """Get total number of segment embeddings."""
+        cursor = self.conn.execute("SELECT COUNT(*) FROM segment_embeddings")
+        return cursor.fetchone()[0]
+
+    def _vector_search(
+        self,
+        query_embedding: bytes,
+        feed_id: int | None = None,
+        limit: int = 50,
+    ) -> list[tuple]:
+        """Perform vector similarity search.
+
+        Args:
+            query_embedding: Query embedding as bytes.
+            feed_id: Optional feed ID to filter results.
+            limit: Maximum results to return.
+
+        Returns:
+            List of tuples with segment info and distance.
+        """
+        from cast2md.db.connection import is_sqlite_vec_available
+
+        if not is_sqlite_vec_available():
+            return []
+
+        # Build query with optional feed filter
+        if feed_id is not None:
+            sql = """
+                SELECT
+                    se.episode_id,
+                    e.title as episode_title,
+                    e.feed_id,
+                    COALESCE(f.custom_title, f.title) as feed_title,
+                    e.published_at,
+                    se.segment_start,
+                    se.segment_end,
+                    t.text,
+                    vec_distance_cosine(se.embedding, ?) as distance
+                FROM segment_embeddings se
+                JOIN episode e ON se.episode_id = e.id
+                JOIN feed f ON e.feed_id = f.id
+                LEFT JOIN transcript_fts t ON t.episode_id = se.episode_id
+                    AND t.segment_start = se.segment_start
+                    AND t.segment_end = se.segment_end
+                WHERE e.feed_id = ?
+                ORDER BY distance ASC
+                LIMIT ?
+            """
+            params = (query_embedding, feed_id, limit)
+        else:
+            sql = """
+                SELECT
+                    se.episode_id,
+                    e.title as episode_title,
+                    e.feed_id,
+                    COALESCE(f.custom_title, f.title) as feed_title,
+                    e.published_at,
+                    se.segment_start,
+                    se.segment_end,
+                    t.text,
+                    vec_distance_cosine(se.embedding, ?) as distance
+                FROM segment_embeddings se
+                JOIN episode e ON se.episode_id = e.id
+                JOIN feed f ON e.feed_id = f.id
+                LEFT JOIN transcript_fts t ON t.episode_id = se.episode_id
+                    AND t.segment_start = se.segment_start
+                    AND t.segment_end = se.segment_end
+                ORDER BY distance ASC
+                LIMIT ?
+            """
+            params = (query_embedding, limit)
+
+        try:
+            cursor = self.conn.execute(sql, params)
+            return cursor.fetchall()
+        except sqlite3.OperationalError as e:
+            logger.warning(f"Vector search failed: {e}")
+            return []
+
+    def hybrid_search(
+        self,
+        query: str,
+        feed_id: int | None = None,
+        limit: int = 20,
+        mode: Literal["hybrid", "semantic", "keyword"] = "hybrid",
+    ) -> HybridSearchResponse:
+        """Perform hybrid search combining keyword and semantic search.
+
+        Uses Reciprocal Rank Fusion (RRF) to combine results from FTS5
+        keyword search and vector similarity search.
+
+        Args:
+            query: Search query.
+            feed_id: Optional feed ID to filter results.
+            limit: Maximum results to return.
+            mode: Search mode - "hybrid", "semantic", or "keyword".
+
+        Returns:
+            HybridSearchResponse with combined results.
+        """
+        from cast2md.db.connection import is_sqlite_vec_available
+        from cast2md.search.embeddings import generate_embedding, is_embeddings_available
+
+        safe_query = query.strip()
+        if not safe_query:
+            return HybridSearchResponse(query=query, total=0, mode=mode, results=[])
+
+        # RRF constant (standard value from literature)
+        K = 60
+
+        # Dictionary to collect results: key = (episode_id, segment_start, segment_end)
+        results_map: dict[tuple, dict] = {}
+
+        # Keyword search (FTS5)
+        if mode in ("hybrid", "keyword"):
+            try:
+                keyword_response = self.search(
+                    query=safe_query,
+                    feed_id=feed_id,
+                    limit=limit * 2,  # Get more results for fusion
+                )
+                for rank, result in enumerate(keyword_response.results):
+                    key = (result.episode_id, result.segment_start, result.segment_end)
+                    rrf_score = 1.0 / (K + rank + 1)
+
+                    if key in results_map:
+                        results_map[key]["keyword_rank"] = rank
+                        results_map[key]["rrf_score"] += rrf_score
+                        results_map[key]["match_type"] = "both"
+                    else:
+                        results_map[key] = {
+                            "episode_id": result.episode_id,
+                            "episode_title": result.episode_title,
+                            "feed_id": result.feed_id,
+                            "feed_title": result.feed_title,
+                            "published_at": result.published_at,
+                            "segment_start": result.segment_start,
+                            "segment_end": result.segment_end,
+                            "text": result.snippet,
+                            "keyword_rank": rank,
+                            "semantic_rank": None,
+                            "rrf_score": rrf_score,
+                            "match_type": "keyword",
+                        }
+            except sqlite3.OperationalError:
+                # Invalid FTS5 query, continue with semantic only if in hybrid mode
+                pass
+
+        # Semantic search (vector similarity)
+        if mode in ("hybrid", "semantic") and is_embeddings_available() and is_sqlite_vec_available():
+            try:
+                query_embedding = generate_embedding(safe_query)
+                vector_results = self._vector_search(
+                    query_embedding=query_embedding,
+                    feed_id=feed_id,
+                    limit=limit * 2,
+                )
+
+                for rank, row in enumerate(vector_results):
+                    key = (row[0], row[5], row[6])  # episode_id, segment_start, segment_end
+                    rrf_score = 1.0 / (K + rank + 1)
+
+                    if key in results_map:
+                        results_map[key]["semantic_rank"] = rank
+                        results_map[key]["rrf_score"] += rrf_score
+                        if results_map[key]["match_type"] == "keyword":
+                            results_map[key]["match_type"] = "both"
+                    else:
+                        results_map[key] = {
+                            "episode_id": row[0],
+                            "episode_title": row[1],
+                            "feed_id": row[2],
+                            "feed_title": row[3],
+                            "published_at": row[4],
+                            "segment_start": row[5],
+                            "segment_end": row[6],
+                            "text": row[7] or "",
+                            "keyword_rank": None,
+                            "semantic_rank": rank,
+                            "rrf_score": rrf_score,
+                            "match_type": "semantic",
+                        }
+            except Exception as e:
+                logger.warning(f"Semantic search failed: {e}")
+
+        # Sort by RRF score (descending - higher is better)
+        sorted_results = sorted(
+            results_map.values(),
+            key=lambda x: x["rrf_score"],
+            reverse=True,
+        )
+
+        # Apply limit
+        limited = sorted_results[:limit]
+
+        results = [
+            HybridSearchResult(
+                episode_id=r["episode_id"],
+                episode_title=r["episode_title"],
+                feed_id=r["feed_id"],
+                feed_title=r["feed_title"],
+                published_at=r["published_at"],
+                segment_start=r["segment_start"],
+                segment_end=r["segment_end"],
+                text=r["text"],
+                score=r["rrf_score"],
+                match_type=r["match_type"],
+            )
+            for r in limited
+        ]
+
+        return HybridSearchResponse(
+            query=query,
+            total=len(sorted_results),
+            mode=mode,
+            results=results,
+        )
