@@ -1,6 +1,6 @@
 # cast2md
 
-Podcast transcription service - download episodes via RSS and transcribe with Whisper.
+Podcast transcription service - download episodes via RSS and transcribe with Whisper. Automatically downloads publisher-provided transcripts when available (Podcasting 2.0).
 
 ## Features
 
@@ -8,6 +8,7 @@ Podcast transcription service - download episodes via RSS and transcribe with Wh
 - **Extended Metadata**: Extracts author, website link, and categories from RSS feeds
 - **Custom Feed Titles**: Override RSS titles with custom names (auto-renames storage directories)
 - **Automatic Downloads**: Queue and download episodes with configurable workers
+- **External Transcript Downloads**: Automatically fetches publisher-provided transcripts from Podcasting 2.0 `<podcast:transcript>` tags (VTT, SRT, JSON formats) - skips Whisper when available
 - **Whisper Transcription**: Transcribe audio using faster-whisper or mlx-whisper (auto-converts to mono 16kHz for optimal accuracy)
 - **Re-transcription Support**: Track which model was used; re-transcribe with different model when upgrading
 - **Distributed Transcription**: Use remote machines (M4 Macs, GPU PCs) to transcribe in parallel
@@ -134,6 +135,23 @@ WHISPER_COMPUTE_TYPE=int8     # int8, float16, float32
 | base | 2 | 2 GB | 1 GB |
 | medium | 4 | 6 GB | 2 GB |
 | large-v3 | 6 | 12 GB | 4 GB |
+
+### Transcript Sources
+
+cast2md uses a pluggable provider system to fetch transcripts. After downloading audio, it tries external sources before falling back to Whisper:
+
+1. **Podcasting 2.0** - Downloads from `<podcast:transcript>` RSS tags (free, no auth)
+   - Supports: VTT, SRT, JSON, plain text, HTML
+   - Source tracked as `podcast2.0:vtt`, `podcast2.0:srt`, etc.
+
+2. **Whisper** (fallback) - Self-transcribed when no external source available
+   - Source tracked as `whisper`
+
+The episode detail page shows the transcript source:
+- "Downloaded from publisher" for external transcripts
+- Model name (e.g., "large-v3") for Whisper transcripts
+
+The re-transcribe button only appears for Whisper transcripts (external transcripts are authoritative).
 
 ## Usage
 
@@ -292,6 +310,14 @@ Feed responses include extended metadata:
 - `author`: Podcast author from iTunes tags
 - `link`: Podcast website URL
 - `categories`: Array of category strings
+
+#### Episode Response Fields
+
+Episode responses include transcript tracking:
+- `transcript_path`: Path to local markdown file
+- `transcript_url`: Podcasting 2.0 transcript URL from RSS (if available)
+- `transcript_source`: Where transcript came from (`whisper`, `podcast2.0:vtt`, `podcast2.0:srt`, etc.)
+- `transcript_model`: Whisper model used (only set for whisper source)
 
 ## Deployment Files
 
