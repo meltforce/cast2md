@@ -171,7 +171,7 @@ class Job:
             status=JobStatus(row[4]),
             attempts=row[5],
             max_attempts=row[6],
-            scheduled_at=datetime.fromisoformat(row[7]) if row[7] else datetime.utcnow(),
+            scheduled_at=datetime.fromisoformat(row[7]) if row[7] else datetime.now(),
             started_at=datetime.fromisoformat(row[8]) if row[8] else None,
             completed_at=datetime.fromisoformat(row[9]) if row[9] else None,
             next_retry_at=datetime.fromisoformat(row[10]) if row[10] else None,
