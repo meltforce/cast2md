@@ -490,6 +490,52 @@ def batch_queue_feed(feed_id: int, request: BatchQueueRequest | None = None):
     )
 
 
+@router.post("/batch/feed/{feed_id}/transcript-download", response_model=BatchQueueResponse)
+def batch_queue_transcript_download(feed_id: int, request: BatchQueueRequest | None = None):
+    """Queue all pending episodes from a feed for transcript download.
+
+    Tries external transcript providers (Podcast 2.0, Pocket Casts) first.
+    Episodes without available transcripts stay pending for manual audio download.
+    """
+    from cast2md.db.models import EpisodeStatus
+
+    priority = request.priority if request else 10
+
+    with get_db() as conn:
+        episode_repo = EpisodeRepository(conn)
+        job_repo = JobRepository(conn)
+
+        episodes = episode_repo.get_by_feed(feed_id, limit=10000)
+        pending = [e for e in episodes if e.status == EpisodeStatus.PENDING]
+
+        queued = 0
+        skipped = 0
+
+        for episode in pending:
+            # Skip if already has transcript
+            if episode.transcript_path:
+                skipped += 1
+                continue
+
+            # Skip if already has pending job
+            if job_repo.has_pending_job(episode.id, JobType.TRANSCRIPT_DOWNLOAD):
+                skipped += 1
+                continue
+
+            job_repo.create(
+                episode_id=episode.id,
+                job_type=JobType.TRANSCRIPT_DOWNLOAD,
+                priority=priority,
+            )
+            queued += 1
+
+    return BatchQueueResponse(
+        queued=queued,
+        skipped=skipped,
+        message=f"Queued {queued} episodes for transcript download ({skipped} skipped)",
+    )
+
+
 @router.post("/batch/all/process", response_model=BatchQueueResponse)
 def batch_queue_all(request: BatchQueueRequest | None = None):
     """Queue all pending episodes across all feeds for processing."""
