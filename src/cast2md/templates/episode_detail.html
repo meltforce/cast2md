@@ -73,7 +73,8 @@
 
     <div class="actions" style="gap: 1rem;">
         {% if episode.status.value == 'pending' %}
-            <button onclick="queueProcess({{ episode.id }})">Queue Download</button>
+            <button onclick="queueTranscriptDownload({{ episode.id }})">Try Transcript Download</button>
+            <button class="outline" onclick="queueProcess({{ episode.id }})">Download Audio</button>
         {% elif episode.status.value == 'downloaded' %}
             <button onclick="queueTranscribe({{ episode.id }})">Queue Transcription</button>
         {% elif episode.status.value == 'failed' %}
@@ -149,6 +150,22 @@
 async function queueProcess(episodeId) {
     try {
         const response = await fetch(`/api/queue/episodes/${episodeId}/process`, {method: 'POST'});
+        const data = await response.json();
+
+        if (response.ok) {
+            alert(data.message);
+            window.location.reload();
+        } else {
+            alert('Error: ' + data.detail);
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
+
+async function queueTranscriptDownload(episodeId) {
+    try {
+        const response = await fetch(`/api/queue/episodes/${episodeId}/transcript-download`, {method: 'POST'});
         const data = await response.json();
 
         if (response.ok) {
