@@ -269,8 +269,7 @@ function buildPageUrl(pageNum) {
     return '?' + params.toString();
 }
 
-// Episode IDs on current page for polling
-const episodeIds = [{% for episode in episodes %}{{ episode.id }}{% if not loop.last %}, {% endif %}{% endfor %}];
+// Polling state
 let pollingInterval = null;
 
 // Initialize: Apply stored per_page preference and load retranscribe info
@@ -295,21 +294,27 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // Poll for episode status updates
 async function pollEpisodeStatus() {
-    if (episodeIds.length === 0) return;
+    // Get currently visible episode IDs from the DOM
+    const visibleIds = Array.from(document.querySelectorAll('.episode-checkbox')).map(cb => parseInt(cb.value));
+    if (visibleIds.length === 0) return;
 
     try {
-        const response = await fetch(`/api/feeds/{{ feed.id }}/episodes?limit=${episodeIds.length}`);
+        // Fetch enough episodes to cover all visible ones
+        const response = await fetch(`/api/feeds/{{ feed.id }}/episodes?limit=${Math.max(visibleIds.length, 50)}`);
         if (!response.ok) return;
 
         const data = await response.json();
+        const episodeMap = new Map(data.episodes.map(ep => [ep.id, ep]));
         let hasActiveJobs = false;
 
-        for (const ep of data.episodes) {
-            const row = document.querySelector(`tr input[value="${ep.id}"]`)?.closest('tr');
+        for (const epId of visibleIds) {
+            const ep = episodeMap.get(epId);
+            if (!ep) continue;
+
+            const row = document.querySelector(`tr input[value="${epId}"]`)?.closest('tr');
             if (!row) continue;
 
             const statusBadge = row.querySelector('.status-badge');
-            const actionsCell = row.querySelector('.actions');
             const currentStatus = statusBadge.textContent.trim();
 
             // Check if status changed
