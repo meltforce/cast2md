@@ -14,6 +14,7 @@ from cast2md.db.models import Feed
 from cast2md.db.repository import EpisodeRepository, FeedRepository
 from cast2md.export.formats import export_transcript
 from cast2md.feed.discovery import discover_new_episodes, validate_feed_url
+from cast2md.feed.itunes import resolve_feed_url
 
 router = APIRouter(prefix="/api/feeds", tags=["feeds"])
 
@@ -106,11 +107,24 @@ def list_feeds():
 
 @router.post("", response_model=FeedResponse, status_code=201)
 def create_feed(feed_data: FeedCreate):
-    """Add a new feed and auto-queue the latest episode."""
-    url = str(feed_data.url)
+    """Add a new feed and auto-queue the latest episode.
+
+    Accepts either:
+    - Direct RSS feed URL (e.g., https://example.com/podcast.xml)
+    - Apple Podcasts URL (e.g., https://podcasts.apple.com/us/podcast/name/id1234567890)
+
+    For Apple Podcasts URLs, the RSS feed URL is resolved via iTunes Lookup API.
+    """
+    input_url = str(feed_data.url)
+
+    # Resolve iTunes URL to RSS feed URL if needed
+    try:
+        rss_url, itunes_id = resolve_feed_url(input_url)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
     # Validate feed
-    is_valid, message, parsed = validate_feed_url(url)
+    is_valid, message, parsed = validate_feed_url(rss_url)
     if not is_valid:
         raise HTTPException(status_code=400, detail=message)
 
@@ -118,20 +132,21 @@ def create_feed(feed_data: FeedCreate):
         repo = FeedRepository(conn)
         episode_repo = EpisodeRepository(conn)
 
-        # Check for duplicates
-        existing = repo.get_by_url(url)
+        # Check for duplicates (using resolved RSS URL)
+        existing = repo.get_by_url(rss_url)
         if existing:
             raise HTTPException(status_code=409, detail="Feed already exists")
 
         categories_json = json.dumps(parsed.categories) if parsed.categories else None
         feed = repo.create(
-            url=url,
+            url=rss_url,
             title=parsed.title,
             description=parsed.description,
             image_url=parsed.image_url,
             author=parsed.author,
             link=parsed.link,
             categories=categories_json,
+            itunes_id=itunes_id,
         )
 
     # Discover episodes and auto-queue only the latest one

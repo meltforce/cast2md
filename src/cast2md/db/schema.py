@@ -13,6 +13,8 @@ CREATE TABLE IF NOT EXISTS feed (
     categories TEXT,
     custom_title TEXT,
     last_polled TEXT,
+    itunes_id TEXT,
+    pocketcasts_uuid TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );

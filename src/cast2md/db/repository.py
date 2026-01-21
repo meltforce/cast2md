@@ -32,16 +32,17 @@ class FeedRepository:
         author: str | None = None,
         link: str | None = None,
         categories: str | None = None,
+        itunes_id: str | None = None,
     ) -> Feed:
         """Create a new feed."""
         now = datetime.now().isoformat()
         cursor = self.conn.execute(
             """
             INSERT INTO feed (url, title, description, image_url, author, link, categories,
-                              created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                              itunes_id, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (url, title, description, image_url, author, link, categories, now, now),
+            (url, title, description, image_url, author, link, categories, itunes_id, now, now),
         )
         self.conn.commit()
 
@@ -49,7 +50,8 @@ class FeedRepository:
 
     # Columns in the order expected by Feed.from_row
     FEED_COLUMNS = """id, url, title, description, image_url, author, link,
-                      categories, custom_title, last_polled, created_at, updated_at"""
+                      categories, custom_title, last_polled, itunes_id, pocketcasts_uuid,
+                      created_at, updated_at"""
 
     def get_by_id(self, feed_id: int) -> Optional[Feed]:
         """Get feed by ID."""
@@ -136,6 +138,24 @@ class FeedRepository:
             WHERE id = ?
             """,
             (author, link, categories, now, feed_id),
+        )
+        self.conn.commit()
+
+    def update_pocketcasts_uuid(self, feed_id: int, pocketcasts_uuid: str) -> None:
+        """Update Pocket Casts UUID for a feed.
+
+        Args:
+            feed_id: Feed ID to update.
+            pocketcasts_uuid: Pocket Casts show UUID.
+        """
+        now = datetime.now().isoformat()
+        self.conn.execute(
+            """
+            UPDATE feed
+            SET pocketcasts_uuid = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (pocketcasts_uuid, now, feed_id),
         )
         self.conn.commit()
 
@@ -276,8 +296,13 @@ class EpisodeRepository:
         )
         self.conn.commit()
 
-    def update_audio_path(self, episode_id: int, audio_path: str) -> None:
-        """Update episode audio path."""
+    def update_audio_path(self, episode_id: int, audio_path: str | None) -> None:
+        """Update episode audio path.
+
+        Args:
+            episode_id: Episode ID to update.
+            audio_path: Path to audio file, or None to clear.
+        """
         now = datetime.now().isoformat()
         self.conn.execute(
             """
@@ -1132,6 +1157,10 @@ class JobRepository:
                         "UPDATE episode SET status = ? WHERE id = ?",
                         (EpisodeStatus.DOWNLOADED.value, episode_id),
                     )
+                elif job_type == JobType.TRANSCRIPT_DOWNLOAD.value:
+                    # Transcript download jobs don't change episode status during processing
+                    # Episode stays in PENDING until transcript is found or user queues download
+                    pass
 
         self.conn.commit()
         return len(jobs_to_requeue), len(jobs_to_fail)
