@@ -12,6 +12,7 @@ from cast2md.db.repository import (
     FeedRepository,
     JobRepository,
 )
+from cast2md.search.repository import TranscriptSearchRepository
 from cast2md.db.schema import get_schema
 
 
@@ -48,6 +49,12 @@ def episode_repo(db_conn):
 def job_repo(db_conn):
     """Create a JobRepository instance."""
     return JobRepository(db_conn)
+
+
+@pytest.fixture
+def search_repo(db_conn):
+    """Create a TranscriptSearchRepository instance."""
+    return TranscriptSearchRepository(db_conn)
 
 
 @pytest.fixture

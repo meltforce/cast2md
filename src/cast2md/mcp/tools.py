@@ -100,6 +100,47 @@ def search_episodes(
 
 
 @mcp.tool()
+def get_recent_episodes(days: int = 7, limit: int = 50) -> dict:
+    """Get recently published episodes across all feeds.
+
+    Args:
+        days: Number of days to look back (default: 7).
+        limit: Maximum episodes to return (default: 50).
+
+    Returns:
+        Recent episodes with feed info, sorted by publish date.
+    """
+    if remote.is_remote_mode():
+        return remote.get_recent_episodes(days, limit)
+
+    from cast2md.db.connection import get_db
+    from cast2md.db.repository import EpisodeRepository
+
+    with get_db() as conn:
+        episode_repo = EpisodeRepository(conn)
+        results = episode_repo.get_recent_episodes(days=days, limit=limit)
+
+    return {
+        "days": days,
+        "total": len(results),
+        "hint": "Use queue_episode(id) to transcribe, or cast2md://episodes/{id}/transcript to read existing transcript",
+        "results": [
+            {
+                "id": ep.id,
+                "feed_id": ep.feed_id,
+                "feed_title": feed_title,
+                "title": ep.title,
+                "description": ep.description[:500] if ep.description else None,
+                "published_at": ep.published_at.isoformat() if ep.published_at else None,
+                "status": ep.status.value,
+                "has_transcript": ep.transcript_path is not None,
+            }
+            for ep, feed_title in results
+        ],
+    }
+
+
+@mcp.tool()
 def queue_episode(episode_id: int) -> dict:
     """Queue an episode for download and transcription.
 

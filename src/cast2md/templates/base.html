@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="light">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -20,12 +20,54 @@
             font-weight: bold;
             text-transform: uppercase;
         }
-        .status-pending { background: #fef3c7; color: #92400e; }
-        .status-downloading { background: #dbeafe; color: #1e40af; }
-        .status-downloaded { background: #e0e7ff; color: #3730a3; }
-        .status-transcribing { background: #fce7f3; color: #9d174d; }
-        .status-completed { background: #d1fae5; color: #065f46; }
-        .status-failed { background: #fee2e2; color: #991b1b; }
+        /* Status badges - use CSS variables for dark mode compatibility */
+        .status-pending {
+            background: color-mix(in srgb, var(--pico-color) 10%, transparent);
+            color: var(--pico-color);
+            border: 1px solid color-mix(in srgb, var(--pico-color) 30%, transparent);
+        }
+        .status-downloading {
+            background: color-mix(in srgb, var(--pico-primary) 15%, transparent);
+            color: var(--pico-primary);
+            border: 1px solid color-mix(in srgb, var(--pico-primary) 40%, transparent);
+        }
+        .status-downloaded {
+            background: color-mix(in srgb, var(--pico-secondary) 15%, transparent);
+            color: var(--pico-secondary);
+            border: 1px solid color-mix(in srgb, var(--pico-secondary) 40%, transparent);
+        }
+        .status-transcribing {
+            background: color-mix(in srgb, #9d174d 15%, transparent);
+            color: #d946ef;
+            border: 1px solid color-mix(in srgb, #9d174d 40%, transparent);
+        }
+        .status-completed {
+            background: color-mix(in srgb, #22c55e 15%, transparent);
+            color: #22c55e;
+            border: 1px solid color-mix(in srgb, #22c55e 40%, transparent);
+        }
+        .status-failed {
+            background: color-mix(in srgb, #ef4444 15%, transparent);
+            color: #ef4444;
+            border: 1px solid color-mix(in srgb, #ef4444 40%, transparent);
+        }
+        /* Mobile responsive navigation */
+        @media (max-width: 600px) {
+            nav.container {
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+            }
+            nav.container > ul {
+                flex-wrap: nowrap;
+                gap: 0.5rem;
+            }
+            nav.container > ul > li > a,
+            nav.container > ul > li > strong > a {
+                white-space: nowrap;
+                padding: 0.5rem;
+                font-size: 0.875rem;
+            }
+        }
         .stats-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
@@ -187,12 +229,12 @@
             text-transform: uppercase;
         }
         .match-episode {
-            background: #dbeafe;
-            color: #1e40af;
+            background: color-mix(in srgb, var(--pico-primary) 15%, transparent);
+            color: var(--pico-primary);
         }
         .match-transcript {
-            background: #d1fae5;
-            color: #065f46;
+            background: color-mix(in srgb, #22c55e 15%, transparent);
+            color: #22c55e;
         }
         .match-count {
             display: inline-flex;
@@ -336,8 +378,55 @@
             <li><a href="/queue">Queue</a></li>
             <li><a href="/settings">Settings</a></li>
             <li><a href="/docs" target="_blank">API</a></li>
+            <li><a href="#" onclick="toggleTheme(); return false;" title="Toggle theme" id="theme-toggle">🌓</a></li>
         </ul>
     </nav>
+    <script>
+        // Theme toggle functionality
+        function toggleTheme() {
+            const html = document.documentElement;
+            const current = html.getAttribute('data-theme');
+            let next;
+            if (current === 'dark') {
+                next = 'light';
+            } else if (current === 'light') {
+                next = '';  // Auto (OS preference)
+            } else {
+                next = 'dark';
+            }
+            if (next) {
+                html.setAttribute('data-theme', next);
+                localStorage.setItem('theme', next);
+            } else {
+                html.removeAttribute('data-theme');
+                localStorage.removeItem('theme');
+            }
+            updateThemeIcon();
+        }
+        function updateThemeIcon() {
+            const html = document.documentElement;
+            const current = html.getAttribute('data-theme');
+            const icon = document.getElementById('theme-toggle');
+            if (icon) {
+                if (current === 'dark') icon.textContent = '🌙';
+                else if (current === 'light') icon.textContent = '☀️';
+                else icon.textContent = '🌓';
+            }
+        }
+        // Restore saved theme on load
+        (function() {
+            const saved = localStorage.getItem('theme');
+            if (saved) {
+                document.documentElement.setAttribute('data-theme', saved);
+            }
+            // Update icon after DOM is ready
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', updateThemeIcon);
+            } else {
+                updateThemeIcon();
+            }
+        })();
+    </script>
 
     <main class="container">
         {% block content %}{% endblock %}

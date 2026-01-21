@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="light">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -22,17 +22,38 @@
             font-size: 0.875rem;
             font-weight: 500;
         }
+        /* Status badges - use CSS variables for dark mode compatibility */
         .status-online {
-            background: #22c55e;
-            color: white;
+            background: color-mix(in srgb, #22c55e 20%, transparent);
+            color: #22c55e;
+            border: 1px solid color-mix(in srgb, #22c55e 40%, transparent);
         }
         .status-offline {
-            background: #ef4444;
-            color: white;
+            background: color-mix(in srgb, #ef4444 20%, transparent);
+            color: #ef4444;
+            border: 1px solid color-mix(in srgb, #ef4444 40%, transparent);
         }
         .status-busy {
-            background: #f59e0b;
-            color: white;
+            background: color-mix(in srgb, #f59e0b 20%, transparent);
+            color: #f59e0b;
+            border: 1px solid color-mix(in srgb, #f59e0b 40%, transparent);
+        }
+        /* Mobile responsive navigation */
+        @media (max-width: 600px) {
+            nav.container-fluid {
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+            }
+            nav.container-fluid > ul {
+                flex-wrap: nowrap;
+                gap: 0.5rem;
+            }
+            nav.container-fluid > ul > li > a,
+            nav.container-fluid > ul > li > strong {
+                white-space: nowrap;
+                padding: 0.5rem;
+                font-size: 0.875rem;
+            }
         }
         .stat-card {
             text-align: center;
@@ -60,8 +81,54 @@
             {% if config and config.server_url %}
             <li><a href="{{ config.server_url }}" target="_blank">Server</a></li>
             {% endif %}
+            <li><a href="#" onclick="toggleTheme(); return false;" title="Toggle theme" id="theme-toggle">🌓</a></li>
         </ul>
     </nav>
+    <script>
+        // Theme toggle functionality
+        function toggleTheme() {
+            const html = document.documentElement;
+            const current = html.getAttribute('data-theme');
+            let next;
+            if (current === 'dark') {
+                next = 'light';
+            } else if (current === 'light') {
+                next = '';  // Auto (OS preference)
+            } else {
+                next = 'dark';
+            }
+            if (next) {
+                html.setAttribute('data-theme', next);
+                localStorage.setItem('theme', next);
+            } else {
+                html.removeAttribute('data-theme');
+                localStorage.removeItem('theme');
+            }
+            updateThemeIcon();
+        }
+        function updateThemeIcon() {
+            const html = document.documentElement;
+            const current = html.getAttribute('data-theme');
+            const icon = document.getElementById('theme-toggle');
+            if (icon) {
+                if (current === 'dark') icon.textContent = '🌙';
+                else if (current === 'light') icon.textContent = '☀️';
+                else icon.textContent = '🌓';
+            }
+        }
+        // Restore saved theme on load
+        (function() {
+            const saved = localStorage.getItem('theme');
+            if (saved) {
+                document.documentElement.setAttribute('data-theme', saved);
+            }
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', updateThemeIcon);
+            } else {
+                updateThemeIcon();
+            }
+        })();
+    </script>
     <main class="container">
         {% block content %}{% endblock %}
     </main>

@@ -98,6 +98,62 @@ def list_episodes(feed_id: int, limit: int = 50, offset: int = 0):
     )
 
 
+class RecentEpisodeResponse(BaseModel):
+    """Response model for a recent episode with feed info."""
+
+    id: int
+    feed_id: int
+    feed_title: str
+    title: str
+    description: str | None
+    published_at: str | None
+    status: str
+    has_transcript: bool
+
+    @classmethod
+    def from_episode_with_feed(cls, episode: Episode, feed_title: str) -> "RecentEpisodeResponse":
+        return cls(
+            id=episode.id,
+            feed_id=episode.feed_id,
+            feed_title=feed_title,
+            title=episode.title,
+            description=episode.description[:500] if episode.description else None,
+            published_at=episode.published_at.isoformat() if episode.published_at else None,
+            status=episode.status.value,
+            has_transcript=episode.transcript_path is not None,
+        )
+
+
+class RecentEpisodesResponse(BaseModel):
+    """Response model for recent episodes list."""
+
+    episodes: list[RecentEpisodeResponse]
+    total: int
+    days: int
+
+
+@router.get("/episodes/recent", response_model=RecentEpisodesResponse)
+def get_recent_episodes(days: int = 7, limit: int = 50):
+    """Get recently published episodes across all feeds.
+
+    Args:
+        days: Number of days to look back (default: 7).
+        limit: Maximum episodes to return (default: 50).
+    """
+    with get_db() as conn:
+        repo = EpisodeRepository(conn)
+        results = repo.get_recent_episodes(days=days, limit=limit)
+
+    return RecentEpisodesResponse(
+        episodes=[
+            RecentEpisodeResponse.from_episode_with_feed(ep, feed_title)
+            for ep, feed_title in results
+        ],
+        total=len(results),
+        days=days,
+    )
+
+
 @router.get("/episodes/{episode_id}", response_model=EpisodeResponse)
 def get_episode(episode_id: int):
     """Get an episode by ID."""
