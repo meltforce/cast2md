@@ -166,7 +166,8 @@ class EpisodeRepository:
     # Columns in the order expected by Episode.from_row
     EPISODE_COLUMNS = """id, feed_id, guid, title, description, audio_url, duration_seconds,
                          published_at, status, audio_path, transcript_path, transcript_url,
-                         transcript_model, transcript_source, transcript_type, link, author,
+                         transcript_model, transcript_source, transcript_type,
+                         pocketcasts_transcript_url, link, author,
                          error_message, created_at, updated_at"""
 
     def __init__(self, conn: sqlite3.Connection):
@@ -384,6 +385,26 @@ class EpisodeRepository:
         )
         self.conn.commit()
 
+    def update_pocketcasts_transcript_url(
+        self, episode_id: int, pocketcasts_transcript_url: str
+    ) -> None:
+        """Update episode with Pocket Casts transcript URL.
+
+        Args:
+            episode_id: Episode ID to update.
+            pocketcasts_transcript_url: URL to the Pocket Casts transcript.
+        """
+        now = datetime.now().isoformat()
+        self.conn.execute(
+            """
+            UPDATE episode
+            SET pocketcasts_transcript_url = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (pocketcasts_transcript_url, now, episode_id),
+        )
+        self.conn.commit()
+
     def get_retranscribable_episodes(
         self, feed_id: int, current_model: str
     ) -> list[Episode]:
@@ -500,6 +521,48 @@ class EpisodeRepository:
             (feed_id,),
         )
         return cursor.fetchone()[0]
+
+    def get_transcript_source_stats(self, feed_id: int) -> dict:
+        """Get statistics about transcript sources for a feed.
+
+        Returns:
+            Dict with counts for each transcript source type:
+            - podcast20: Episodes with transcript_url (Podcast 2.0 tags)
+            - pocketcasts: Episodes with pocketcasts_transcript_url (no Podcast 2.0)
+            - whisper_only: Episodes with neither (need Whisper transcription)
+        """
+        # Count episodes with Podcast 2.0 transcript URLs
+        cursor = self.conn.execute(
+            "SELECT COUNT(*) FROM episode WHERE feed_id = ? AND transcript_url IS NOT NULL",
+            (feed_id,),
+        )
+        podcast20_count = cursor.fetchone()[0]
+
+        # Count episodes with Pocket Casts transcripts (but no Podcast 2.0)
+        cursor = self.conn.execute(
+            """SELECT COUNT(*) FROM episode
+               WHERE feed_id = ?
+                 AND transcript_url IS NULL
+                 AND pocketcasts_transcript_url IS NOT NULL""",
+            (feed_id,),
+        )
+        pocketcasts_count = cursor.fetchone()[0]
+
+        # Count episodes with neither
+        cursor = self.conn.execute(
+            """SELECT COUNT(*) FROM episode
+               WHERE feed_id = ?
+                 AND transcript_url IS NULL
+                 AND pocketcasts_transcript_url IS NULL""",
+            (feed_id,),
+        )
+        whisper_only_count = cursor.fetchone()[0]
+
+        return {
+            "podcast20": podcast20_count,
+            "pocketcasts": pocketcasts_count,
+            "whisper_only": whisper_only_count,
+        }
 
     def search_by_feed(
         self,

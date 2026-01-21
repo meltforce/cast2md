@@ -31,6 +31,23 @@
     <button class="outline secondary" style="padding: 0.25rem 0.5rem; font-size: 0.875rem;" onclick="document.getElementById('deleteFeedDialog').showModal()">Delete Feed</button>
 </p>
 
+<!-- Transcript source info -->
+<p style="font-size: 0.875rem; color: var(--muted-color);">
+    <strong>Transcripts:</strong>
+    {% if transcript_stats.podcast20 > 0 %}
+        <span class="match-keyword" style="padding: 0.125rem 0.375rem; border-radius: 3px; font-size: 0.75rem;">Podcast 2.0</span> {{ transcript_stats.podcast20 }}
+    {% endif %}
+    {% if transcript_stats.pocketcasts > 0 %}
+        <span class="match-semantic" style="padding: 0.125rem 0.375rem; border-radius: 3px; font-size: 0.75rem;">Pocket Casts</span> {{ transcript_stats.pocketcasts }}
+    {% endif %}
+    {% if transcript_stats.whisper_only > 0 %}
+        <span style="padding: 0.125rem 0.375rem; border-radius: 3px; font-size: 0.75rem; background: var(--muted-border-color);">Whisper only</span> {{ transcript_stats.whisper_only }}
+    {% endif %}
+    {% if transcript_stats.podcast20 == 0 and transcript_stats.pocketcasts == 0 %}
+        No external transcripts available (Whisper required for all episodes)
+    {% endif %}
+</p>
+
 <dialog id="deleteFeedDialog">
     <article>
         <header>
@@ -94,7 +111,9 @@
                 <input type="date" id="dateTo" style="padding: 0.25rem 0.5rem; margin: 0;">
                 <button class="outline" style="padding: 0.25rem 0.5rem; font-size: 0.875rem; margin: 0;" onclick="queueByDate({{ feed.id }})">Queue</button>
             </div>
+            {% if transcript_stats.podcast20 > 0 or transcript_stats.pocketcasts > 0 %}
             <button class="outline secondary" style="padding: 0.25rem 0.5rem; font-size: 0.875rem; margin: 0;" onclick="queueAllTranscripts({{ feed.id }})">Get All Transcripts</button>
+            {% endif %}
         </div>
 
         <div style="display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem;">
@@ -165,7 +184,7 @@
     </thead>
     <tbody>
         {% for episode in episodes %}
-        <tr>
+        <tr data-has-external-transcript="{{ 'true' if (episode.transcript_url or episode.pocketcasts_transcript_url) else 'false' }}">
             <td>
                 <input type="checkbox" class="episode-checkbox" value="{{ episode.id }}"
                        onchange="updateSelectedCount()" {% if episode.status.value != 'pending' %}disabled{% endif %}>
@@ -186,7 +205,11 @@
             </td>
             <td class="actions" style="white-space: nowrap;">
                 {% if episode.status.value == 'pending' %}
-                    <button class="outline" onclick="tryTranscript({{ episode.id }}, this)">Get Transcript</button>
+                    {% if episode.transcript_url or episode.pocketcasts_transcript_url %}
+                        <button class="outline" onclick="tryTranscript({{ episode.id }}, this)">Get Transcript</button>
+                    {% else %}
+                        <button class="outline secondary" onclick="downloadEpisode({{ episode.id }})">Download Audio</button>
+                    {% endif %}
                 {% elif episode.status.value == 'downloaded' %}
                     <button class="outline" onclick="transcribeEpisode({{ episode.id }}, this)">Transcribe</button>
                 {% elif episode.status.value == 'completed' and episode.transcript_path %}
@@ -372,6 +395,7 @@ function updateEpisodeRow(row, ep) {
     const statusBadge = row.querySelector('.status-badge');
     const actionsCell = row.querySelector('.actions');
     const checkbox = row.querySelector('.episode-checkbox');
+    const hasExternalTranscript = row.dataset.hasExternalTranscript === 'true';
 
     // Update status badge
     statusBadge.className = `status-badge status-${ep.status}`;
@@ -379,7 +403,11 @@ function updateEpisodeRow(row, ep) {
 
     // Update actions based on new status
     if (ep.status === 'pending') {
-        actionsCell.innerHTML = `<button class="outline" onclick="tryTranscript(${ep.id}, this)">Get Transcript</button>`;
+        if (hasExternalTranscript) {
+            actionsCell.innerHTML = `<button class="outline" onclick="tryTranscript(${ep.id}, this)">Get Transcript</button>`;
+        } else {
+            actionsCell.innerHTML = `<button class="outline secondary" onclick="downloadEpisode(${ep.id})">Download Audio</button>`;
+        }
         if (checkbox) checkbox.disabled = false;
     } else if (ep.status === 'downloaded') {
         actionsCell.innerHTML = `<button class="outline" onclick="transcribeEpisode(${ep.id}, this)">Transcribe</button>`;

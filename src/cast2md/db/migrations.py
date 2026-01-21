@@ -101,6 +101,13 @@ MIGRATIONS = [
             )
         """,
     },
+    {
+        "version": 9,
+        "description": "Add pocketcasts_transcript_url to episode for upfront transcript discovery",
+        "sql": [
+            "ALTER TABLE episode ADD COLUMN pocketcasts_transcript_url TEXT",
+        ],
+    },
 ]
 
 
