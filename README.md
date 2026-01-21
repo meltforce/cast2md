@@ -17,6 +17,7 @@ Podcast transcription service - download episodes via RSS and transcribe with Wh
 - **Distributed Transcription**: Use remote machines (M4 Macs, GPU PCs) to transcribe in parallel
 - **Full-Text Search**: Unified search across episode metadata and transcripts with detail modal
 - **Web Interface**: Simple UI to manage feeds, view episodes, and monitor progress
+- **Real-time Status**: Episode status updates automatically without page reload
 - **Show Notes Display**: Preview and full modal view with sanitized HTML
 - **REST API**: Full API for integration with other tools
 - **MCP Server**: Claude integration via Model Context Protocol for AI-powered podcast exploration
@@ -175,6 +176,23 @@ Access the web UI at `http://localhost:8000`
 - **Status**: Monitor system health and worker status
 - **Queue**: View and manage processing jobs
 
+#### Episode Workflow
+
+The UI follows a **transcript-first** approach to minimize storage and processing:
+
+1. **Get Transcript** - Tries to download from external sources (Podcasting 2.0, Pocket Casts)
+2. **Download Audio** - Falls back to audio download + Whisper transcription if no external transcript
+
+| Episode Status | Feed Page Button | What Happens |
+|----------------|------------------|--------------|
+| Pending | "Get Transcript" | Tries external transcript providers |
+| Pending (after failed transcript) | "Download Audio" | Downloads audio for Whisper |
+| Downloaded | "Transcribe" | Queues Whisper transcription |
+| Completed | (link) | Opens episode detail with transcript |
+| Failed | "Retry" | Re-attempts download |
+
+Status updates in real-time without page reload. Batch operations available for processing entire feeds.
+
 ### CLI Commands
 
 ```bash
@@ -305,10 +323,20 @@ Once configured, you can ask Claude things like:
 | `/api/feeds/{id}/refresh` | POST | Poll feed for new episodes |
 | `/api/feeds/{id}/export` | GET | Export all transcripts as ZIP |
 | `/api/episodes/{id}` | GET | Get episode details |
-| `/api/episodes/{id}/download` | POST | Queue episode for download |
-| `/api/episodes/{id}/transcribe` | POST | Queue episode for transcription |
 | `/api/episodes/{id}/transcript` | GET | Download transcript (format: md, txt, srt, vtt, json) |
 | `/api/episodes/{id}/audio` | DELETE | Delete audio file (keeps transcript) |
+
+#### Queue Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/queue/status` | GET | Get queue status and active jobs |
+| `/api/queue/episodes/{id}/process` | POST | Queue audio download |
+| `/api/queue/episodes/{id}/transcribe` | POST | Queue Whisper transcription |
+| `/api/queue/episodes/{id}/transcript-download` | POST | Try external transcript providers |
+| `/api/queue/episodes/{id}/retranscribe` | POST | Re-transcribe with current model |
+| `/api/queue/batch/feed/{id}/transcript-download` | POST | Batch: try transcripts for all pending |
+| `/api/queue/batch/feed/{id}/retranscribe` | POST | Batch: re-transcribe outdated episodes |
 
 #### Feed Response Fields
 
