@@ -535,6 +535,7 @@ class TranscriptSearchRepository:
 
         # Insert embeddings into vec0 table
         # Column order: embedding, then auxiliary columns
+        # Note: vec0 FLOAT columns require explicit float type (not int)
         for segment, embedding in zip(segments, embeddings):
             self.conn.execute(
                 """
@@ -546,8 +547,8 @@ class TranscriptSearchRepository:
                     embedding,
                     episode_id,
                     feed_id,
-                    segment.start,
-                    segment.end,
+                    float(segment.start),
+                    float(segment.end),
                     text_hash(segment.text),
                     model_name,
                 ),
