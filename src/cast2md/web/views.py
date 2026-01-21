@@ -82,6 +82,7 @@ def render_transcript_html(content: str) -> str:
 
     Parses transcript segments and renders them as structured HTML
     with clickable timestamps and data attributes for audio sync.
+    Falls back to plain text rendering for transcripts without timestamps.
 
     Args:
         content: Raw transcript markdown content.
@@ -109,19 +110,52 @@ def render_transcript_html(content: str) -> str:
         if meta_match:
             html_parts.append(f'<p class="transcript-meta">{escape(meta_match.group(1))}</p>')
 
-    for segment in segments:
-        ts_int = int(segment.start)
-        minutes = ts_int // 60
-        seconds = ts_int % 60
-        ts_display = f"{minutes:02d}:{seconds:02d}"
+    if segments:
+        # Render with timestamps
+        for segment in segments:
+            ts_int = int(segment.start)
+            minutes = ts_int // 60
+            seconds = ts_int % 60
+            ts_display = f"{minutes:02d}:{seconds:02d}"
 
-        html_parts.append(
-            f'<div class="transcript-segment" id="ts-{ts_int}" '
-            f'data-start="{segment.start}" data-end="{segment.end}">'
-            f'<a href="#ts-{ts_int}" class="transcript-timestamp">[{ts_display}]</a>'
-            f'<span class="transcript-text">{escape(segment.text)}</span>'
-            f'</div>'
-        )
+            html_parts.append(
+                f'<div class="transcript-segment" id="ts-{ts_int}" '
+                f'data-start="{segment.start}" data-end="{segment.end}">'
+                f'<a href="#ts-{ts_int}" class="transcript-timestamp">[{ts_display}]</a>'
+                f'<span class="transcript-text">{escape(segment.text)}</span>'
+                f'</div>'
+            )
+    else:
+        # Fallback: render plain text for transcripts without timestamps
+        # Extract title and metadata first
+        title_match = re.search(r'^# (.+)$', content, re.MULTILINE)
+        if title_match:
+            html_parts.append(f'<h3 class="transcript-title">{escape(title_match.group(1))}</h3>')
+        meta_match = re.search(r'^\*(.+)\*$', content, re.MULTILINE)
+        if meta_match:
+            html_parts.append(f'<p class="transcript-meta">{escape(meta_match.group(1))}</p>')
+
+        # Get the body text (skip header lines)
+        lines = content.split('\n')
+        body_lines = []
+        skip_header = True
+        for line in lines:
+            if skip_header:
+                # Skip title and metadata lines
+                if line.startswith('#') or (line.startswith('*') and line.endswith('*')):
+                    continue
+                if line.strip() == '':
+                    continue
+                skip_header = False
+            body_lines.append(line)
+
+        # Render paragraphs
+        body_text = '\n'.join(body_lines)
+        paragraphs = body_text.split('\n\n')
+        for para in paragraphs:
+            para = para.strip()
+            if para:
+                html_parts.append(f'<p class="transcript-text">{escape(para)}</p>')
 
     return '\n'.join(html_parts)
 
