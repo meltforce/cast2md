@@ -5,49 +5,123 @@ from cast2md.mcp.server import mcp
 
 
 @mcp.tool()
-def search_transcripts(
-    query: str,
-    feed_id: int | None = None,
-    limit: int = 20,
-) -> dict:
-    """Search across all podcast transcripts using full-text search.
-
-    Args:
-        query: Search query (supports FTS5 syntax: phrases with quotes, AND, OR, NOT).
-        feed_id: Optional feed ID to limit search to a specific podcast.
-        limit: Maximum number of results to return (default: 20).
+def list_feeds() -> dict:
+    """List all podcast feeds in the library.
 
     Returns:
-        Search results with matching transcript segments and episode info.
+        All feeds with their IDs, titles, and episode counts.
     """
     if remote.is_remote_mode():
-        return remote.search_transcripts(query, feed_id, limit)
+        return remote.get_feeds()
 
     from cast2md.db.connection import get_db
-    from cast2md.search.repository import TranscriptSearchRepository
+    from cast2md.db.repository import EpisodeRepository, FeedRepository
 
     with get_db() as conn:
-        search_repo = TranscriptSearchRepository(conn)
-        response = search_repo.search(query=query, feed_id=feed_id, limit=limit)
+        feed_repo = FeedRepository(conn)
+        episode_repo = EpisodeRepository(conn)
+        feeds = feed_repo.get_all()
 
-    return {
-        "query": response.query,
-        "total": response.total,
-        "hint": "Use cast2md://episodes/{episode_id}/transcript to read full transcript",
-        "results": [
-            {
-                "episode_id": r.episode_id,
-                "episode_title": r.episode_title,
-                "feed_id": r.feed_id,
-                "feed_title": r.feed_title,
-                "published_at": r.published_at,
-                "segment_start": r.segment_start,
-                "segment_end": r.segment_end,
-                "snippet": r.snippet,
-            }
-            for r in response.results
-        ],
-    }
+        return {
+            "total": len(feeds),
+            "feeds": [
+                {
+                    "id": feed.id,
+                    "title": feed.display_title,
+                    "url": feed.url,
+                    "episode_count": episode_repo.count_by_feed(feed.id),
+                    "description": feed.description[:200] if feed.description else None,
+                }
+                for feed in feeds
+            ],
+        }
+
+
+@mcp.tool()
+def get_feed(feed_id: int) -> dict:
+    """Get details for a specific podcast feed with its episodes.
+
+    Args:
+        feed_id: The feed ID to retrieve.
+
+    Returns:
+        Feed details and list of episodes.
+    """
+    if remote.is_remote_mode():
+        return remote.get_feed(feed_id)
+
+    from cast2md.db.connection import get_db
+    from cast2md.db.repository import EpisodeRepository, FeedRepository
+
+    with get_db() as conn:
+        feed_repo = FeedRepository(conn)
+        episode_repo = EpisodeRepository(conn)
+
+        feed = feed_repo.get_by_id(feed_id)
+        if not feed:
+            return {"error": f"Feed {feed_id} not found"}
+
+        episodes = episode_repo.get_by_feed(feed_id, limit=50)
+
+        return {
+            "id": feed.id,
+            "title": feed.display_title,
+            "url": feed.url,
+            "author": feed.author,
+            "description": feed.description,
+            "episode_count": len(episodes),
+            "episodes": [
+                {
+                    "id": ep.id,
+                    "title": ep.title,
+                    "published_at": ep.published_at.isoformat() if ep.published_at else None,
+                    "status": ep.status.value,
+                    "has_transcript": ep.transcript_path is not None,
+                }
+                for ep in episodes
+            ],
+        }
+
+
+@mcp.tool()
+def get_episode(episode_id: int) -> dict:
+    """Get details for a specific episode.
+
+    Args:
+        episode_id: The episode ID to retrieve.
+
+    Returns:
+        Full episode details including status and transcript availability.
+    """
+    if remote.is_remote_mode():
+        return remote.get_episode(episode_id)
+
+    from cast2md.db.connection import get_db
+    from cast2md.db.repository import EpisodeRepository, FeedRepository
+
+    with get_db() as conn:
+        episode_repo = EpisodeRepository(conn)
+        feed_repo = FeedRepository(conn)
+
+        episode = episode_repo.get_by_id(episode_id)
+        if not episode:
+            return {"error": f"Episode {episode_id} not found"}
+
+        feed = feed_repo.get_by_id(episode.feed_id)
+
+        return {
+            "id": episode.id,
+            "title": episode.title,
+            "feed_id": episode.feed_id,
+            "feed_title": feed.display_title if feed else None,
+            "published_at": episode.published_at.isoformat() if episode.published_at else None,
+            "duration_seconds": episode.duration_seconds,
+            "status": episode.status.value,
+            "has_transcript": episode.transcript_path is not None,
+            "description": episode.description,
+            "audio_url": episode.audio_url,
+            "hint": "Use cast2md://episodes/{id}/transcript to read the transcript" if episode.transcript_path else "Use queue_episode(id) to transcribe this episode",
+        }
 
 
 @mcp.tool()
