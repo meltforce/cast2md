@@ -262,6 +262,8 @@ def episode_detail(
     page: int = 1,
 ):
     """Episode detail page."""
+    from cast2md.config.settings import get_settings
+
     with get_db() as conn:
         episode_repo = EpisodeRepository(conn)
         feed_repo = FeedRepository(conn)
@@ -285,6 +287,10 @@ def episode_detail(
         except Exception:
             pass
 
+    # Get current model for retranscribe comparison
+    settings = get_settings()
+    current_model = settings.whisper_model
+
     return templates.TemplateResponse(
         "episode_detail.html",
         {
@@ -292,6 +298,7 @@ def episode_detail(
             "episode": episode,
             "feed": feed,
             "transcript_content": transcript_content,
+            "current_model": current_model,
             "back_query": q,
             "back_status": status,
             "back_per_page": per_page,

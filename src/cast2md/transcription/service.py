@@ -360,8 +360,11 @@ def transcribe_episode(
             )
             transcript_path.write_text(markdown, encoding="utf-8")
 
-            # Update episode
-            repo.update_transcript_path(episode.id, str(transcript_path))
+            # Update episode with transcript path and model name
+            settings = get_settings()
+            repo.update_transcript_path_and_model(
+                episode.id, str(transcript_path), settings.whisper_model
+            )
             repo.update_status(episode.id, EpisodeStatus.COMPLETED)
 
             # Index transcript for full-text search (only if timestamps included)

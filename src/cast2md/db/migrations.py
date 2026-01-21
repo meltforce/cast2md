@@ -33,6 +33,13 @@ MIGRATIONS = [
             "ALTER TABLE job_queue ADD COLUMN progress_percent INTEGER",
         ],
     },
+    {
+        "version": 4,
+        "description": "Add transcript_model tracking to episode",
+        "sql": [
+            "ALTER TABLE episode ADD COLUMN transcript_model TEXT",
+        ],
+    },
 ]
 
 
