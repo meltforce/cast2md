@@ -407,7 +407,9 @@ def status_page(request: Request):
     local_tx_job = None
     local_tx_episode = None
     for item in running_transcribe_episodes:
-        if not item["job"].assigned_node_id:
+        # Jobs with assigned_node_id=None or 'local' belong to the local worker
+        node_id = item["job"].assigned_node_id
+        if not node_id or node_id == "local":
             local_tx_job = item["job"]
             local_tx_episode = item["episode"]
             assigned_transcribe_job_ids.add(local_tx_job.id)
