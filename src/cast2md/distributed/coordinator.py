@@ -2,7 +2,7 @@
 
 import logging
 import threading
-import time
+from datetime import datetime, timedelta
 from typing import Optional
 
 from cast2md.db.connection import get_db
@@ -45,6 +45,12 @@ class RemoteTranscriptionCoordinator:
         self._heartbeat_timeout_seconds = 60
         self._job_timeout_hours = 2
         self._check_interval_seconds = 30
+
+        # In-memory heartbeat tracking to reduce DB writes
+        self._node_heartbeats: dict[str, datetime] = {}
+        self._heartbeat_lock = threading.Lock()
+        self._last_db_sync: datetime = datetime.utcnow()
+        self._db_sync_interval_seconds = 300  # Sync to DB every 5 minutes
 
     def start(self):
         """Start the coordinator background thread."""
@@ -90,21 +96,71 @@ class RemoteTranscriptionCoordinator:
             # Wait for next check interval
             self._stop_event.wait(timeout=self._check_interval_seconds)
 
-    def _check_nodes(self):
-        """Check node heartbeats and mark stale nodes as offline."""
+    def record_heartbeat(self, node_id: str) -> None:
+        """Record heartbeat in memory (no DB write).
+
+        This reduces DB lock contention by caching heartbeats in memory.
+        Heartbeats are periodically synced to the database.
+        """
+        with self._heartbeat_lock:
+            self._node_heartbeats[node_id] = datetime.utcnow()
+
+    def _sync_heartbeats_to_db(self) -> None:
+        """Batch sync all heartbeat timestamps to DB."""
+        with self._heartbeat_lock:
+            heartbeats_copy = dict(self._node_heartbeats)
+
+        if not heartbeats_copy:
+            return
+
         with get_db() as conn:
             node_repo = TranscriberNodeRepository(conn)
+            for node_id, hb_time in heartbeats_copy.items():
+                try:
+                    node_repo.update_heartbeat(node_id, hb_time)
+                except Exception as e:
+                    logger.debug(f"Failed to sync heartbeat for node {node_id}: {e}")
 
-            # Get nodes that haven't sent a heartbeat recently
+    def _check_nodes(self):
+        """Check node heartbeats and mark stale nodes as offline."""
+        now = datetime.utcnow()
+
+        # Periodic DB sync
+        if (now - self._last_db_sync).total_seconds() >= self._db_sync_interval_seconds:
+            self._sync_heartbeats_to_db()
+            self._last_db_sync = now
+
+        # Check stale using in-memory data
+        stale_threshold = now - timedelta(seconds=self._heartbeat_timeout_seconds)
+
+        with self._heartbeat_lock:
+            stale_node_ids = [
+                nid for nid, hb in self._node_heartbeats.items()
+                if hb < stale_threshold
+            ]
+
+        # Mark stale nodes as offline
+        if stale_node_ids:
+            with get_db() as conn:
+                node_repo = TranscriberNodeRepository(conn)
+                for node_id in stale_node_ids:
+                    node = node_repo.get_by_id(node_id)
+                    if node and node.status != NodeStatus.OFFLINE:
+                        logger.warning(f"Node '{node.name}' ({node.id}) is stale, marking offline")
+                        node_repo.mark_offline(node_id)
+                    with self._heartbeat_lock:
+                        self._node_heartbeats.pop(node_id, None)
+
+        # Also check DB for nodes not in memory (e.g., registered before coordinator started)
+        with get_db() as conn:
+            node_repo = TranscriberNodeRepository(conn)
             stale_nodes = node_repo.get_stale_nodes(
                 timeout_seconds=self._heartbeat_timeout_seconds
             )
-
             for node in stale_nodes:
-                logger.warning(f"Node '{node.name}' ({node.id}) is stale, marking offline")
-                node_repo.mark_offline(node.id)
-
-                # If node had a job, that job will be reclaimed in _reclaim_stale_jobs
+                if node.id not in stale_node_ids:  # Not already processed
+                    logger.warning(f"Node '{node.name}' ({node.id}) is stale, marking offline")
+                    node_repo.mark_offline(node.id)
 
     def _reclaim_stale_jobs(self):
         """Reclaim jobs that have been running too long on nodes."""

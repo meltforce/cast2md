@@ -239,12 +239,19 @@ class WorkerManager:
                 return
 
         # Create progress callback that updates the database
+        # Use time-based throttling (every 5 seconds) to reduce DB lock contention
         last_progress = [0]  # Use list to allow mutation in closure
+        last_update_time = [time.time()]
 
         def progress_callback(progress: int):
-            # Only update if progress changed significantly (avoid too many DB writes)
-            if progress > last_progress[0] + 2 or progress >= 99:
+            now = time.time()
+            time_elapsed = (now - last_update_time[0]) >= 5.0
+            is_completion = progress >= 99 and progress > last_progress[0]
+
+            # Update every 5 seconds or at completion
+            if (time_elapsed or is_completion) and progress > last_progress[0]:
                 last_progress[0] = progress
+                last_update_time[0] = now
                 try:
                     with get_db() as conn:
                         job_repo = JobRepository(conn)

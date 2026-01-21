@@ -431,3 +431,112 @@ class TestJobRetry:
 
         job = job_repo.get_by_id(sample_job.id)
         assert job.status == JobStatus.QUEUED  # Unchanged
+
+
+class TestMarkRunningLocalNode:
+    """Tests for mark_running with local node tracking."""
+
+    def test_mark_running_sets_local_node_id(self, job_repo, sample_job):
+        """Test that mark_running sets assigned_node_id to 'local' by default."""
+        job_repo.mark_running(sample_job.id)
+
+        job = job_repo.get_by_id(sample_job.id)
+        assert job.assigned_node_id == "local"
+        assert job.claimed_at is not None
+
+    def test_mark_running_sets_custom_node_id(self, job_repo, sample_job):
+        """Test that mark_running can set a custom node_id."""
+        job_repo.mark_running(sample_job.id, node_id="custom-node")
+
+        job = job_repo.get_by_id(sample_job.id)
+        assert job.assigned_node_id == "custom-node"
+        assert job.claimed_at is not None
+
+    def test_local_job_reclaimed_when_stuck(self, db_conn, job_repo, sample_episode):
+        """Test that local jobs (with assigned_node_id='local') are reclaimed when stuck."""
+        job = job_repo.create(
+            episode_id=sample_episode.id,
+            job_type=JobType.TRANSCRIBE,
+            max_attempts=3,
+        )
+        job_repo.mark_running(job.id)  # Sets assigned_node_id='local'
+
+        # Simulate stuck for 3 hours
+        old_time = (datetime.utcnow() - timedelta(hours=3)).isoformat()
+        db_conn.execute(
+            "UPDATE job_queue SET started_at = ? WHERE id = ?",
+            (old_time, job.id),
+        )
+        db_conn.commit()
+
+        requeued, failed = job_repo.reclaim_stale_jobs(timeout_hours=2)
+        assert requeued == 1
+
+        job = job_repo.get_by_id(job.id)
+        assert job.status == JobStatus.QUEUED
+
+
+class TestReclaimUsesStartedAt:
+    """Tests for reclaim_stale_jobs using started_at instead of claimed_at."""
+
+    def test_reclaim_uses_started_at_not_claimed_at(self, db_conn, job_repo, sample_episode):
+        """Test that reclaim checks started_at, not claimed_at.
+
+        This prevents the claim/fail cycle from resetting the timeout.
+        """
+        job = job_repo.create(
+            episode_id=sample_episode.id,
+            job_type=JobType.TRANSCRIBE,
+            max_attempts=3,
+        )
+
+        # started_at is old (3 hours ago), but claimed_at is recent
+        # This simulates a job that was reclaimed recently but actually started long ago
+        old_started = (datetime.utcnow() - timedelta(hours=3)).isoformat()
+        recent_claimed = datetime.utcnow().isoformat()
+        db_conn.execute(
+            """
+            UPDATE job_queue
+            SET status = ?, started_at = ?, claimed_at = ?,
+                assigned_node_id = 'node-1', attempts = 1
+            WHERE id = ?
+            """,
+            (JobStatus.RUNNING.value, old_started, recent_claimed, job.id),
+        )
+        db_conn.commit()
+
+        # Should still be reclaimed based on started_at, not claimed_at
+        requeued, _ = job_repo.reclaim_stale_jobs(timeout_hours=2)
+        assert requeued == 1
+
+        job = job_repo.get_by_id(job.id)
+        assert job.status == JobStatus.QUEUED
+
+    def test_recent_started_at_not_reclaimed(self, db_conn, job_repo, sample_episode):
+        """Test that jobs with recent started_at are not reclaimed."""
+        job = job_repo.create(
+            episode_id=sample_episode.id,
+            job_type=JobType.TRANSCRIBE,
+            max_attempts=3,
+        )
+
+        # started_at is recent (1 hour ago), within timeout
+        recent_started = (datetime.utcnow() - timedelta(hours=1)).isoformat()
+        db_conn.execute(
+            """
+            UPDATE job_queue
+            SET status = ?, started_at = ?, claimed_at = ?,
+                assigned_node_id = 'node-1', attempts = 1
+            WHERE id = ?
+            """,
+            (JobStatus.RUNNING.value, recent_started, recent_started, job.id),
+        )
+        db_conn.commit()
+
+        # Should NOT be reclaimed - started_at is within 2-hour timeout
+        requeued, failed = job_repo.reclaim_stale_jobs(timeout_hours=2)
+        assert requeued == 0
+        assert failed == 0
+
+        job = job_repo.get_by_id(job.id)
+        assert job.status == JobStatus.RUNNING
