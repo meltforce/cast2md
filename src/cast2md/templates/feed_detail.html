@@ -365,8 +365,8 @@ function updateEpisodeRow(row, ep) {
         actionsCell.innerHTML = `<button class="outline secondary" onclick="retryEpisode(${ep.id})">Retry</button>`;
         if (checkbox) checkbox.disabled = true;
     } else {
-        // downloading, transcribing, queued - status column shows state
-        actionsCell.innerHTML = '';
+        // downloading, transcribing, queued - show disabled button to prevent layout jump
+        actionsCell.innerHTML = '<button class="outline" disabled>...</button>';
         if (checkbox) checkbox.disabled = true;
     }
 }
@@ -505,8 +505,9 @@ async function tryTranscript(episodeId, button) {
             // Update status badge
             statusBadge.className = 'status-badge status-downloading';
             statusBadge.textContent = 'queued';
-            // Clear actions (status column shows state)
-            actionsCell.innerHTML = '';
+            // Keep button disabled to prevent layout jump
+            button.disabled = true;
+            button.textContent = '...';
             // Start polling to see when it completes
             startStatusPolling();
         } else {
@@ -554,7 +555,8 @@ async function transcribeEpisode(episodeId, button) {
         if (response.ok) {
             statusBadge.className = 'status-badge status-transcribing';
             statusBadge.textContent = 'queued';
-            actionsCell.innerHTML = '';
+            button.disabled = true;
+            button.textContent = '...';
             startStatusPolling();
         } else {
             button.disabled = false;
@@ -586,10 +588,13 @@ async function queueAllTranscripts(feedId) {
             // Update all pending rows to show queued status
             document.querySelectorAll('.status-badge.status-pending').forEach(badge => {
                 const row = badge.closest('tr');
-                const actionsCell = row.querySelector('.actions');
+                const btn = row.querySelector('.actions button');
                 badge.className = 'status-badge status-downloading';
                 badge.textContent = 'queued';
-                actionsCell.innerHTML = '';
+                if (btn) {
+                    btn.disabled = true;
+                    btn.textContent = '...';
+                }
             });
             // Start polling for updates
             startStatusPolling();
