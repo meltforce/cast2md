@@ -94,8 +94,8 @@ MIGRATIONS = [
                 embedding float[384],
                 +episode_id INTEGER,
                 +feed_id INTEGER,
-                +segment_start REAL,
-                +segment_end REAL,
+                +segment_start FLOAT,
+                +segment_end FLOAT,
                 +text_hash TEXT,
                 +model_name TEXT
             )
