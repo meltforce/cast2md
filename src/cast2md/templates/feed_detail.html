@@ -160,7 +160,7 @@
             </td>
             <td class="actions" style="white-space: nowrap;">
                 {% if episode.status.value == 'pending' %}
-                    <button class="outline" onclick="downloadEpisode({{ episode.id }})">Download</button>
+                    <button class="outline" onclick="tryTranscript({{ episode.id }})">Get Transcript</button>
                 {% elif episode.status.value == 'downloaded' %}
                     <button class="outline" onclick="transcribeEpisode({{ episode.id }})">Transcribe</button>
                 {% elif episode.status.value == 'completed' and episode.transcript_path %}
@@ -389,6 +389,23 @@ async function refreshFeed(feedId) {
 
         if (response.ok) {
             alert(data.message);
+            window.location.reload();
+        } else {
+            alert('Error: ' + data.detail);
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
+
+async function tryTranscript(episodeId) {
+    try {
+        // Try to get transcript from external providers first
+        const response = await fetch(`/api/queue/episodes/${episodeId}/transcript-download`, {method: 'POST'});
+        const data = await response.json();
+
+        if (response.ok) {
+            alert(data.message + '\n\nIf no external transcript is available, you can use "Download Audio" from the episode detail page.');
             window.location.reload();
         } else {
             alert('Error: ' + data.detail);
