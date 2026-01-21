@@ -34,9 +34,13 @@
         </header>
         <p>Are you sure you want to delete <strong>{{ feed.display_title }}</strong>?</p>
         <p>This will remove all {{ total_all }} episodes from the database. Files will be moved to trash and automatically deleted after 30 days.</p>
+        <label>
+            Type <strong>delete</strong> to confirm
+            <input type="text" id="deleteConfirmInput" placeholder="delete" autocomplete="off">
+        </label>
         <footer style="display: flex; gap: 0.5rem; justify-content: flex-end;">
             <button type="button" class="secondary" onclick="this.closest('dialog').close()">Cancel</button>
-            <button type="button" class="contrast" onclick="confirmDeleteFeed()">Delete Feed</button>
+            <button type="button" class="contrast" id="deleteConfirmBtn" onclick="confirmDeleteFeed()" disabled>Delete Feed</button>
         </footer>
     </article>
 </dialog>
@@ -487,6 +491,17 @@ async function saveFeedTitle(event) {
         alert('Error: ' + error.message);
     }
 }
+
+// Delete confirmation input handler
+document.getElementById('deleteConfirmInput').addEventListener('input', function() {
+    document.getElementById('deleteConfirmBtn').disabled = this.value.toLowerCase() !== 'delete';
+});
+
+// Reset input when dialog closes
+document.getElementById('deleteFeedDialog').addEventListener('close', function() {
+    document.getElementById('deleteConfirmInput').value = '';
+    document.getElementById('deleteConfirmBtn').disabled = true;
+});
 
 async function confirmDeleteFeed() {
     document.getElementById('deleteFeedDialog').close();
