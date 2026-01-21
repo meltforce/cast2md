@@ -283,7 +283,7 @@ async function loadSettings() {
             tbody.appendChild(row);
         }
     } catch (error) {
-        alert('Error loading settings: ' + error.message);
+        showError('Error loading settings: ' + error.message);
     }
 }
 
@@ -314,13 +314,13 @@ document.getElementById('settingsForm').addEventListener('submit', async (e) => 
         const data = await response.json();
 
         if (response.ok) {
-            alert(data.message);
+            showSuccess(data.message);
             loadSettings();
         } else {
-            alert('Error: ' + data.detail);
+            showError(data.detail);
         }
     } catch (error) {
-        alert('Error saving settings: ' + error.message);
+        showError('Error saving settings: ' + error.message);
     }
 });
 
@@ -334,13 +334,13 @@ async function resetSetting(key) {
         const data = await response.json();
 
         if (response.ok) {
-            alert(data.message);
+            showSuccess(data.message);
             loadSettings();
         } else {
-            alert('Error: ' + data.detail);
+            showError(data.detail);
         }
     } catch (error) {
-        alert('Error: ' + error.message);
+        showError(error.message);
     }
 }
 
@@ -354,13 +354,13 @@ async function resetAllSettings() {
         const data = await response.json();
 
         if (response.ok) {
-            alert(data.message);
+            showSuccess(data.message);
             loadSettings();
         } else {
-            alert('Error: ' + data.detail);
+            showError(data.detail);
         }
     } catch (error) {
-        alert('Error: ' + error.message);
+        showError(error.message);
     }
 }
 
@@ -368,9 +368,9 @@ async function testNotification() {
     try {
         const response = await fetch('/api/settings/notifications/test', {method: 'POST'});
         const data = await response.json();
-        alert(data.message);
+        showInfo(data.message);
     } catch (error) {
-        alert('Error: ' + error.message);
+        showError(error.message);
     }
 }
 
@@ -422,15 +422,15 @@ document.getElementById('addModelForm').addEventListener('submit', async (e) => 
         const data = await response.json();
 
         if (response.ok) {
-            alert(data.message);
+            showSuccess(data.message);
             e.target.reset();
             loadModels();
             loadSettings(); // Refresh settings to update model dropdown
         } else {
-            alert('Error: ' + data.detail);
+            showError(data.detail);
         }
     } catch (error) {
-        alert('Error: ' + error.message);
+        showError(error.message);
     }
 });
 
@@ -444,14 +444,14 @@ async function deleteModel(modelId) {
         const data = await response.json();
 
         if (response.ok) {
-            alert(data.message);
+            showSuccess(data.message);
             loadModels();
             loadSettings();
         } else {
-            alert('Error: ' + data.detail);
+            showError(data.detail);
         }
     } catch (error) {
-        alert('Error: ' + error.message);
+        showError(error.message);
     }
 }
 
@@ -465,14 +465,14 @@ async function resetModels() {
         const data = await response.json();
 
         if (response.ok) {
-            alert(data.message);
+            showSuccess(data.message);
             loadModels();
             loadSettings();
         } else {
-            alert('Error: ' + data.detail);
+            showError(data.detail);
         }
     } catch (error) {
-        alert('Error: ' + error.message);
+        showError(error.message);
     }
 }
 
@@ -541,14 +541,14 @@ document.getElementById('addNodeForm').addEventListener('submit', async (e) => {
         const data = await response.json();
 
         if (response.ok) {
-            alert(`Node added! API Key: ${data.api_key}\n\nSave this key - it won't be shown again.`);
+            showSuccess(`Node added! API Key: ${data.api_key} - Save this key, it won't be shown again.`);
             e.target.reset();
             loadNodes();
         } else {
-            alert('Error: ' + data.detail);
+            showError(data.detail);
         }
     } catch (error) {
-        alert('Error: ' + error.message);
+        showError(error.message);
     }
 });
 
@@ -556,9 +556,9 @@ async function testNode(nodeId) {
     try {
         const response = await fetch(`/api/nodes/${nodeId}/test`, {method: 'POST'});
         const data = await response.json();
-        alert(data.message);
+        showInfo(data.message);
     } catch (error) {
-        alert('Error: ' + error.message);
+        showError(error.message);
     }
 }
 
@@ -572,13 +572,13 @@ async function deleteNode(nodeId) {
         const data = await response.json();
 
         if (response.ok) {
-            alert(data.message);
+            showSuccess(data.message);
             loadNodes();
         } else {
-            alert('Error: ' + data.detail);
+            showError(data.detail);
         }
     } catch (error) {
-        alert('Error: ' + error.message);
+        showError(error.message);
     }
 }
 

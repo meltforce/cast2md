@@ -299,10 +299,10 @@ async function queueProcess(episodeId) {
         if (response.ok) {
             window.location.reload();
         } else {
-            alert('Error: ' + data.detail);
+            showError(data.detail);
         }
     } catch (error) {
-        alert('Error: ' + error.message);
+        showError(error.message);
     }
 }
 
@@ -314,10 +314,10 @@ async function queueTranscribe(episodeId) {
         if (response.ok) {
             window.location.reload();
         } else {
-            alert('Error: ' + data.detail);
+            showError(data.detail);
         }
     } catch (error) {
-        alert('Error: ' + error.message);
+        showError(error.message);
     }
 }
 
@@ -333,10 +333,10 @@ async function cancelJob(jobId) {
         if (response.ok) {
             window.location.reload();
         } else {
-            alert('Error: ' + data.detail);
+            showError(data.detail);
         }
     } catch (error) {
-        alert('Error: ' + error.message);
+        showError(error.message);
     }
 }
 
@@ -350,13 +350,13 @@ async function queueAllPending() {
         const data = await response.json();
 
         if (response.ok) {
-            alert(data.message);
-            window.location.reload();
+            showSuccess(data.message);
+            setTimeout(() => window.location.reload(), 1500);
         } else {
-            alert('Error: ' + data.detail);
+            showError(data.detail);
         }
     } catch (error) {
-        alert('Error: ' + error.message);
+        showError(error.message);
     }
 }
 
@@ -370,13 +370,13 @@ async function cancelAllQueued() {
         const data = await response.json();
 
         if (response.ok) {
-            alert(data.message);
-            window.location.reload();
+            showSuccess(data.message);
+            setTimeout(() => window.location.reload(), 1500);
         } else {
-            alert('Error: ' + data.detail);
+            showError(data.detail);
         }
     } catch (error) {
-        alert('Error: ' + error.message);
+        showError(error.message);
     }
 }
 
