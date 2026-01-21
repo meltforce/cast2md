@@ -23,6 +23,11 @@ ssh root@cast2md "cd /opt/cast2md && git pull && systemctl restart cast2md"
 - Status UI: https://cast2md.leo-royal.ts.net/status
 - API docs: https://cast2md.leo-royal.ts.net/docs
 
+## Documentation
+
+- `cast2md-requirements.md` - Central requirements document with architecture, data model, and development phases
+- `docs/` - Additional documentation (distributed transcription setup, architecture diagrams, etc.)
+
 ## Testing
 
 Always test the server API directly via the URL, not by SSH + localhost:
