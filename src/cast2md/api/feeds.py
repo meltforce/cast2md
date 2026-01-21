@@ -178,13 +178,27 @@ def update_feed(feed_id: int, feed_data: FeedUpdate):
         # Determine new display_title
         new_display_title = new_custom_title if new_custom_title else feed.title
 
-        # Rename directories if display_title changed
+        # Rename directories and update episode paths if display_title changed
         if old_display_title != new_display_title:
-            try:
-                from cast2md.storage.filesystem import rename_podcast_directories
-                rename_podcast_directories(old_display_title, new_display_title)
-            except OSError as e:
-                raise HTTPException(status_code=409, detail=str(e))
+            from cast2md.storage.filesystem import (
+                rename_podcast_directories,
+                sanitize_podcast_name,
+            )
+
+            old_dir_name = sanitize_podcast_name(old_display_title)
+            new_dir_name = sanitize_podcast_name(new_display_title)
+
+            # Only proceed if sanitized names are different
+            if old_dir_name != new_dir_name:
+                try:
+                    rename_podcast_directories(old_display_title, new_display_title)
+                except OSError as e:
+                    raise HTTPException(status_code=409, detail=str(e))
+
+                # Update episode paths in database to match new directory names
+                episode_repo.update_paths_for_feed_rename(
+                    feed_id, old_dir_name, new_dir_name
+                )
 
         # Update database
         feed = repo.update(feed_id, custom_title=new_custom_title)

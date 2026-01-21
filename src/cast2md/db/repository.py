@@ -300,6 +300,62 @@ class EpisodeRepository:
         )
         self.conn.commit()
 
+    def update_paths_for_feed_rename(
+        self, feed_id: int, old_dir_name: str, new_dir_name: str
+    ) -> int:
+        """Update all episode paths when a feed directory is renamed.
+
+        Replaces the old directory name with the new one in audio_path and
+        transcript_path for all episodes of the given feed.
+
+        Args:
+            feed_id: The feed ID whose episodes to update.
+            old_dir_name: The old sanitized directory name.
+            new_dir_name: The new sanitized directory name.
+
+        Returns:
+            Number of episodes updated.
+        """
+        now = datetime.utcnow().isoformat()
+
+        # Update audio_path
+        cursor = self.conn.execute(
+            """
+            UPDATE episode
+            SET audio_path = REPLACE(audio_path, ?, ?),
+                updated_at = ?
+            WHERE feed_id = ? AND audio_path IS NOT NULL AND audio_path LIKE ?
+            """,
+            (
+                f"/{old_dir_name}/",
+                f"/{new_dir_name}/",
+                now,
+                feed_id,
+                f"%/{old_dir_name}/%",
+            ),
+        )
+        audio_updated = cursor.rowcount
+
+        # Update transcript_path
+        cursor = self.conn.execute(
+            """
+            UPDATE episode
+            SET transcript_path = REPLACE(transcript_path, ?, ?),
+                updated_at = ?
+            WHERE feed_id = ? AND transcript_path IS NOT NULL AND transcript_path LIKE ?
+            """,
+            (
+                f"/{old_dir_name}/",
+                f"/{new_dir_name}/",
+                now,
+                feed_id,
+                f"%/{old_dir_name}/%",
+            ),
+        )
+
+        self.conn.commit()
+        return max(audio_updated, cursor.rowcount)
+
     def exists(self, feed_id: int, guid: str) -> bool:
         """Check if episode already exists."""
         cursor = self.conn.execute(
