@@ -267,6 +267,9 @@ def feed_detail(
         if page > total_pages:
             page = total_pages
 
+        # Get transcript source stats for this feed
+        transcript_stats = episode_repo.get_transcript_source_stats(feed_id)
+
     return templates.TemplateResponse(
         "feed_detail.html",
         {
@@ -282,6 +285,7 @@ def feed_detail(
             "query": q or "",
             "status_filter": status or "",
             "statuses": [s.value for s in EpisodeStatus],
+            "transcript_stats": transcript_stats,
         },
     )
 
