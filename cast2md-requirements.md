@@ -1,20 +1,21 @@
-# cast2md - Requirements Document v0.3
+# cast2md - Requirements Document v0.7
 
 ## 1. Overview
 
-**cast2md** is a self-hosted podcast transcription service that automatically downloads podcast episodes and generates text transcripts using Whisper. It provides a web UI for feed management and supports bulk transcription of historical episodes.
+**cast2md** is a self-hosted podcast transcription service that automatically downloads podcast episodes and generates text transcripts. It prioritizes **external transcript sources** (Podcasting 2.0, Pocket Casts) before falling back to Whisper transcription, minimizing storage and processing requirements.
 
 ### Goals
 - Reliable, automated podcast episode downloading (independent of Audiobookshelf)
-- Automatic transcription of new episodes using Faster Whisper
+- **Transcript-first workflow**: Try external sources before downloading audio
+- Automatic transcription of new episodes using Faster Whisper (fallback)
 - Backfill capability for historical episodes
 - Structured storage of audio files and transcripts on NAS
 - Simple web UI for feed and episode management
+- Full-text search across transcripts
 
 ### Non-Goals (v1)
 - Podcast playback functionality
-- Full-text search across transcripts (future: MCP server)
-- SRT/VTT subtitle formats (v2)
+- Speaker diarization
 
 ---
 
@@ -24,15 +25,20 @@
 
 | Requirement | Description |
 |-------------|-------------|
-| Add Feed | Add RSS feed URL via web UI with immediate validation |
+| Add Feed | Add RSS feed URL or Apple Podcasts URL via web UI with immediate validation |
 | Remove Feed | Remove feed and optionally associated files |
 | Edit Feed | Modify feed settings (name, language, auto-download) |
 | Feed List | Display all feeds with status (last polled, episode count, errors) |
 
+**Feed URL Input:**
+- **Direct RSS URL**: Standard RSS/Atom feed URLs
+- **Apple Podcasts URL**: `podcasts.apple.com/.../id{itunes_id}` - automatically resolved to RSS via iTunes Lookup API
+
 **Feed Validation on Add:**
-- HTTP HEAD request to verify URL accessibility
+- If Apple Podcasts URL: Extract iTunes ID, call iTunes Lookup API to get RSS URL
+- HTTP request to verify URL accessibility
 - Parse response to confirm valid RSS/XML
-- Extract feed metadata (title, description) for auto-population
+- Extract feed metadata (title, description, author, categories) for auto-population
 - Reject with clear error message if validation fails
 
 **Feed Configuration Options:**
@@ -46,11 +52,41 @@
 
 | Requirement | Description |
 |-------------|-------------|
-| Auto-Download | Poll feeds every 60 minutes, download new episodes |
-| Manual Download | Trigger download for specific episode via UI |
+| Transcript-First | When adding feed, queue all episodes for transcript download before audio |
+| External Transcripts | Try Podcasting 2.0 and Pocket Casts providers before Whisper |
+| Auto-Download | Poll feeds every 60 minutes, queue new episodes for transcript download |
+| Manual Download | Trigger audio download for specific episode via UI |
 | Backfill | Download/transcribe all episodes after a specified date |
 | Deduplication | Track episodes by GUID to prevent duplicate processing |
-| Podcast 2.0 Transcripts | Detect `<podcast:transcript>` tag and download existing transcript instead of running Whisper |
+| Audio Management | Delete audio files for episodes with transcripts; re-download later if needed |
+
+**Transcript-First Workflow:**
+```
+Add Feed / Refresh Feed
+    │
+    ▼
+Queue TRANSCRIPT_DOWNLOAD jobs for ALL new episodes
+    │
+    ▼
+Worker tries external providers:
+  1. Podcast20Provider (RSS <podcast:transcript> tag)
+  2. PocketCastsProvider (auto-generated, public API)
+    │
+    ├─► Found: Save transcript, mark COMPLETED (no audio needed)
+    │
+    └─► Not found: Return to PENDING
+              │
+              ▼
+        User clicks "Download Audio" → audio + Whisper transcription
+```
+
+**Transcript Providers:**
+
+| Provider | Priority | Source | Tracking |
+|----------|----------|--------|----------|
+| Podcast20 | 1 | RSS `<podcast:transcript>` tag | `podcast2.0:{format}` |
+| PocketCasts | 2 | Public API (no auth) | `pocketcasts` |
+| Whisper | 3 (fallback) | Local transcription | `whisper` |
 
 **Episode States:**
 ```
@@ -58,6 +94,8 @@ pending → downloading → downloaded → transcribing → completed
                 ↓              ↓              ↓
               failed        failed         failed
 ```
+
+Note: Episodes can reach `completed` status with only a transcript (no audio) when external providers succeed.
 
 ### 2.3 Transcription
 
@@ -537,7 +575,7 @@ python-dotenv>=1.0.0
 - [x] Progress indication
 
 ### Phase 4: Advanced Features (v0.4)
-- [ ] Podcast 2.0 transcript detection and download
+- [x] Podcast 2.0 transcript detection and download
 - [x] Backfill functionality with date filter ("Queue All Pending" on feed page)
 - [ ] Language override per episode
 - [x] Retry logic with exponential backoff
@@ -559,13 +597,23 @@ python-dotenv>=1.0.0
 - [x] MLX backend support for Apple Silicon
 - [x] Auto-open browser on node start
 
+### Phase 7: External Transcript Service (v0.7)
+- [x] iTunes URL support (resolve Apple Podcasts URLs to RSS)
+- [x] Pocket Casts provider (public API, auto-generated transcripts)
+- [x] Transcript-first workflow (queue all episodes for transcript download on feed add)
+- [x] TRANSCRIPT_DOWNLOAD job type
+- [x] Real-time status updates (polling in UI)
+- [x] Audio management (delete/re-download for episodes with transcripts)
+- [x] Batch transcript download endpoint
+- [x] Transcript source labels in UI (Publisher provided / Auto-generated / Whisper)
+
 ### Future (v2.0+)
 - [ ] Audio preprocessing pipeline (ffmpeg)
 - [x] MCP server for transcript access
 - [x] SRT/VTT output formats
 - [ ] OPML import
 - [ ] Feed authentication (HTTP Basic, custom headers)
-- [ ] Full-text search across transcripts
+- [x] Full-text search across transcripts
 - [ ] Speaker diarization
 
 ---
