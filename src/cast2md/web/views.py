@@ -452,26 +452,24 @@ def status_page(request: Request):
             "progress": None,  # Downloads don't track progress (indeterminate)
         })
 
-    # Add server transcript download workers
-    transcript_dl_job_index = 0
-    for i in range(queue_status["transcript_download_workers"]):
-        job = None
-        episode = None
-        if transcript_dl_job_index < len(running_transcript_download_episodes):
-            item = running_transcript_download_episodes[transcript_dl_job_index]
-            job = item["job"]
-            episode = item["episode"]
-            assigned_transcript_download_job_ids.add(job.id)
-            transcript_dl_job_index += 1
+    # Add server transcript download workers (as a single summary row)
+    active_tdl_count = len(running_transcript_download_episodes)
+    total_tdl_workers = queue_status["transcript_download_workers"]
 
-        workers.append({
-            "name": f"Server TDL {i+1}",
-            "type": "transcript_download",
-            "status": "busy" if job else "idle",
-            "job": job,
-            "episode": episode,
-            "progress": None,  # Transcript downloads don't track progress
-        })
+    # Mark all running TDL jobs as assigned
+    for item in running_transcript_download_episodes:
+        assigned_transcript_download_job_ids.add(item["job"].id)
+
+    workers.append({
+        "name": "Server TDL",
+        "type": "transcript_download_summary",
+        "status": "busy" if active_tdl_count > 0 else "idle",
+        "active_count": active_tdl_count,
+        "total_count": total_tdl_workers,
+        "job": None,
+        "episode": None,
+        "progress": None,
+    })
 
     # Add server transcription worker
     server_tx_job = None

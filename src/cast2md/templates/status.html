@@ -78,7 +78,9 @@
                     {% endif %}
                 </td>
                 <td>
-                    {% if worker.episode %}
+                    {% if worker.type == 'transcript_download_summary' %}
+                    {{ worker.active_count }}/{{ worker.total_count }} active
+                    {% elif worker.episode %}
                     <a href="/episodes/{{ worker.episode.id }}">{{ worker.episode.title[:40] }}{% if worker.episode.title|length > 40 %}...{% endif %}</a>
                     {% else %}
                     -
