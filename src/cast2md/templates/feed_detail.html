@@ -23,7 +23,23 @@
     &nbsp;|&nbsp;
     <button class="outline" style="padding: 0.25rem 0.5rem; font-size: 0.875rem;" onclick="refreshFeed({{ feed.id }})">Refresh Feed</button>
     <button class="outline" style="padding: 0.25rem 0.5rem; font-size: 0.875rem; display: none;" onclick="queueSelected()" id="queueSelectedBtn">Queue Selected (<span id="selectedCount">0</span>)</button>
+    <button class="outline secondary" style="padding: 0.25rem 0.5rem; font-size: 0.875rem;" onclick="document.getElementById('deleteFeedDialog').showModal()">Delete Feed</button>
 </p>
+
+<dialog id="deleteFeedDialog">
+    <article>
+        <header>
+            <button aria-label="Close" rel="prev" onclick="this.closest('dialog').close()"></button>
+            <h3>Delete Feed</h3>
+        </header>
+        <p>Are you sure you want to delete <strong>{{ feed.display_title }}</strong>?</p>
+        <p>This will remove all {{ total_all }} episodes from the database. Files will be moved to trash and automatically deleted after 30 days.</p>
+        <footer style="display: flex; gap: 0.5rem; justify-content: flex-end;">
+            <button type="button" class="secondary" onclick="this.closest('dialog').close()">Cancel</button>
+            <button type="button" class="contrast" onclick="confirmDeleteFeed()">Delete Feed</button>
+        </footer>
+    </article>
+</dialog>
 
 <dialog id="editTitleModal">
     <article>
@@ -465,6 +481,32 @@ async function saveFeedTitle(event) {
             window.location.reload();
         } else {
             const data = await response.json();
+            alert('Error: ' + data.detail);
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
+
+async function confirmDeleteFeed() {
+    // Double confirmation
+    if (!confirm('This action cannot be undone. Type "delete" in the next prompt to confirm.')) {
+        return;
+    }
+    const confirmation = prompt('Type "delete" to confirm:');
+    if (confirmation !== 'delete') {
+        alert('Deletion cancelled.');
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/feeds/{{ feed.id }}`, {method: 'DELETE'});
+        const data = await response.json();
+
+        if (response.ok) {
+            alert(data.message);
+            window.location.href = '/';
+        } else {
             alert('Error: ' + data.detail);
         }
     } catch (error) {

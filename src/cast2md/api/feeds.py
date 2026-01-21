@@ -226,7 +226,7 @@ def update_feed(feed_id: int, feed_data: FeedUpdate):
 
 @router.delete("/{feed_id}", response_model=MessageResponse)
 def delete_feed(feed_id: int):
-    """Delete a feed and its episodes."""
+    """Delete a feed and its episodes. Files are moved to trash."""
     with get_db() as conn:
         repo = FeedRepository(conn)
 
@@ -234,10 +234,17 @@ def delete_feed(feed_id: int):
         if not feed:
             raise HTTPException(status_code=404, detail="Feed not found")
 
+        # Move files to trash before deleting from database
+        from cast2md.storage.filesystem import move_feed_to_trash
+
+        trash_path = move_feed_to_trash(feed_id, feed.display_title)
+
         deleted = repo.delete(feed_id)
         if not deleted:
             raise HTTPException(status_code=500, detail="Failed to delete feed")
 
+    if trash_path:
+        return MessageResponse(message=f"Feed '{feed.title}' deleted. Files moved to trash.")
     return MessageResponse(message=f"Feed '{feed.title}' deleted")
 
 
