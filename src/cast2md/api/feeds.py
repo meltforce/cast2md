@@ -107,13 +107,14 @@ def list_feeds():
 
 @router.post("", response_model=FeedResponse, status_code=201)
 def create_feed(feed_data: FeedCreate):
-    """Add a new feed and auto-queue the latest episode.
+    """Add a new feed and auto-queue all episodes for transcript download.
 
     Accepts either:
     - Direct RSS feed URL (e.g., https://example.com/podcast.xml)
     - Apple Podcasts URL (e.g., https://podcasts.apple.com/us/podcast/name/id1234567890)
 
     For Apple Podcasts URLs, the RSS feed URL is resolved via iTunes Lookup API.
+    All episodes are queued for transcript download (tries external providers first).
     """
     input_url = str(feed_data.url)
 
@@ -149,8 +150,9 @@ def create_feed(feed_data: FeedCreate):
             itunes_id=itunes_id,
         )
 
-    # Discover episodes and auto-queue only the latest one
-    result = discover_new_episodes(feed, auto_queue=True, queue_only_latest=True)
+    # Discover episodes and auto-queue ALL for transcript download
+    # External transcripts are fast to check, so queue everything
+    result = discover_new_episodes(feed, auto_queue=True, queue_only_latest=False)
 
     with get_db() as conn:
         episode_repo = EpisodeRepository(conn)
