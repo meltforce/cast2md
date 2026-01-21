@@ -608,7 +608,7 @@ python-dotenv>=1.0.0
 - [x] Transcript source labels in UI (Publisher provided / Auto-generated / Whisper)
 
 ### Future (v2.0+)
-- [ ] Audio preprocessing pipeline (ffmpeg)
+- [x] Audio preprocessing pipeline (ffmpeg) - mono 16kHz conversion
 - [x] MCP server for transcript access
 - [x] SRT/VTT output formats
 - [ ] OPML import
