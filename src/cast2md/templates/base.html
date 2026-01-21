@@ -436,6 +436,105 @@
         .toast-close:hover {
             color: var(--pico-color);
         }
+        /* Dialog tabs */
+        .dialog-tabs {
+            display: flex;
+            gap: 0;
+            margin-bottom: 1rem;
+            border-bottom: 1px solid var(--pico-muted-border-color);
+        }
+        .dialog-tab {
+            padding: 0.5rem 1rem;
+            background: none;
+            border: none;
+            border-bottom: 2px solid transparent;
+            cursor: pointer;
+            font-size: 0.9rem;
+            color: var(--pico-muted-color);
+            margin: 0;
+            width: auto;
+        }
+        .dialog-tab:hover {
+            color: var(--pico-color);
+        }
+        .dialog-tab.active {
+            color: var(--pico-primary);
+            border-bottom-color: var(--pico-primary);
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        /* iTunes search results */
+        .itunes-search-results {
+            max-height: 300px;
+            overflow-y: auto;
+            margin-top: 1rem;
+        }
+        .itunes-search-result {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.75rem;
+            border: 1px solid var(--pico-muted-border-color);
+            border-radius: 0.25rem;
+            margin-bottom: 0.5rem;
+            cursor: pointer;
+            transition: background-color 0.15s ease, border-color 0.15s ease;
+        }
+        .itunes-search-result:hover {
+            background-color: var(--pico-secondary-background);
+            border-color: var(--pico-primary);
+        }
+        .itunes-search-result img {
+            width: 50px;
+            height: 50px;
+            border-radius: 0.25rem;
+            object-fit: cover;
+            flex-shrink: 0;
+        }
+        .itunes-search-result .no-artwork {
+            width: 50px;
+            height: 50px;
+            border-radius: 0.25rem;
+            background: var(--pico-muted-border-color);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            flex-shrink: 0;
+        }
+        .itunes-result-info {
+            flex: 1;
+            min-width: 0;
+        }
+        .itunes-result-title {
+            font-weight: 600;
+            margin: 0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .itunes-result-author {
+            color: var(--pico-muted-color);
+            font-size: 0.85rem;
+            margin: 0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .itunes-search-empty {
+            text-align: center;
+            padding: 2rem;
+            color: var(--pico-muted-color);
+        }
+        .itunes-search-loading {
+            text-align: center;
+            padding: 2rem;
+            color: var(--pico-muted-color);
+        }
     </style>
 </head>
 <body>

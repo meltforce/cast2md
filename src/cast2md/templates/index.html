@@ -74,27 +74,151 @@
 <dialog id="addFeedDialog">
     <article>
         <header>
-            <button aria-label="Close" rel="prev" onclick="document.getElementById('addFeedDialog').close()"></button>
+            <button aria-label="Close" rel="prev" onclick="closeAddFeedDialog()"></button>
             <h3>Add Podcast Feed</h3>
         </header>
-        <form id="addFeedForm" onsubmit="addFeed(event)">
-            <label for="feedUrl">
-                RSS Feed URL
-                <input type="url" id="feedUrl" name="url" placeholder="https://example.com/feed.xml" required>
-            </label>
-            <footer>
-                <button type="button" class="secondary" onclick="document.getElementById('addFeedDialog').close()">Cancel</button>
-                <button type="submit">Add Feed</button>
-            </footer>
-        </form>
+
+        <div class="dialog-tabs">
+            <button class="dialog-tab active" onclick="switchTab('search')">Search iTunes</button>
+            <button class="dialog-tab" onclick="switchTab('url')">Enter URL</button>
+        </div>
+
+        <!-- Search Tab -->
+        <div id="tab-search" class="tab-content active">
+            <input type="search" id="itunesSearchInput" placeholder="Search podcasts..." oninput="debouncedSearch()">
+            <div id="itunesSearchResults" class="itunes-search-results">
+                <div class="itunes-search-empty">Type to search for podcasts</div>
+            </div>
+        </div>
+
+        <!-- URL Tab -->
+        <div id="tab-url" class="tab-content">
+            <form id="addFeedForm" onsubmit="addFeed(event)">
+                <label for="feedUrl">
+                    RSS Feed URL or Apple Podcasts URL
+                    <input type="url" id="feedUrl" name="url" placeholder="https://example.com/feed.xml" required>
+                </label>
+                <footer>
+                    <button type="button" class="secondary" onclick="closeAddFeedDialog()">Cancel</button>
+                    <button type="submit">Add Feed</button>
+                </footer>
+            </form>
+        </div>
     </article>
 </dialog>
 {% endblock %}
 
 {% block scripts %}
 <script>
+let searchTimeout = null;
+
 function showAddFeedDialog() {
     document.getElementById('addFeedDialog').showModal();
+    // Focus the search input when opening
+    document.getElementById('itunesSearchInput').focus();
+}
+
+function closeAddFeedDialog() {
+    document.getElementById('addFeedDialog').close();
+    // Reset state
+    document.getElementById('itunesSearchInput').value = '';
+    document.getElementById('feedUrl').value = '';
+    document.getElementById('itunesSearchResults').innerHTML =
+        '<div class="itunes-search-empty">Type to search for podcasts</div>';
+    switchTab('search');
+}
+
+function switchTab(tab) {
+    // Update tab buttons
+    document.querySelectorAll('.dialog-tab').forEach(btn => btn.classList.remove('active'));
+    document.querySelector(`.dialog-tab:nth-child(${tab === 'search' ? 1 : 2})`).classList.add('active');
+
+    // Update tab content
+    document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+    document.getElementById(`tab-${tab}`).classList.add('active');
+
+    // Focus appropriate input
+    if (tab === 'search') {
+        document.getElementById('itunesSearchInput').focus();
+    } else {
+        document.getElementById('feedUrl').focus();
+    }
+}
+
+function debouncedSearch() {
+    if (searchTimeout) clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(() => {
+        const query = document.getElementById('itunesSearchInput').value.trim();
+        if (query.length > 0) {
+            searchItunes(query);
+        } else {
+            document.getElementById('itunesSearchResults').innerHTML =
+                '<div class="itunes-search-empty">Type to search for podcasts</div>';
+        }
+    }, 300);
+}
+
+async function searchItunes(query) {
+    const resultsDiv = document.getElementById('itunesSearchResults');
+    resultsDiv.innerHTML = '<div class="itunes-search-loading">Searching...</div>';
+
+    try {
+        const response = await fetch(`/api/itunes/search?q=${encodeURIComponent(query)}&limit=10`);
+        if (!response.ok) {
+            throw new Error('Search failed');
+        }
+        const data = await response.json();
+        renderSearchResults(data.results);
+    } catch (error) {
+        resultsDiv.innerHTML = '<div class="itunes-search-empty">Search failed. Please try again.</div>';
+    }
+}
+
+function renderSearchResults(results) {
+    const resultsDiv = document.getElementById('itunesSearchResults');
+
+    if (results.length === 0) {
+        resultsDiv.innerHTML = '<div class="itunes-search-empty">No podcasts found</div>';
+        return;
+    }
+
+    resultsDiv.innerHTML = results.map(r => `
+        <div class="itunes-search-result" onclick="addFromSearch('${escapeHtml(r.feed_url)}')">
+            ${r.artwork_url
+                ? `<img src="${escapeHtml(r.artwork_url)}" alt="" onerror="this.outerHTML='<div class=\\'no-artwork\\'>🎙</div>'">`
+                : '<div class="no-artwork">🎙</div>'
+            }
+            <div class="itunes-result-info">
+                <p class="itunes-result-title">${escapeHtml(r.title)}</p>
+                <p class="itunes-result-author">${escapeHtml(r.author)}</p>
+            </div>
+        </div>
+    `).join('');
+}
+
+async function addFromSearch(feedUrl) {
+    try {
+        const response = await fetch('/api/feeds', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({url: feedUrl})
+        });
+
+        if (response.ok) {
+            window.location.reload();
+        } else {
+            const data = await response.json();
+            showError(data.detail);
+        }
+    } catch (error) {
+        showError(error.message);
+    }
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
 
 async function addFeed(event) {

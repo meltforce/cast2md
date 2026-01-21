@@ -19,6 +19,7 @@ class ItunesPodcast:
     title: str
     author: str
     feed_url: Optional[str]
+    artwork_url: Optional[str] = None
 
 
 class ItunesClient:
@@ -73,6 +74,7 @@ class ItunesClient:
                 title=result.get("collectionName", ""),
                 author=result.get("artistName", ""),
                 feed_url=result.get("feedUrl"),
+                artwork_url=result.get("artworkUrl100"),
             )
 
         except httpx.HTTPStatusError as e:
@@ -125,6 +127,7 @@ class ItunesClient:
                         title=result.get("collectionName", ""),
                         author=result.get("artistName", ""),
                         feed_url=result.get("feedUrl"),
+                        artwork_url=result.get("artworkUrl100"),
                     )
                 )
 
