@@ -9,6 +9,7 @@ Podcast transcription service - download episodes via RSS and transcribe with Wh
 - **Custom Feed Titles**: Override RSS titles with custom names (auto-renames storage directories)
 - **Automatic Downloads**: Queue and download episodes with configurable workers
 - **Whisper Transcription**: Transcribe audio using faster-whisper or mlx-whisper (auto-converts to mono 16kHz for optimal accuracy)
+- **Re-transcription Support**: Track which model was used; re-transcribe with different model when upgrading
 - **Distributed Transcription**: Use remote machines (M4 Macs, GPU PCs) to transcribe in parallel
 - **Full-Text Search**: Unified search across episode metadata and transcripts with detail modal
 - **Web Interface**: Simple UI to manage feeds, view episodes, and monitor progress
