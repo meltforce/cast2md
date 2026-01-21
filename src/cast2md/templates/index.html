@@ -61,7 +61,6 @@
                 </td>
                 <td class="actions">
                     <button class="outline" onclick="refreshFeed({{ item.feed.id }})">Refresh</button>
-                    <button class="outline secondary" onclick="deleteFeed({{ item.feed.id }}, '{{ item.feed.display_title }}')">Delete</button>
                 </td>
             </tr>
             {% endfor %}
@@ -129,25 +128,6 @@ async function refreshFeed(feedId) {
             alert(data.message);
             window.location.reload();
         } else {
-            alert('Error: ' + data.detail);
-        }
-    } catch (error) {
-        alert('Error: ' + error.message);
-    }
-}
-
-async function deleteFeed(feedId, title) {
-    if (!confirm(`Delete feed "${title}" and all its episodes?`)) {
-        return;
-    }
-
-    try {
-        const response = await fetch(`/api/feeds/${feedId}`, {method: 'DELETE'});
-
-        if (response.ok) {
-            window.location.reload();
-        } else {
-            const data = await response.json();
             alert('Error: ' + data.detail);
         }
     } catch (error) {

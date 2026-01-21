@@ -1,12 +1,16 @@
 """Filesystem utilities for managing podcast storage."""
 
+import logging
 import re
+import shutil
 import unicodedata
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlparse
 
 from cast2md.config.settings import get_settings
+
+logger = logging.getLogger(__name__)
 
 
 def sanitize_filename(name: str, max_length: int = 100) -> str:
@@ -219,3 +223,78 @@ def rename_podcast_directories(old_name: str, new_name: str) -> bool:
             renamed = True
 
     return renamed
+
+
+def get_trash_path() -> Path:
+    """Get the trash directory path."""
+    settings = get_settings()
+    return settings.storage_path / "trash"
+
+
+def move_feed_to_trash(feed_id: int, feed_title: str) -> Path | None:
+    """Move audio/ and transcripts/ subdirs for a feed to trash.
+
+    Structure: {storage_path}/trash/{feed_slug}_{feed_id}_{timestamp}/
+
+    Args:
+        feed_id: The feed ID.
+        feed_title: The feed title (for naming the trash folder).
+
+    Returns:
+        Path to the trash folder if files were moved, None if no files existed.
+    """
+    settings = get_settings()
+    safe_name = sanitize_podcast_name(feed_title)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    trash_dir = get_trash_path() / f"{safe_name}_{feed_id}_{timestamp}"
+
+    audio_dir = settings.storage_path / "audio" / safe_name
+    transcripts_dir = settings.storage_path / "transcripts" / safe_name
+
+    moved = False
+
+    # Move audio directory if it exists
+    if audio_dir.exists() and any(audio_dir.iterdir()):
+        trash_dir.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(audio_dir), str(trash_dir / "audio"))
+        moved = True
+        logger.info(f"Moved audio to trash: {trash_dir / 'audio'}")
+
+    # Move transcripts directory if it exists
+    if transcripts_dir.exists() and any(transcripts_dir.iterdir()):
+        trash_dir.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(transcripts_dir), str(trash_dir / "transcripts"))
+        moved = True
+        logger.info(f"Moved transcripts to trash: {trash_dir / 'transcripts'}")
+
+    # Clean up empty parent directories
+    for dir_path in [audio_dir, transcripts_dir]:
+        if dir_path.exists() and not any(dir_path.iterdir()):
+            dir_path.rmdir()
+
+    return trash_dir if moved else None
+
+
+def cleanup_old_trash(days: int = 30) -> int:
+    """Delete trash entries older than specified days.
+
+    Args:
+        days: Delete trash folders older than this many days.
+
+    Returns:
+        Number of trash entries deleted.
+    """
+    trash_path = get_trash_path()
+    if not trash_path.exists():
+        return 0
+
+    cutoff = datetime.now().timestamp() - (days * 24 * 60 * 60)
+    deleted = 0
+
+    for entry in trash_path.iterdir():
+        if entry.is_dir() and entry.stat().st_mtime < cutoff:
+            shutil.rmtree(entry)
+            logger.info(f"Deleted old trash: {entry.name}")
+            deleted += 1
+
+    return deleted

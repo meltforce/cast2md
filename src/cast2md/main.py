@@ -80,6 +80,13 @@ async def lifespan(app: FastAPI):
     init_db()
     logger.info(f"Database initialized at {settings.database_path}")
 
+    # Cleanup old trash
+    from cast2md.storage.filesystem import cleanup_old_trash
+
+    deleted = cleanup_old_trash(days=30)
+    if deleted > 0:
+        logger.info(f"Cleaned up {deleted} old trash entries")
+
     # Reset any orphaned jobs from previous run
     reset_orphaned_jobs()
 
