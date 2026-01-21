@@ -1,69 +1,70 @@
-# Project Review: cast2md
+# Project Review: cast2md (v2)
 
 ## 1. Executive Summary
 
 **Overall Status**: 🟢 **Production Ready**
-The project is well-architected and functionally impressive, featuring a modern UI and a sophisticated distributed transcription system.
+The project has made significant progress since the last review. The critical infinite retry bug is fixed, basic testing infrastructure is in place, and substantial new functionality (Search, Transcript Exports) has been added.
 
-| Category | Status | Rating |
-|----------|--------|--------|
-| **Architecture** | Excellent | ⭐⭐⭐⭐⭐ |
-| **User Interface** | Great | ⭐⭐⭐⭐ |
-| **Documentation** | Good | ⭐⭐⭐ |
-| **Code Quality** | Good | ⭐⭐⭐ |
-| **Reliability** | Good | ⭐⭐⭐ |
-| **Testing** | Basic | ⭐⭐ |
+| Category | Status | Rating | Trend |
+|----------|--------|--------|-------|
+| **Architecture** | Excellent | ⭐⭐⭐⭐⭐ | ➡️ |
+| **User Interface** | Great | ⭐⭐⭐⭐ | ➡️ |
+| **Features** | Excellent | ⭐⭐⭐⭐⭐ | ⬆️ (New Search & Exports) |
+| **Reliability** | Good | ⭐⭐⭐⭐ | ⬆️ (Retry logic fixed) |
+| **Testing** | Basic | ⭐⭐ | ⬆️ (Started) |
 
-## 2. Codebase & Architecture Analysis
+## 2. New Functionality Review
 
-### Strengths
-- **Modular Design**: The `src/cast2md` package is well-organized with clear separation of concerns (`api`, `db`, `feed`, `transcription`).
-- **Distributed System**: The architecture for distributed transcription nodes (worker/coordinator pattern) is sophisticated and well-documented.
-- **Modern Stack**: Effective use of FastAPI, Pydantic, SQLite (WAL mode), and HTMX/Jinja2 for a lightweight frontend.
+### 🔍 Full-Text Search
+- **Implementation**: Uses SQLite's FTS5 extension effectively.
+- **Features**: Supports boolean queries (`python AND async`), filtering by feed, and searching within specific episodes.
+- **Code Quality**: `src/cast2md/api/search.py` is clean and uses Pydantic models well.
+- **Gap**: No automated tests found for search logic in `tests/`.
 
-### Weaknesses
-- **Limited Test Coverage**: Basic tests exist for JobRepository state transitions, but more coverage would be beneficial.
-- **Hardcoded Logic**: Some retry logic parameters are scattered or implicitly handled via "stale job reclamation" rather than explicit state transitions.
+### 📄 Transcript Exports
+- **Formats**: Markdown, Text, SRT, VTT, JSON.
+- **Implementation**: `src/cast2md/export/formats.py` handles parsing and conversion robustly.
+- **Verification**: Verified via new unit tests (`tests/test_export_formats.py`). The parsing logic correctly handles timestamps and metadata.
 
-## 3. GUI Review
+### 🧠 Transcript Workflow Logic
+- **Rating**: ⭐⭐⭐⭐⭐ (Excellent)
+- **Assessment**: The logic to prioritize external transcript downloads (via Podcast 2.0 or Pocket Casts) before attempting audio download/transcription is highly efficient.
+- **Impact**: This "Download First, Generate Later" approach significantly reduces:
+    - **Bandwidth**: Large audio files are not downloaded if a text transcript is available.
+    - **Compute**: Expensive Whisper inference (GPU/CPU) is completely bypassed for episodes with existing transcripts.
+- **Implementation**: The separation of `JobType.TRANSCRIPT_DOWNLOAD` from `JobType.DOWNLOAD` allows for granular control and optimization.
 
-**URL**: `https://cast2md.leo-royal.ts.net`
+### 🤖 MCP Server (Agent Integration)
+- **Status**: Implemented (`src/cast2md/mcp/`)
+- **Capabilities**: Exposes full search, queue management, and feed operations to external agents (like Claude Desktop).
+- **Tools**: `search_transcripts`, `search_episodes`, `queue_episode`, `add_feed`, `refresh_feed`.
+- **Resources**: `cast2md://feeds`, `cast2md://episodes/{id}`, `cast2md://episodes/{id}/transcript`.
+- **Verdict**: A major value-add. It transforms the headless server into an "Agent-Ready" platform, allowing LLMs to interact with the podcast library directly.
 
-### Impressions
-- **Visuals**: Clean, minimalist interface (likely Pico.css). Responsive design works well on mobile widths.
-- **Functionality**: Navigation is snappy. "Status" page gives excellent visibility into active workers.
+## 3. Resolved Issues
 
-### Findings
-- **Failed Jobs**: The Queue page showed multiple failed jobs.
-- **Bug Visible in UI**: One job displayed **"Attempts: 19 / 3"**. This confirms that the retry limit is being bypassed, leading to potential infinite resource consumption for broken jobs.
+### ✅ Fixed: Infinite Retry Loop
+The "19/3 attempts" poison pill bug is resolved. `JobRepository.reclaim_stale_jobs` now correctly fails jobs that exceed max attempts. Regression tests added.
 
-## 4. Resolved Issues
+### ✅ Improved: Testing
+Authentication and export logic are now covered. `tests/` directory is no longer empty.
 
-### ✅ 1. Infinite Retry Loop (The "19/3 Attempts" Bug) - FIXED
-**Location**: `src/cast2md/db/repository.py`
+## 4. Remaining Risks & Recommendations
 
-**The Problem** (now fixed):
-Jobs that hung or crashed workers would be reclaimed by `reclaim_stale_jobs()` without checking if they had exceeded `max_attempts`, leading to infinite retry loops.
+1.  **Search Testing**: Add integration tests for `TranscriptSearchRepository`.
+2.  **Rate Limiting**: Address the `429 Too Many Requests` issue for heavy users/bots.
+3.  **Feature Recommendations**:
+    - **OPML Import/Export**: Critical for user migration. Use `list_feeds` as a base.
+    - **Speaker Diarization**: The current "wall of text" is hard to read. Whisper supports diarization; exposing this would be huge.
+    - **Native Summarization**: While the MCP server allows *external* agents to summarize, a *native* pipeline (using local Ollama or OpenAI) to generate and store summaries in the DB would make the UI much richer without requiring a desktop agent.
+    - **MCP Efficiency**: Add `get_recent_episodes(limit, days)` tool. Currently, agents must poll every feed individually to find "what's new", which is inefficient.
+    - **Vector Search**: Semantic search is recommended over keyword search. See newly added documentation:
+        - `docs/vector_embeddings_concept.md` (Concepts)
+        - `docs/python_vector_solutions.md` (Implementation Plan)
+    - **GUI/UX**:
+        - **Dark Mode**: Currently forced to light mode. Enable auto-detection or a toggle.
+        - **Mobile**: Nav bar needs responsive treatment (hamburger menu or scrollable container).
+        - See `docs/gui_recommendations.md` for specific CSS changes.
 
-**The Fix**:
-- `reclaim_stale_jobs()` now checks `attempts >= max_attempts` and permanently fails exhausted jobs
-- `reset_running_jobs()` (server startup) applies the same logic
-- `batch_force_reset_stuck()` also respects max attempts
-- All three methods now return `tuple[int, int]` (requeued, failed) for better observability
-
-### ✅ 2. Test Coverage - ADDED
-- **Coverage**: Basic JobRepository tests (22 tests)
-- **Location**: `tests/test_job_repository.py`
-- **Includes**: Regression test for the "19/3 attempts" bug to prevent reintroduction
-
-## 5. Documentation Review
-- **Architecture**: `docs/distributed-transcription-architecture.md` is excellent.
-- **Deployment**: `README.md` provides good instructions for Docker and LXC.
-- **Developer Guide**: Missing. No instructions on how to contribute or run local dev environments beyond basic `uv sync`.
-
-## 6. Recommendations
-
-### Future Improvements
-1.  **CI/CD**: Set up a GitHub Action to run linting and tests on PRs.
-2.  **Error Reporting**: Integrate Sentry or similar to capture *why* jobs are crashing, not just that they are stale.
-3.  **Expand Test Coverage**: Add tests for other repositories (Feed, Episode) and API endpoints.
+## 5. Conclusion
+The project is in excellent shape. The new transcript features are well-integrated, stability issues are fixed, and the MCP server opens up a world of Agentic possibilities.
