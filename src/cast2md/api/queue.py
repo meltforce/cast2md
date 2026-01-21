@@ -67,8 +67,10 @@ class QueueStatusResponse(BaseModel):
 
     running: bool
     download_workers: int
+    transcript_download_workers: int
     transcribe_workers: int
     download_queue: QueueDetails
+    transcript_download_queue: QueueDetails
     transcribe_queue: QueueDetails
 
 
@@ -149,6 +151,8 @@ def get_queue_status():
         # Get running and queued jobs with episode names
         download_running = job_repo.get_running_jobs(JobType.DOWNLOAD)
         download_queued = job_repo.get_queued_jobs(JobType.DOWNLOAD, limit=20)
+        transcript_download_running = job_repo.get_running_jobs(JobType.TRANSCRIPT_DOWNLOAD)
+        transcript_download_queued = job_repo.get_queued_jobs(JobType.TRANSCRIPT_DOWNLOAD, limit=20)
         transcribe_running = job_repo.get_running_jobs(JobType.TRANSCRIBE)
         transcribe_queued = job_repo.get_queued_jobs(JobType.TRANSCRIBE, limit=20)
 
@@ -159,6 +163,15 @@ def get_queue_status():
             failed=status["download_queue"]["failed"],
             running_jobs=_get_job_infos(download_running, episode_repo),
             queued_jobs=_get_job_infos(download_queued, episode_repo),
+        )
+
+        transcript_download_queue = QueueDetails(
+            queued=status["transcript_download_queue"]["queued"],
+            running=status["transcript_download_queue"]["running"],
+            completed=status["transcript_download_queue"]["completed"],
+            failed=status["transcript_download_queue"]["failed"],
+            running_jobs=_get_job_infos(transcript_download_running, episode_repo),
+            queued_jobs=_get_job_infos(transcript_download_queued, episode_repo),
         )
 
         transcribe_queue = QueueDetails(
@@ -173,8 +186,10 @@ def get_queue_status():
     return QueueStatusResponse(
         running=status["running"],
         download_workers=status["download_workers"],
+        transcript_download_workers=status["transcript_download_workers"],
         transcribe_workers=status["transcribe_workers"],
         download_queue=download_queue,
+        transcript_download_queue=transcript_download_queue,
         transcribe_queue=transcribe_queue,
     )
 
