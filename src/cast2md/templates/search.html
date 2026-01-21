@@ -28,29 +28,24 @@
             <button type="submit">Search</button>
         </div>
     </form>
-    <div style="margin-top: 0.75rem; display: flex; gap: 1.5rem; flex-wrap: wrap; font-size: 0.875rem;">
-        <label style="display: flex; align-items: center; gap: 0.35rem; cursor: pointer;">
-            <input type="radio" name="mode" value="hybrid" {% if mode == 'hybrid' %}checked{% endif %} form="search-form">
-            <span>Hybrid</span>
-        </label>
-        <label style="display: flex; align-items: center; gap: 0.35rem; cursor: pointer;">
-            <input type="radio" name="mode" value="keyword" {% if mode == 'keyword' %}checked{% endif %} form="search-form">
-            <span>Keyword</span>
-        </label>
-        <label style="display: flex; align-items: center; gap: 0.35rem; cursor: pointer;">
-            <input type="radio" name="mode" value="semantic" {% if mode == 'semantic' %}checked{% endif %} form="search-form">
-            <span>Semantic</span>
-        </label>
-    </div>
     <details style="margin-top: 1rem;">
-        <summary style="cursor: pointer; font-size: 0.875rem;">Search help</summary>
+        <summary style="cursor: pointer; font-size: 0.875rem;">Search options</summary>
         <div style="padding: 0.5rem; font-size: 0.875rem; color: var(--muted-color);">
-            <p style="margin: 0 0 0.5rem;"><strong>Search modes:</strong></p>
-            <ul style="margin: 0 0 0.75rem;">
-                <li><strong>Hybrid</strong> - Combines keyword and semantic search for best results</li>
-                <li><strong>Keyword</strong> - Traditional full-text search (exact word matching)</li>
-                <li><strong>Semantic</strong> - Finds related content even without exact matches</li>
-            </ul>
+            <p style="margin: 0 0 0.5rem;"><strong>Search mode:</strong></p>
+            <div style="margin-bottom: 0.75rem; display: flex; gap: 1.5rem; flex-wrap: wrap;">
+                <label style="display: flex; align-items: center; gap: 0.35rem; cursor: pointer;">
+                    <input type="radio" name="mode" value="hybrid" {% if mode == 'hybrid' %}checked{% endif %} form="search-form">
+                    <span>Hybrid (recommended)</span>
+                </label>
+                <label style="display: flex; align-items: center; gap: 0.35rem; cursor: pointer;">
+                    <input type="radio" name="mode" value="keyword" {% if mode == 'keyword' %}checked{% endif %} form="search-form">
+                    <span>Keyword only</span>
+                </label>
+                <label style="display: flex; align-items: center; gap: 0.35rem; cursor: pointer;">
+                    <input type="radio" name="mode" value="semantic" {% if mode == 'semantic' %}checked{% endif %} form="search-form">
+                    <span>Semantic only</span>
+                </label>
+            </div>
             <p style="margin: 0 0 0.5rem;"><strong>Keyword syntax:</strong></p>
             <ul style="margin: 0;">
                 <li><code>kubernetes</code> - Simple search</li>
