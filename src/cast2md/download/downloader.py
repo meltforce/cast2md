@@ -1,5 +1,6 @@
 """Audio file download module."""
 
+import logging
 import shutil
 from pathlib import Path
 
@@ -14,6 +15,8 @@ from cast2md.storage.filesystem import (
     episode_filename,
     get_temp_download_path,
 )
+
+logger = logging.getLogger(__name__)
 
 # Audio file magic bytes for validation
 AUDIO_SIGNATURES = {
@@ -59,6 +62,48 @@ def validate_audio_header(data: bytes) -> bool:
         return True
 
     return False
+
+
+def refresh_audio_url_from_feed(feed: Feed, episode_guid: str) -> str | None:
+    """Fetch fresh audio URL from RSS feed for an episode.
+
+    Some podcast hosts use signed/expiring URLs for audio files.
+    This function fetches the current feed and extracts the fresh
+    audio URL for the given episode GUID.
+
+    Args:
+        feed: Feed to fetch.
+        episode_guid: GUID of the episode to find.
+
+    Returns:
+        Fresh audio URL or None if not found.
+    """
+    from cast2md.feed.parser import parse_feed
+
+    settings = get_settings()
+
+    try:
+        with httpx.Client(timeout=settings.request_timeout) as client:
+            response = client.get(
+                feed.url,
+                follow_redirects=True,
+                headers={"User-Agent": settings.user_agent},
+            )
+            response.raise_for_status()
+
+        parsed = parse_feed(response.text)
+
+        # Find episode by GUID
+        for ep in parsed.episodes:
+            if ep.guid == episode_guid:
+                return ep.audio_url
+
+        logger.warning(f"Episode GUID {episode_guid} not found in feed")
+        return None
+
+    except Exception as e:
+        logger.warning(f"Failed to refresh audio URL from feed: {e}")
+        return None
 
 
 async def download_file(url: str, dest_path: Path, temp_path: Path) -> None:
@@ -167,6 +212,9 @@ def download_file_sync(url: str, dest_path: Path, temp_path: Path) -> None:
 def download_episode(episode: Episode, feed: Feed) -> Path:
     """Download an episode's audio file.
 
+    Before downloading, refreshes the audio URL from the feed to handle
+    podcasts that use signed/expiring URLs.
+
     Args:
         episode: Episode to download.
         feed: Feed the episode belongs to.
@@ -180,11 +228,18 @@ def download_episode(episode: Episode, feed: Feed) -> Path:
     # Ensure podcast directories exist
     audio_dir, _ = ensure_podcast_directories(feed.title)
 
+    # Refresh audio URL from feed (handles expiring signed URLs)
+    audio_url = episode.audio_url
+    fresh_url = refresh_audio_url_from_feed(feed, episode.guid)
+    if fresh_url and fresh_url != audio_url:
+        logger.info(f"Refreshed audio URL for episode {episode.id}")
+        audio_url = fresh_url
+
     # Generate filename and paths
     filename = episode_filename(
         episode.title,
         episode.published_at,
-        episode.audio_url,
+        audio_url,
     )
     dest_path = audio_dir / filename
     temp_path = get_temp_download_path(filename)
@@ -195,9 +250,13 @@ def download_episode(episode: Episode, feed: Feed) -> Path:
         # Update status to downloading
         repo.update_status(episode.id, EpisodeStatus.DOWNLOADING)
 
+        # Update stored audio URL if it changed
+        if fresh_url and fresh_url != episode.audio_url:
+            repo.update_audio_url(episode.id, fresh_url)
+
         try:
             # Download the file
-            download_file_sync(episode.audio_url, dest_path, temp_path)
+            download_file_sync(audio_url, dest_path, temp_path)
 
             # Update episode with path and status
             repo.update_audio_path(episode.id, str(dest_path))
@@ -213,6 +272,6 @@ def download_episode(episode: Episode, feed: Feed) -> Path:
             repo.update_status(
                 episode.id,
                 EpisodeStatus.FAILED,
-                error_message=str(e),
+                error_message=f"Failed to download audio",
             )
             raise

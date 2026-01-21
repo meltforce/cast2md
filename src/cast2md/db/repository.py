@@ -287,6 +287,22 @@ class EpisodeRepository:
         )
         self.conn.commit()
 
+    def update_audio_url(self, episode_id: int, audio_url: str) -> None:
+        """Update episode audio URL.
+
+        Used when refreshing expired/signed URLs from the feed.
+        """
+        now = datetime.now().isoformat()
+        self.conn.execute(
+            """
+            UPDATE episode
+            SET audio_url = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (audio_url, now, episode_id),
+        )
+        self.conn.commit()
+
     def update_transcript_path(self, episode_id: int, transcript_path: str) -> None:
         """Update episode transcript path."""
         now = datetime.now().isoformat()
