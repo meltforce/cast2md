@@ -1,14 +1,17 @@
 # cast2md
 
-Podcast transcription service - download episodes via RSS and transcribe with Whisper. Automatically downloads publisher-provided transcripts when available (Podcasting 2.0).
+Podcast transcription service - download episodes via RSS and transcribe with Whisper. Automatically downloads publisher-provided transcripts when available (Podcasting 2.0) or fetches auto-generated transcripts from Pocket Casts.
 
 ## Features
 
+- **iTunes URL Support**: Add podcasts via Apple Podcasts URLs (automatically resolves to RSS)
 - **RSS Feed Management**: Add podcast feeds and automatically discover new episodes
 - **Extended Metadata**: Extracts author, website link, and categories from RSS feeds
 - **Custom Feed Titles**: Override RSS titles with custom names (auto-renames storage directories)
 - **Automatic Downloads**: Queue and download episodes with configurable workers
-- **External Transcript Downloads**: Automatically fetches publisher-provided transcripts from Podcasting 2.0 `<podcast:transcript>` tags (VTT, SRT, JSON formats) - skips Whisper when available
+- **External Transcript Downloads**: Automatically fetches transcripts from multiple sources before falling back to Whisper:
+  - Podcasting 2.0 `<podcast:transcript>` tags (publisher-provided)
+  - Pocket Casts auto-generated transcripts (public API, no auth required)
 - **Whisper Transcription**: Transcribe audio using faster-whisper or mlx-whisper (auto-converts to mono 16kHz for optimal accuracy)
 - **Re-transcription Support**: Track which model was used; re-transcribe with different model when upgrading
 - **Distributed Transcription**: Use remote machines (M4 Macs, GPU PCs) to transcribe in parallel
@@ -138,20 +141,24 @@ WHISPER_COMPUTE_TYPE=int8     # int8, float16, float32
 
 ### Transcript Sources
 
-cast2md uses a pluggable provider system to fetch transcripts. After downloading audio, it tries external sources before falling back to Whisper:
+cast2md uses a pluggable provider system to fetch transcripts. When adding a feed or refreshing episodes, it tries external sources before falling back to Whisper:
 
-1. **Podcasting 2.0** - Downloads from `<podcast:transcript>` RSS tags (free, no auth)
+1. **Podcasting 2.0** (Priority 1) - Downloads from `<podcast:transcript>` RSS tags
    - Supports: VTT, SRT, JSON, plain text, HTML
    - Source tracked as `podcast2.0:vtt`, `podcast2.0:srt`, etc.
+   - UI shows: "Publisher provided"
 
-2. **Whisper** (fallback) - Self-transcribed when no external source available
+2. **Pocket Casts** (Priority 2) - Auto-generated transcripts via public API
+   - No authentication required
+   - Searches by podcast title, caches show UUID
+   - Source tracked as `pocketcasts`
+   - UI shows: "Auto-generated"
+
+3. **Whisper** (fallback) - Self-transcribed when no external source available
    - Source tracked as `whisper`
+   - UI shows: "Created by cast2md - {model}"
 
-The episode detail page shows the transcript source:
-- "Downloaded from publisher" for external transcripts
-- Model name (e.g., "large-v3") for Whisper transcripts
-
-The re-transcribe button only appears for Whisper transcripts (external transcripts are authoritative).
+The episode detail page shows the transcript source with appropriate labels. The re-transcribe button only appears for Whisper transcripts (external transcripts are authoritative).
 
 ## Usage
 
@@ -174,8 +181,9 @@ Access the web UI at `http://localhost:8000`
 # Initialize database
 cast2md init-db
 
-# Add a podcast feed
+# Add a podcast feed (RSS URL or Apple Podcasts URL)
 cast2md add-feed "https://example.com/feed.xml"
+cast2md add-feed "https://podcasts.apple.com/us/podcast/the-daily/id1200361736"
 
 # List feeds
 cast2md list-feeds
@@ -290,7 +298,7 @@ Once configured, you can ask Claude things like:
 |----------|--------|-------------|
 | `/api/health` | GET | Health check |
 | `/api/feeds` | GET | List all feeds |
-| `/api/feeds` | POST | Add new feed |
+| `/api/feeds` | POST | Add new feed (RSS URL or Apple Podcasts URL) |
 | `/api/feeds/{id}` | GET | Get feed details |
 | `/api/feeds/{id}` | PATCH | Update feed (custom_title) |
 | `/api/feeds/{id}` | DELETE | Remove feed |
@@ -300,6 +308,7 @@ Once configured, you can ask Claude things like:
 | `/api/episodes/{id}/download` | POST | Queue episode for download |
 | `/api/episodes/{id}/transcribe` | POST | Queue episode for transcription |
 | `/api/episodes/{id}/transcript` | GET | Download transcript (format: md, txt, srt, vtt, json) |
+| `/api/episodes/{id}/audio` | DELETE | Delete audio file (keeps transcript) |
 
 #### Feed Response Fields
 
@@ -310,6 +319,8 @@ Feed responses include extended metadata:
 - `author`: Podcast author from iTunes tags
 - `link`: Podcast website URL
 - `categories`: Array of category strings
+- `itunes_id`: Apple Podcasts ID (if added via iTunes URL)
+- `pocketcasts_uuid`: Pocket Casts show UUID (cached after first lookup)
 
 #### Episode Response Fields
 
