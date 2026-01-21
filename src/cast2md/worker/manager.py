@@ -56,6 +56,7 @@ class WorkerManager:
 
         settings = get_settings()
         self._max_download_workers = settings.max_concurrent_downloads
+        self._max_transcript_download_workers = settings.max_transcript_download_workers
 
     def start(self):
         """Start the worker threads."""
@@ -78,8 +79,7 @@ class WorkerManager:
             logger.info(f"Started download worker {i}")
 
         # Start transcript download workers (fast, parallel)
-        # Use same number as download workers since these are quick HTTP requests
-        for i in range(self._max_download_workers):
+        for i in range(self._max_transcript_download_workers):
             thread = threading.Thread(
                 target=self._transcript_download_worker,
                 name=f"transcript-download-worker-{i}",

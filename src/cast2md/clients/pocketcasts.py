@@ -1,6 +1,8 @@
 """Pocket Casts API client for podcast search and transcript retrieval."""
 
 import logging
+import threading
+import time
 from dataclasses import dataclass
 from typing import Optional
 
@@ -9,6 +11,11 @@ import httpx
 from cast2md.config.settings import get_settings
 
 logger = logging.getLogger(__name__)
+
+# Rate limiting for Pocket Casts API (unofficial, be conservative)
+_rate_limit_lock = threading.Lock()
+_last_api_call = 0.0
+_MIN_API_INTERVAL = 0.5  # Minimum 500ms between API calls
 
 
 @dataclass
@@ -35,6 +42,7 @@ class PocketCastsClient:
 
     Provides methods to search podcasts and retrieve episode transcripts.
     All endpoints are public and require no authentication.
+    Includes rate limiting to avoid overloading the unofficial API.
     """
 
     BASE_URL = "https://podcast-api.pocketcasts.com"
@@ -49,6 +57,16 @@ class PocketCastsClient:
         self.timeout = timeout or settings.request_timeout
         self.user_agent = settings.user_agent
 
+    def _wait_for_rate_limit(self) -> None:
+        """Wait if needed to respect rate limiting."""
+        global _last_api_call
+        with _rate_limit_lock:
+            now = time.time()
+            elapsed = now - _last_api_call
+            if elapsed < _MIN_API_INTERVAL:
+                time.sleep(_MIN_API_INTERVAL - elapsed)
+            _last_api_call = time.time()
+
     def search(self, term: str) -> list[PocketCastsShow]:
         """Search podcasts by name.
 
@@ -58,6 +76,7 @@ class PocketCastsClient:
         Returns:
             List of matching shows.
         """
+        self._wait_for_rate_limit()
         url = f"{self.BASE_URL}/discover/search"
 
         try:
@@ -110,6 +129,7 @@ class PocketCastsClient:
         Returns:
             List of episodes with available transcript info.
         """
+        self._wait_for_rate_limit()
         url = f"{self.BASE_URL}/mobile/show_notes/full/{show_uuid}"
 
         try:
