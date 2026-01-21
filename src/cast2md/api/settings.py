@@ -47,10 +47,17 @@ def _get_configurable_settings() -> dict:
         },
         "max_concurrent_downloads": {
             "type": "int",
-            "label": "Download Workers",
-            "description": "Number of concurrent download workers (requires restart)",
+            "label": "Audio Download Workers",
+            "description": "Concurrent audio download workers (requires restart)",
             "min": 1,
             "max": 10,
+        },
+        "max_transcript_download_workers": {
+            "type": "int",
+            "label": "Transcript Download Workers",
+            "description": "Concurrent transcript fetch workers (requires restart)",
+            "min": 1,
+            "max": 20,
         },
         "stuck_threshold_hours": {
             "type": "int",
@@ -104,6 +111,11 @@ def _get_configurable_settings() -> dict:
             "description": "Reclaim jobs from nodes after this many hours",
             "min": 1,
             "max": 24,
+        },
+        "itunes_country": {
+            "type": "text",
+            "label": "iTunes Country",
+            "description": "ISO country code for iTunes search (e.g., de, us, gb)",
         },
     }
 
