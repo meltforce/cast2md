@@ -618,12 +618,58 @@ python-dotenv>=1.0.0
 - [ ] Rate limiting (429 protection for external APIs)
 - [ ] Vector/semantic search (see docs/vector_embeddings_concept.md)
 - [ ] Native summarization pipeline (Ollama/OpenAI integration)
+- [ ] Backup and restore (see section 11)
 
 ---
 
-## 9. Implementation Notes
+## 11. Backup and Restore
 
-### 9.1 Whisper Model Loading
+### Current State (v0.7)
+
+**Feed Deletion:**
+- Files (audio, transcripts) are moved to trash folder: `{storage}/trash/{slug}_{id}_{timestamp}/`
+- Database records (feed, episodes) are deleted immediately
+- Trash auto-cleanup after 30 days on server startup
+
+**Limitation:** Restoring from trash requires manual work:
+1. Re-add the feed via UI
+2. Move transcript files from trash back to correct location
+3. Re-process episodes or manually update database
+
+### Future Requirements
+
+| Requirement | Description | Priority |
+|-------------|-------------|----------|
+| SQLite Backup | Regular automated backups of database | High |
+| Point-in-time Restore | Restore database to specific backup | High |
+| Soft Delete | Mark feeds/episodes as deleted instead of hard delete | Medium |
+| Trash UI | View and restore trashed feeds from web UI | Low |
+| Export to Trash | Save feed+episodes JSON alongside files when deleting | Low |
+
+### Backup Options
+
+**Option A: SQLite File Backup (Recommended for v1)**
+- Simple cron job or scheduled task
+- Copy database file with proper locking (`.backup` command or WAL checkpoint)
+- Retain N days of backups
+- Restore = stop server, replace file, restart
+
+**Option B: Soft Delete**
+- Add `deleted_at` column to feed/episode tables
+- Filter out deleted records in queries
+- Restore = clear `deleted_at` timestamp
+- Requires migration and query changes
+
+**Option C: Full Export on Delete**
+- When deleting feed, export JSON with all metadata to trash folder
+- Restore script reads JSON and recreates database records
+- Most complete but most complex
+
+---
+
+## 12. Implementation Notes
+
+### 12.1 Whisper Model Loading
 
 ```python
 from faster_whisper import WhisperModel
@@ -663,7 +709,7 @@ class TranscriptionService:
         return " ".join(segment.text for segment in segments)
 ```
 
-### 9.2 Download with Temp + Move
+### 12.2 Download with Temp + Move
 
 ```python
 import shutil
@@ -698,7 +744,7 @@ async def download_episode(url: str, final_path: Path, temp_dir: Path) -> Path:
         temp_path.unlink(missing_ok=True)
 ```
 
-### 9.3 Filename Sanitization
+### 12.3 Filename Sanitization
 
 ```python
 import re
@@ -724,7 +770,7 @@ def episode_filename(published_at: datetime, title: str, extension: str) -> str:
 
 ---
 
-## 10. References
+## 13. References
 
 - [feedparser Documentation](https://feedparser.readthedocs.io/)
 - [Podcast Namespace (Podcast 2.0)](https://github.com/Podcastindex-org/podcast-namespace/blob/main/docs/1.0.md#transcript)
