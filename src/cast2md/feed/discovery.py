@@ -159,26 +159,32 @@ def discover_new_episodes(
         feed_repo.update_last_polled(feed.id)
 
         # Auto-queue if requested
+        # Queue transcript download jobs first (fast, tries external providers)
+        # Episodes that get transcripts won't need audio download
         if auto_queue and new_episode_ids:
             episodes_to_queue = new_episode_ids[:1] if queue_only_latest else new_episode_ids
 
             for episode_id in episodes_to_queue:
                 episode = episode_repo.get_by_id(episode_id)
 
-                # Skip if already downloaded or has pending job
-                if episode.audio_path:
-                    logger.debug(f"Skipping {episode.title} - already downloaded")
+                # Skip if already has transcript or has pending job
+                if episode.transcript_path:
+                    logger.debug(f"Skipping {episode.title} - already has transcript")
+                    continue
+                if job_repo.has_pending_job(episode_id, JobType.TRANSCRIPT_DOWNLOAD):
                     continue
                 if job_repo.has_pending_job(episode_id, JobType.DOWNLOAD):
                     continue
 
-                # Queue download job with priority 1 (high) for new episodes
+                # Queue transcript download job with priority 1 (high) for new episodes
+                # This tries external providers first (Podcast 2.0, Pocket Casts)
+                # If no transcript available, episode stays PENDING for manual download
                 job_repo.create(
                     episode_id=episode_id,
-                    job_type=JobType.DOWNLOAD,
+                    job_type=JobType.TRANSCRIPT_DOWNLOAD,
                     priority=1,
                 )
-                logger.info(f"Auto-queued episode for processing: {episode.title}")
+                logger.info(f"Auto-queued transcript download for episode: {episode.title}")
 
     return DiscoveryResult(
         new_episode_ids=new_episode_ids,

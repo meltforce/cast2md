@@ -50,6 +50,14 @@ MIGRATIONS = [
             "UPDATE episode SET transcript_source = 'whisper' WHERE transcript_model IS NOT NULL AND transcript_source IS NULL",
         ],
     },
+    {
+        "version": 6,
+        "description": "Add iTunes ID and Pocket Casts UUID to feed table",
+        "sql": [
+            "ALTER TABLE feed ADD COLUMN itunes_id TEXT",
+            "ALTER TABLE feed ADD COLUMN pocketcasts_uuid TEXT",
+        ],
+    },
 ]
 
 

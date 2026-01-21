@@ -249,6 +249,41 @@ def list_episodes_by_status(status: str, limit: int = 100):
     )
 
 
+@router.delete("/episodes/{episode_id}/audio", response_model=MessageResponse)
+def delete_episode_audio(episode_id: int):
+    """Delete audio file for an episode (only if transcript exists).
+
+    Preserves the audio_url for potential re-download later.
+    """
+    with get_db() as conn:
+        repo = EpisodeRepository(conn)
+        episode = repo.get_by_id(episode_id)
+
+    if not episode:
+        raise HTTPException(status_code=404, detail="Episode not found")
+
+    if not episode.transcript_path:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot delete audio - no transcript available"
+        )
+
+    if not episode.audio_path:
+        return MessageResponse(message="No audio file to delete")
+
+    # Delete the file
+    audio_file = Path(episode.audio_path)
+    if audio_file.exists():
+        audio_file.unlink()
+
+    # Clear audio_path but keep audio_url for re-download
+    with get_db() as conn:
+        repo = EpisodeRepository(conn)
+        repo.update_audio_path(episode_id, None)
+
+    return MessageResponse(message="Audio deleted successfully")
+
+
 @router.get("/episodes/{episode_id}/transcript")
 def get_transcript(episode_id: int, format: str = "md"):
     """Download transcript in specified format.

@@ -49,6 +49,7 @@ class WorkerManager:
         self._initialized = True
         self._running = False
         self._download_threads: list[threading.Thread] = []
+        self._transcript_download_threads: list[threading.Thread] = []
         self._transcribe_thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
         self._coordinator = None
@@ -65,7 +66,7 @@ class WorkerManager:
         self._running = True
         self._stop_event.clear()
 
-        # Start download workers
+        # Start download workers (audio downloads)
         for i in range(self._max_download_workers):
             thread = threading.Thread(
                 target=self._download_worker,
@@ -75,6 +76,18 @@ class WorkerManager:
             thread.start()
             self._download_threads.append(thread)
             logger.info(f"Started download worker {i}")
+
+        # Start transcript download workers (fast, parallel)
+        # Use same number as download workers since these are quick HTTP requests
+        for i in range(self._max_download_workers):
+            thread = threading.Thread(
+                target=self._transcript_download_worker,
+                name=f"transcript-download-worker-{i}",
+                daemon=True,
+            )
+            thread.start()
+            self._transcript_download_threads.append(thread)
+            logger.info(f"Started transcript download worker {i}")
 
         # Start transcription worker (single, sequential)
         self._transcribe_thread = threading.Thread(
@@ -113,15 +126,28 @@ class WorkerManager:
             self._coordinator = None
             logger.info("Stopped distributed transcription coordinator")
 
+        # Calculate per-worker timeout
+        total_workers = (
+            len(self._download_threads)
+            + len(self._transcript_download_threads)
+            + (1 if self._transcribe_thread else 0)
+        )
+        per_worker_timeout = timeout / max(total_workers, 1)
+
         # Wait for download workers
         for thread in self._download_threads:
-            thread.join(timeout=timeout / (self._max_download_workers + 1))
+            thread.join(timeout=per_worker_timeout)
+
+        # Wait for transcript download workers
+        for thread in self._transcript_download_threads:
+            thread.join(timeout=per_worker_timeout)
 
         # Wait for transcription worker
         if self._transcribe_thread:
-            self._transcribe_thread.join(timeout=timeout / (self._max_download_workers + 1))
+            self._transcribe_thread.join(timeout=per_worker_timeout)
 
         self._download_threads.clear()
+        self._transcript_download_threads.clear()
         self._transcribe_thread = None
         logger.info("All workers stopped")
 
@@ -155,6 +181,22 @@ class WorkerManager:
 
             except Exception as e:
                 logger.error(f"Transcription worker error: {e}")
+                time.sleep(5.0)
+
+    def _transcript_download_worker(self):
+        """Worker thread for processing transcript download jobs (fast, parallel)."""
+        while not self._stop_event.is_set():
+            try:
+                job = self._get_next_job(JobType.TRANSCRIPT_DOWNLOAD)
+                if job is None:
+                    # No jobs, wait before checking again
+                    self._stop_event.wait(timeout=5.0)
+                    continue
+
+                self._process_transcript_download_job(job.id, job.episode_id)
+
+            except Exception as e:
+                logger.error(f"Transcript download worker error: {e}")
                 time.sleep(5.0)
 
     def _get_next_job(self, job_type: JobType):
@@ -282,6 +324,96 @@ class WorkerManager:
             # Send failure notification
             notify_transcription_failed(episode.title, feed.title, str(e))
 
+    def _process_transcript_download_job(self, job_id: int, episode_id: int):
+        """Process a transcript download job.
+
+        Tries to download transcript from external providers (Podcast 2.0, Pocket Casts).
+        If successful, saves the transcript and marks episode as COMPLETED.
+        If no transcript is available, episode stays PENDING for manual audio download.
+        """
+        logger.info(f"Processing transcript download job {job_id} for episode {episode_id}")
+
+        with get_db() as conn:
+            job_repo = JobRepository(conn)
+            episode_repo = EpisodeRepository(conn)
+            feed_repo = FeedRepository(conn)
+
+            # Mark job as running
+            job_repo.mark_running(job_id)
+
+            episode = episode_repo.get_by_id(episode_id)
+            if not episode:
+                job_repo.mark_failed(job_id, "Episode not found", retry=False)
+                return
+
+            feed = feed_repo.get_by_id(episode.feed_id)
+            if not feed:
+                job_repo.mark_failed(job_id, "Feed not found", retry=False)
+                return
+
+        try:
+            # Try to fetch transcript from external providers
+            result = try_fetch_transcript(episode, feed)
+
+            if result:
+                # Save the downloaded transcript
+                with get_db() as conn:
+                    episode_repo = EpisodeRepository(conn)
+                    job_repo = JobRepository(conn)
+
+                    _, transcripts_dir = ensure_podcast_directories(feed.display_title)
+                    transcript_path = get_transcript_path(
+                        feed.display_title,
+                        episode.title,
+                        episode.published_at,
+                    )
+
+                    transcript_path.write_text(result.content, encoding="utf-8")
+
+                    # Update episode with transcript info
+                    episode_repo.update_transcript_from_download(
+                        episode.id, str(transcript_path), result.source
+                    )
+                    episode_repo.update_status(episode.id, EpisodeStatus.COMPLETED)
+
+                    # Index transcript for full-text search
+                    try:
+                        from cast2md.search.repository import TranscriptSearchRepository
+                        search_repo = TranscriptSearchRepository(conn)
+                        search_repo.index_episode(episode.id, str(transcript_path))
+                    except Exception as index_error:
+                        logger.warning(
+                            f"Failed to index downloaded transcript for episode {episode.id}: {index_error}"
+                        )
+
+                    job_repo.mark_completed(job_id)
+
+                logger.info(
+                    f"Transcript download job {job_id} completed ({result.source}) for episode: {episode.title}"
+                )
+
+                # Send success notification
+                notify_transcription_complete(episode.title, feed.title)
+
+            else:
+                # No transcript available from any provider
+                # Mark job as completed (not failed - this is expected)
+                # Episode stays in PENDING status for user to manually queue download
+                with get_db() as conn:
+                    job_repo = JobRepository(conn)
+                    job_repo.mark_completed(job_id)
+
+                logger.info(
+                    f"No external transcript available for episode: {episode.title} "
+                    "(episode stays PENDING for manual download)"
+                )
+
+        except Exception as e:
+            logger.error(f"Transcript download job {job_id} failed: {e}")
+            with get_db() as conn:
+                job_repo = JobRepository(conn)
+                job_repo.mark_failed(job_id, str(e))
+
     def _queue_transcription(self, conn, episode_id: int):
         """Queue a transcription job for an episode.
 
@@ -370,19 +502,28 @@ class WorkerManager:
 
             download_counts = job_repo.count_by_status(JobType.DOWNLOAD)
             transcribe_counts = job_repo.count_by_status(JobType.TRANSCRIBE)
+            transcript_download_counts = job_repo.count_by_status(JobType.TRANSCRIPT_DOWNLOAD)
 
             download_running = job_repo.get_running_jobs(JobType.DOWNLOAD)
             transcribe_running = job_repo.get_running_jobs(JobType.TRANSCRIBE)
+            transcript_download_running = job_repo.get_running_jobs(JobType.TRANSCRIPT_DOWNLOAD)
 
         status = {
             "running": self._running,
             "download_workers": len(self._download_threads),
+            "transcript_download_workers": len(self._transcript_download_threads),
             "transcribe_workers": 1 if self._transcribe_thread else 0,
             "download_queue": {
                 "queued": download_counts.get(JobStatus.QUEUED.value, 0),
                 "running": len(download_running),
                 "completed": download_counts.get(JobStatus.COMPLETED.value, 0),
                 "failed": download_counts.get(JobStatus.FAILED.value, 0),
+            },
+            "transcript_download_queue": {
+                "queued": transcript_download_counts.get(JobStatus.QUEUED.value, 0),
+                "running": len(transcript_download_running),
+                "completed": transcript_download_counts.get(JobStatus.COMPLETED.value, 0),
+                "failed": transcript_download_counts.get(JobStatus.FAILED.value, 0),
             },
             "transcribe_queue": {
                 "queued": transcribe_counts.get(JobStatus.QUEUED.value, 0),

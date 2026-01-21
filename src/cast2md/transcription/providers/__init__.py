@@ -9,17 +9,17 @@ from typing import Optional
 
 from cast2md.db.models import Episode, Feed
 from cast2md.transcription.providers.base import TranscriptProvider, TranscriptResult
+from cast2md.transcription.providers.pocketcasts import PocketCastsProvider
 from cast2md.transcription.providers.podcast20 import Podcast20Provider
 
 logger = logging.getLogger(__name__)
 
 # Register providers in priority order
 # Higher priority providers (like Podcast 2.0 which is free and authoritative)
-# should come first. More complex providers (like Pocket Casts which requires
-# authentication) can be added later.
+# should come first. Pocket Casts is a fallback for podcasts without RSS transcripts.
 _providers: list[TranscriptProvider] = [
-    Podcast20Provider(),
-    # Future: PocketCastsProvider(),
+    Podcast20Provider(),  # Priority 1: Publisher transcripts from RSS
+    PocketCastsProvider(),  # Priority 2: Pocket Casts auto-generated
 ]
 
 

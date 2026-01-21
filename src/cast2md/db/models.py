@@ -23,6 +23,7 @@ class JobType(str, Enum):
 
     DOWNLOAD = "download"
     TRANSCRIBE = "transcribe"
+    TRANSCRIPT_DOWNLOAD = "transcript_download"
 
 
 class JobStatus(str, Enum):
@@ -56,6 +57,8 @@ class Feed:
     categories: Optional[str]  # JSON string
     custom_title: Optional[str]
     last_polled: Optional[datetime]
+    itunes_id: Optional[str]
+    pocketcasts_uuid: Optional[str]
     created_at: datetime
     updated_at: datetime
 
@@ -88,8 +91,10 @@ class Feed:
             categories=row[7],
             custom_title=row[8],
             last_polled=datetime.fromisoformat(row[9]) if row[9] else None,
-            created_at=datetime.fromisoformat(row[10]),
-            updated_at=datetime.fromisoformat(row[11]),
+            itunes_id=row[10] if len(row) > 10 else None,
+            pocketcasts_uuid=row[11] if len(row) > 11 else None,
+            created_at=datetime.fromisoformat(row[12]) if len(row) > 12 else datetime.now(),
+            updated_at=datetime.fromisoformat(row[13]) if len(row) > 13 else datetime.now(),
         )
 
 
