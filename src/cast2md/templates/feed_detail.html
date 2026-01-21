@@ -313,8 +313,11 @@ async function pollEpisodeStatus() {
             const currentStatus = statusBadge.textContent.trim();
 
             // Check if status changed
-            if (currentStatus !== ep.status && currentStatus !== 'queued') {
-                updateEpisodeRow(row, ep);
+            // Update unless we show 'queued' and API still shows 'pending' (job not started yet)
+            if (currentStatus !== ep.status) {
+                if (!(currentStatus === 'queued' && ep.status === 'pending')) {
+                    updateEpisodeRow(row, ep);
+                }
             }
 
             // Track if there are still active jobs
