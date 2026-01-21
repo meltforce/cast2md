@@ -534,17 +534,18 @@ class TranscriptSearchRepository:
         embeddings = generate_embeddings_batch(texts, model_name)
 
         # Insert embeddings into vec0 table
+        # Column order: embedding, then auxiliary columns
         for segment, embedding in zip(segments, embeddings):
             self.conn.execute(
                 """
                 INSERT INTO segment_vec
-                (episode_id, feed_id, embedding, segment_start, segment_end, text_hash, model_name)
+                (embedding, episode_id, feed_id, segment_start, segment_end, text_hash, model_name)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
+                    embedding,
                     episode_id,
                     feed_id,
-                    embedding,
                     segment.start,
                     segment.end,
                     text_hash(segment.text),

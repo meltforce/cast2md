@@ -87,11 +87,13 @@ MIGRATIONS = [
         ],
         # Note: vec0 table creation handled specially in run_migrations
         # because it requires sqlite-vec extension
+        # vec0 only supports vector columns and auxiliary (+) columns
+        # episode_id/feed_id are auxiliary for post-KNN filtering
         "vec0_table": """
             CREATE VIRTUAL TABLE IF NOT EXISTS segment_vec USING vec0(
-                episode_id INTEGER,
-                feed_id INTEGER,
                 embedding float[384],
+                +episode_id,
+                +feed_id,
                 +segment_start,
                 +segment_end,
                 +text_hash,
