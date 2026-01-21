@@ -611,10 +611,13 @@ python-dotenv>=1.0.0
 - [x] Audio preprocessing pipeline (ffmpeg) - mono 16kHz conversion
 - [x] MCP server for transcript access
 - [x] SRT/VTT output formats
-- [ ] OPML import
+- [ ] OPML import/export
 - [ ] Feed authentication (HTTP Basic, custom headers)
 - [x] Full-text search across transcripts
 - [ ] Speaker diarization
+- [ ] Rate limiting (429 protection for external APIs)
+- [ ] Vector/semantic search (see docs/vector_embeddings_concept.md)
+- [ ] Native summarization pipeline (Ollama/OpenAI integration)
 
 ---
 

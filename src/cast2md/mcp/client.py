@@ -117,6 +117,32 @@ def get_queue_status() -> dict:
         return resp.json()
 
 
+def get_recent_episodes(days: int = 7, limit: int = 50) -> dict:
+    """Get recent episodes via API."""
+    with get_client() as client:
+        resp = client.get("/api/episodes/recent", params={"days": days, "limit": limit})
+        resp.raise_for_status()
+        data = resp.json()
+        return {
+            "days": data["days"],
+            "total": data["total"],
+            "hint": "Use queue_episode(id) to transcribe, or cast2md://episodes/{id}/transcript to read existing transcript",
+            "results": [
+                {
+                    "id": ep["id"],
+                    "feed_id": ep["feed_id"],
+                    "feed_title": ep["feed_title"],
+                    "title": ep["title"],
+                    "description": ep.get("description"),
+                    "published_at": ep.get("published_at"),
+                    "status": ep["status"],
+                    "has_transcript": ep.get("has_transcript", False),
+                }
+                for ep in data["episodes"]
+            ],
+        }
+
+
 def add_feed(url: str) -> dict:
     """Add feed via API."""
     with get_client() as client:

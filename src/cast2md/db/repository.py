@@ -730,6 +730,42 @@ class EpisodeRepository:
         episode_ids = [row[0] for row in cursor.fetchall()]
         return episode_ids, total
 
+    def get_recent_episodes(
+        self,
+        days: int = 7,
+        limit: int = 50,
+    ) -> list[tuple[Episode, str]]:
+        """Get recently published episodes across all feeds.
+
+        Args:
+            days: Number of days to look back (default: 7).
+            limit: Maximum episodes to return (default: 50).
+
+        Returns:
+            List of tuples (Episode, feed_title) sorted by published_at descending.
+        """
+        cutoff = (datetime.now() - timedelta(days=days)).isoformat()
+        # Prefix episode columns with table alias
+        ep_cols = ", ".join(f"e.{c.strip()}" for c in self.EPISODE_COLUMNS.split(","))
+        cursor = self.conn.execute(
+            f"""
+            SELECT {ep_cols}, COALESCE(f.custom_title, f.title) as feed_title
+            FROM episode e
+            JOIN feed f ON e.feed_id = f.id
+            WHERE e.published_at >= ?
+            ORDER BY e.published_at DESC
+            LIMIT ?
+            """,
+            (cutoff, limit),
+        )
+        results = []
+        for row in cursor.fetchall():
+            # Episode columns are all but the last one (feed_title)
+            episode = Episode.from_row(row[:-1])
+            feed_title = row[-1]
+            results.append((episode, feed_title))
+        return results
+
     def search_episodes_fts_full(
         self,
         query: str,
