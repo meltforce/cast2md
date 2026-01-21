@@ -489,22 +489,13 @@ async function saveFeedTitle(event) {
 }
 
 async function confirmDeleteFeed() {
-    // Double confirmation
-    if (!confirm('This action cannot be undone. Type "delete" in the next prompt to confirm.')) {
-        return;
-    }
-    const confirmation = prompt('Type "delete" to confirm:');
-    if (confirmation !== 'delete') {
-        alert('Deletion cancelled.');
-        return;
-    }
+    document.getElementById('deleteFeedDialog').close();
 
     try {
         const response = await fetch(`/api/feeds/{{ feed.id }}`, {method: 'DELETE'});
         const data = await response.json();
 
         if (response.ok) {
-            alert(data.message);
             window.location.href = '/';
         } else {
             alert('Error: ' + data.detail);
