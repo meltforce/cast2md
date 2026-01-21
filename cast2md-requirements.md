@@ -655,6 +655,7 @@ python-dotenv>=1.0.0
 | Soft Delete | Mark feeds/episodes as deleted instead of hard delete | Medium |
 | Trash UI | View and restore trashed feeds from web UI | Low |
 | Export to Trash | Save feed+episodes JSON alongside files when deleting | Low |
+| Pocket Casts Discovery | Investigate why Huberman Lab doesn't get Pocket Casts transcripts detected (they exist on PC) - may be author matching or search ranking issue | Medium |
 
 ### Backup Options
 
