@@ -365,6 +365,7 @@ def status_page(request: Request):
         queued_transcriptions = job_repo.get_queued_jobs(JobType.TRANSCRIBE, limit=10)
         running_downloads = job_repo.get_running_jobs(JobType.DOWNLOAD)
         running_transcriptions = job_repo.get_running_jobs(JobType.TRANSCRIBE)
+        running_transcript_downloads = job_repo.get_running_jobs(JobType.TRANSCRIPT_DOWNLOAD)
 
         # Get episode info for queued jobs
         queued_download_episodes = []
@@ -390,6 +391,12 @@ def status_page(request: Request):
             ep = episode_repo.get_by_id(job.episode_id)
             if ep:
                 running_transcribe_episodes.append({"job": job, "episode": ep})
+
+        running_transcript_download_episodes = []
+        for job in running_transcript_downloads:
+            ep = episode_repo.get_by_id(job.episode_id)
+            if ep:
+                running_transcript_download_episodes.append({"job": job, "episode": ep})
 
         # Filter out episodes that have queued/running download jobs from "pending" list
         running_download_episode_ids = {job.episode_id for job in running_downloads}
@@ -422,8 +429,9 @@ def status_page(request: Request):
     # Track which jobs have been assigned to workers
     assigned_download_job_ids = set()
     assigned_transcribe_job_ids = set()
+    assigned_transcript_download_job_ids = set()
 
-    # Add local download workers
+    # Add server download workers (audio)
     download_job_index = 0
     for i in range(queue_status["download_workers"]):
         job = None
@@ -436,7 +444,7 @@ def status_page(request: Request):
             download_job_index += 1
 
         workers.append({
-            "name": f"Local DL {i+1}",
+            "name": f"Server DL {i+1}",
             "type": "download",
             "status": "busy" if job else "idle",
             "job": job,
@@ -444,25 +452,46 @@ def status_page(request: Request):
             "progress": None,  # Downloads don't track progress (indeterminate)
         })
 
-    # Add local transcription worker
-    local_tx_job = None
-    local_tx_episode = None
+    # Add server transcript download workers
+    transcript_dl_job_index = 0
+    for i in range(queue_status["transcript_download_workers"]):
+        job = None
+        episode = None
+        if transcript_dl_job_index < len(running_transcript_download_episodes):
+            item = running_transcript_download_episodes[transcript_dl_job_index]
+            job = item["job"]
+            episode = item["episode"]
+            assigned_transcript_download_job_ids.add(job.id)
+            transcript_dl_job_index += 1
+
+        workers.append({
+            "name": f"Server TDL {i+1}",
+            "type": "transcript_download",
+            "status": "busy" if job else "idle",
+            "job": job,
+            "episode": episode,
+            "progress": None,  # Transcript downloads don't track progress
+        })
+
+    # Add server transcription worker
+    server_tx_job = None
+    server_tx_episode = None
     for item in running_transcribe_episodes:
-        # Jobs with assigned_node_id=None or 'local' belong to the local worker
+        # Jobs with assigned_node_id=None or 'local' belong to the server worker
         node_id = item["job"].assigned_node_id
         if not node_id or node_id == "local":
-            local_tx_job = item["job"]
-            local_tx_episode = item["episode"]
-            assigned_transcribe_job_ids.add(local_tx_job.id)
+            server_tx_job = item["job"]
+            server_tx_episode = item["episode"]
+            assigned_transcribe_job_ids.add(server_tx_job.id)
             break
 
     workers.append({
-        "name": "Local TX",
+        "name": "Server TX",
         "type": "transcription",
-        "status": "busy" if local_tx_job else "idle",
-        "job": local_tx_job,
-        "episode": local_tx_episode,
-        "progress": local_tx_job.progress_percent if local_tx_job else None,
+        "status": "busy" if server_tx_job else "idle",
+        "job": server_tx_job,
+        "episode": server_tx_episode,
+        "progress": server_tx_job.progress_percent if server_tx_job else None,
     })
 
     # Add remote nodes (only if distributed transcription is enabled)
@@ -497,6 +526,17 @@ def status_page(request: Request):
             workers.append({
                 "name": "Orphaned",
                 "type": "download",
+                "status": "stuck",
+                "job": item["job"],
+                "episode": item["episode"],
+                "progress": None,
+            })
+
+    for item in running_transcript_download_episodes:
+        if item["job"].id not in assigned_transcript_download_job_ids:
+            workers.append({
+                "name": "Orphaned",
+                "type": "transcript_download",
                 "status": "stuck",
                 "job": item["job"],
                 "episode": item["episode"],
