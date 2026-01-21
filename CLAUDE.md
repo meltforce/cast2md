@@ -245,3 +245,60 @@ When a feed is deleted, files are moved to trash instead of being permanently de
 - DB records are deleted immediately (no restore from trash)
 - Only files are preserved in trash
 - Manual restore requires re-adding feed and copying files back
+
+## Semantic Search
+
+Semantic search enables natural language queries like "protein and muscle building" to find conceptually related content across transcripts, even when exact keywords don't match.
+
+### How It Works
+
+1. **Hybrid Search**: Combines FTS5 keyword search with vector similarity using Reciprocal Rank Fusion (RRF)
+2. **Embeddings**: Uses `sentence-transformers` with `all-MiniLM-L6-v2` model (384-dim, ~80MB)
+3. **Vector Storage**: `sqlite-vec` extension with `vec0` virtual table for indexed KNN search
+
+### Architecture
+
+```
+Query → Generate embedding (15ms)
+     ↓
+     ├── FTS5 keyword search (4ms)
+     └── vec0 KNN vector search (~450ms)
+     ↓
+     RRF fusion → Combined results
+```
+
+### Key Files
+
+- `search/embeddings.py` - Embedding generation (lazy-loaded singleton model)
+- `search/repository.py` - `hybrid_search()`, `index_episode_embeddings()`, `_vector_search()`
+- `api/search.py` - `/api/search/semantic` endpoint
+- `mcp/tools.py` - `semantic_search` MCP tool
+- `worker/manager.py` - Embedding worker (processes `EMBED` jobs)
+- `db/migrations.py` - Migration v7 (segment_embeddings), v8 (vec0 virtual table)
+
+### API Endpoints
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /api/search/semantic?q={query}&mode={mode}` | Hybrid search (mode: hybrid/semantic/keyword) |
+| `GET /api/search/semantic/stats` | Embedding statistics |
+
+### MCP Tool
+
+```python
+semantic_search(query="protein and muscle building", mode="hybrid")
+```
+
+### Startup Behavior
+
+- **Embeddings**: Persisted in SQLite database (survives restarts)
+- **Model loading**: ~2 seconds on first semantic query after restart
+- **Background worker**: Automatically generates embeddings for new transcripts
+
+### sqlite-vec Notes (v0.1.6)
+
+The vec0 virtual table has specific requirements:
+- Auxiliary columns need explicit types: `+column_name TYPE`
+- Use `FLOAT` not `REAL` for floating-point auxiliary columns
+- Values must match declared types exactly (use `float()` for FLOAT columns)
+- KNN syntax: `WHERE embedding MATCH ? AND k = ?`

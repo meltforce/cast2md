@@ -1,4 +1,4 @@
-# cast2md - Requirements Document v0.7
+# cast2md - Requirements Document v0.8
 
 ## 1. Overview
 
@@ -607,6 +607,16 @@ python-dotenv>=1.0.0
 - [x] Batch transcript download endpoint
 - [x] Transcript source labels in UI (Publisher provided / Auto-generated / Whisper)
 
+### Phase 8: Semantic Search (v0.8)
+- [x] sentence-transformers integration (`all-MiniLM-L6-v2`, 384-dim embeddings)
+- [x] sqlite-vec extension with vec0 virtual table for indexed KNN search
+- [x] Hybrid search combining FTS5 keyword + vector similarity via RRF
+- [x] `/api/search/semantic` endpoint with mode selection (hybrid/semantic/keyword)
+- [x] `semantic_search` MCP tool for LLM access
+- [x] Background embedding worker (`EMBED` job type)
+- [x] Automatic embedding generation for new transcripts
+- [x] Embedding persistence (survives server restarts)
+
 ### Future (v2.0+)
 - [x] Audio preprocessing pipeline (ffmpeg) - mono 16kHz conversion
 - [x] MCP server for transcript access
@@ -616,7 +626,7 @@ python-dotenv>=1.0.0
 - [x] Full-text search across transcripts
 - [ ] Speaker diarization
 - [ ] Rate limiting (429 protection for external APIs)
-- [ ] Vector/semantic search (see docs/vector_embeddings_concept.md)
+- [x] Vector/semantic search (see docs/PLAN-semantic-search.md)
 - [ ] Native summarization pipeline (Ollama/OpenAI integration)
 - [ ] Backup and restore (see section 11)
 

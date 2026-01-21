@@ -1,5 +1,7 @@
 # Semantic Search Implementation Plan
 
+**Status: ✅ COMPLETED (2026-01-21)**
+
 ## Goal
 Add vector/semantic search to cast2md so queries like "protein and strength" find conceptually related content (muscle, weightlifting, nutrition) across diverse podcast topics. Must work well for both web UI and LLM/MCP use.
 
@@ -10,7 +12,7 @@ Combine existing FTS5 keyword search with new vector similarity search using Rec
 
 ## Technical Stack
 - **Embeddings**: `sentence-transformers` with `all-MiniLM-L6-v2` (384-dim, ~80MB, runs on CPU)
-- **Vector storage**: `sqlite-vec` extension (keeps everything in SQLite)
+- **Vector storage**: `sqlite-vec` extension with `vec0` virtual table for indexed KNN search
 - **Fusion**: RRF algorithm to combine keyword and vector results
 
 ---
@@ -155,3 +157,50 @@ semantic_search("discussions about building muscle", mode="hybrid")
 # Returns: episodes about weightlifting, nutrition, fitness
 # Even if they never say "muscle" explicitly
 ```
+
+---
+
+## Implementation Notes (2026-01-21)
+
+### Database Schema Changes
+
+**Migration v7**: Created `segment_embeddings` table (later replaced)
+
+**Migration v8**: Migrated to `vec0` virtual table for indexed KNN search:
+```sql
+CREATE VIRTUAL TABLE segment_vec USING vec0(
+    embedding float[384],
+    +episode_id INTEGER,
+    +feed_id INTEGER,
+    +segment_start FLOAT,
+    +segment_end FLOAT,
+    +text_hash TEXT,
+    +model_name TEXT
+)
+```
+
+### sqlite-vec 0.1.6 Quirks
+
+Several issues discovered during implementation:
+
+1. **REAL type not supported**: Auxiliary columns with `REAL` type cause a misleading "chunk_size must be a non-zero positive integer" error. Use `FLOAT` instead.
+
+2. **Strict type matching**: Values inserted into FLOAT columns must be Python floats. Integer values (even `46.0` stored as int) cause type mismatch errors.
+
+3. **Auxiliary column syntax**: All auxiliary columns require explicit type declarations (`+column_name TYPE`).
+
+### Performance Characteristics
+
+| Operation | Time |
+|-----------|------|
+| Keyword search (FTS5) | ~4ms |
+| Query embedding | ~15ms (after model loaded) |
+| Vector KNN search | ~450ms |
+| Model loading (first query) | ~2 seconds |
+
+### Key Differences from Original Plan
+
+1. **vec0 virtual table** instead of regular table - required for indexed O(log n) KNN search
+2. **feed_id stored in vec0** - enables filtering without JOIN during KNN
+3. **Metadata lookup after KNN** - vec0 returns only indexed columns, metadata fetched separately
+4. **Embeddings persist** - stored in SQLite, survive restarts (only model needs reload)
