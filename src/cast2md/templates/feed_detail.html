@@ -160,9 +160,9 @@
             </td>
             <td class="actions" style="white-space: nowrap;">
                 {% if episode.status.value == 'pending' %}
-                    <button class="outline" onclick="tryTranscript({{ episode.id }})">Get Transcript</button>
+                    <button class="outline" onclick="tryTranscript({{ episode.id }}, this)">Get Transcript</button>
                 {% elif episode.status.value == 'downloaded' %}
-                    <button class="outline" onclick="transcribeEpisode({{ episode.id }})">Transcribe</button>
+                    <button class="outline" onclick="transcribeEpisode({{ episode.id }}, this)">Transcribe</button>
                 {% elif episode.status.value == 'completed' and episode.transcript_path %}
                     <a href="/episodes/{{ episode.id }}" class="outline" role="button">View</a>
                 {% elif episode.status.value == 'failed' %}
@@ -398,19 +398,34 @@ async function refreshFeed(feedId) {
     }
 }
 
-async function tryTranscript(episodeId) {
+async function tryTranscript(episodeId, button) {
+    // Immediately update UI to show queued state
+    const row = button.closest('tr');
+    const statusBadge = row.querySelector('.status-badge');
+    const actionsCell = row.querySelector('.actions');
+
+    button.disabled = true;
+    button.textContent = 'Queuing...';
+
     try {
-        // Try to get transcript from external providers first
         const response = await fetch(`/api/queue/episodes/${episodeId}/transcript-download`, {method: 'POST'});
         const data = await response.json();
 
         if (response.ok) {
-            alert(data.message + '\n\nIf no external transcript is available, you can use "Download Audio" from the episode detail page.');
-            window.location.reload();
+            // Update status badge
+            statusBadge.className = 'status-badge status-downloading';
+            statusBadge.textContent = 'queued';
+            // Replace button with status text
+            actionsCell.innerHTML = '<span style="color: var(--muted-color);">Queued</span>';
         } else {
+            // Restore button on error
+            button.disabled = false;
+            button.textContent = 'Get Transcript';
             alert('Error: ' + data.detail);
         }
     } catch (error) {
+        button.disabled = false;
+        button.textContent = 'Get Transcript';
         alert('Error: ' + error.message);
     }
 }
@@ -432,19 +447,30 @@ async function downloadEpisode(episodeId) {
     }
 }
 
-async function transcribeEpisode(episodeId) {
+async function transcribeEpisode(episodeId, button) {
+    const row = button.closest('tr');
+    const statusBadge = row.querySelector('.status-badge');
+    const actionsCell = row.querySelector('.actions');
+
+    button.disabled = true;
+    button.textContent = 'Queuing...';
+
     try {
-        // Use queue endpoint instead of synchronous transcription
         const response = await fetch(`/api/queue/episodes/${episodeId}/transcribe`, {method: 'POST'});
         const data = await response.json();
 
         if (response.ok) {
-            alert(data.message);
-            window.location.reload();
+            statusBadge.className = 'status-badge status-transcribing';
+            statusBadge.textContent = 'queued';
+            actionsCell.innerHTML = '<span style="color: var(--muted-color);">Queued</span>';
         } else {
+            button.disabled = false;
+            button.textContent = 'Transcribe';
             alert('Error: ' + data.detail);
         }
     } catch (error) {
+        button.disabled = false;
+        button.textContent = 'Transcribe';
         alert('Error: ' + error.message);
     }
 }
