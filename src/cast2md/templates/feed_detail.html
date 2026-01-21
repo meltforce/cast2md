@@ -65,7 +65,7 @@
             <input type="date" id="dateTo" style="padding: 0.25rem 0.5rem; margin: 0;">
             <button class="outline" style="padding: 0.25rem 0.5rem; font-size: 0.875rem; margin: 0;" onclick="queueByDate({{ feed.id }})">Queue</button>
         </div>
-        <button class="outline secondary" style="padding: 0.25rem 0.5rem; font-size: 0.875rem; margin: 0;" onclick="queueAllPending({{ feed.id }})">Queue All Pending</button>
+        <button class="outline secondary" style="padding: 0.25rem 0.5rem; font-size: 0.875rem; margin: 0;" onclick="queueAllTranscripts({{ feed.id }})">Get All Transcripts</button>
     </div>
 </article>
 
@@ -269,6 +269,10 @@ function buildPageUrl(pageNum) {
     return '?' + params.toString();
 }
 
+// Episode IDs on current page for polling
+const episodeIds = [{% for episode in episodes %}{{ episode.id }}{% if not loop.last %}, {% endif %}{% endfor %}];
+let pollingInterval = null;
+
 // Initialize: Apply stored per_page preference and load retranscribe info
 document.addEventListener('DOMContentLoaded', function() {
     const storedPerPage = localStorage.getItem('cast2md_per_page');
@@ -284,7 +288,85 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Load retranscription info
     loadRetranscribeInfo({{ feed.id }});
+
+    // Start polling if there are queued/processing episodes
+    startStatusPolling();
 });
+
+// Poll for episode status updates
+async function pollEpisodeStatus() {
+    if (episodeIds.length === 0) return;
+
+    try {
+        const response = await fetch(`/api/feeds/{{ feed.id }}/episodes?limit=${episodeIds.length}`);
+        if (!response.ok) return;
+
+        const data = await response.json();
+        let hasActiveJobs = false;
+
+        for (const ep of data.episodes) {
+            const row = document.querySelector(`tr input[value="${ep.id}"]`)?.closest('tr');
+            if (!row) continue;
+
+            const statusBadge = row.querySelector('.status-badge');
+            const actionsCell = row.querySelector('.actions');
+            const currentStatus = statusBadge.textContent.trim();
+
+            // Check if status changed
+            if (currentStatus !== ep.status && currentStatus !== 'queued') {
+                updateEpisodeRow(row, ep);
+            }
+
+            // Track if there are still active jobs
+            if (['downloading', 'transcribing', 'queued'].includes(ep.status) ||
+                currentStatus === 'queued') {
+                hasActiveJobs = true;
+            }
+        }
+
+        // Stop polling if no active jobs
+        if (!hasActiveJobs && pollingInterval) {
+            clearInterval(pollingInterval);
+            pollingInterval = null;
+        }
+    } catch (error) {
+        console.error('Polling error:', error);
+    }
+}
+
+function updateEpisodeRow(row, ep) {
+    const statusBadge = row.querySelector('.status-badge');
+    const actionsCell = row.querySelector('.actions');
+    const checkbox = row.querySelector('.episode-checkbox');
+
+    // Update status badge
+    statusBadge.className = `status-badge status-${ep.status}`;
+    statusBadge.textContent = ep.status;
+
+    // Update actions based on new status
+    if (ep.status === 'pending') {
+        actionsCell.innerHTML = `<button class="outline" onclick="tryTranscript(${ep.id}, this)">Get Transcript</button>`;
+        if (checkbox) checkbox.disabled = false;
+    } else if (ep.status === 'downloaded') {
+        actionsCell.innerHTML = `<button class="outline" onclick="transcribeEpisode(${ep.id}, this)">Transcribe</button>`;
+        if (checkbox) checkbox.disabled = true;
+    } else if (ep.status === 'completed') {
+        actionsCell.innerHTML = `<a href="/episodes/${ep.id}" class="outline" role="button">View</a>`;
+        if (checkbox) checkbox.disabled = true;
+    } else if (ep.status === 'failed') {
+        actionsCell.innerHTML = `<button class="outline secondary" onclick="retryEpisode(${ep.id})">Retry</button>`;
+        if (checkbox) checkbox.disabled = true;
+    } else {
+        // downloading, transcribing
+        actionsCell.innerHTML = `<span style="color: var(--muted-color);">Processing...</span>`;
+        if (checkbox) checkbox.disabled = true;
+    }
+}
+
+function startStatusPolling() {
+    if (pollingInterval) return; // Already polling
+    pollingInterval = setInterval(pollEpisodeStatus, 2000); // Poll every 2 seconds
+}
 
 async function loadRetranscribeInfo(feedId) {
     try {
@@ -417,6 +499,8 @@ async function tryTranscript(episodeId, button) {
             statusBadge.textContent = 'queued';
             // Replace button with status text
             actionsCell.innerHTML = '<span style="color: var(--muted-color);">Queued</span>';
+            // Start polling to see when it completes
+            startStatusPolling();
         } else {
             // Restore button on error
             button.disabled = false;
@@ -463,6 +547,7 @@ async function transcribeEpisode(episodeId, button) {
             statusBadge.className = 'status-badge status-transcribing';
             statusBadge.textContent = 'queued';
             actionsCell.innerHTML = '<span style="color: var(--muted-color);">Queued</span>';
+            startStatusPolling();
         } else {
             button.disabled = false;
             button.textContent = 'Transcribe';
@@ -480,18 +565,26 @@ async function retryEpisode(episodeId) {
     await downloadEpisode(episodeId);
 }
 
-async function queueAllPending(feedId) {
-    if (!confirm('Queue all pending episodes for processing?')) {
+async function queueAllTranscripts(feedId) {
+    if (!confirm('Try to get transcripts for all pending episodes?\n\nThis will try external providers (Podcast 2.0, Pocket Casts) first.')) {
         return;
     }
 
     try {
-        const response = await fetch(`/api/queue/batch/feed/${feedId}/process`, {method: 'POST'});
+        const response = await fetch(`/api/queue/batch/feed/${feedId}/transcript-download`, {method: 'POST'});
         const data = await response.json();
 
         if (response.ok) {
-            alert(data.message);
-            window.location.reload();
+            // Update all pending rows to show queued status
+            document.querySelectorAll('.status-badge.status-pending').forEach(badge => {
+                const row = badge.closest('tr');
+                const actionsCell = row.querySelector('.actions');
+                badge.className = 'status-badge status-downloading';
+                badge.textContent = 'queued';
+                actionsCell.innerHTML = '<span style="color: var(--muted-color);">Queued</span>';
+            });
+            // Start polling for updates
+            startStatusPolling();
         } else {
             alert('Error: ' + data.detail);
         }
