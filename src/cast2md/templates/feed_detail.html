@@ -365,8 +365,8 @@ function updateEpisodeRow(row, ep) {
         actionsCell.innerHTML = `<button class="outline secondary" onclick="retryEpisode(${ep.id})">Retry</button>`;
         if (checkbox) checkbox.disabled = true;
     } else {
-        // downloading, transcribing
-        actionsCell.innerHTML = `<span style="color: var(--muted-color);">Processing...</span>`;
+        // downloading, transcribing, queued - status column shows state
+        actionsCell.innerHTML = '';
         if (checkbox) checkbox.disabled = true;
     }
 }
@@ -505,8 +505,8 @@ async function tryTranscript(episodeId, button) {
             // Update status badge
             statusBadge.className = 'status-badge status-downloading';
             statusBadge.textContent = 'queued';
-            // Replace button with status text
-            actionsCell.innerHTML = '<span style="color: var(--muted-color);">Queued</span>';
+            // Clear actions (status column shows state)
+            actionsCell.innerHTML = '';
             // Start polling to see when it completes
             startStatusPolling();
         } else {
@@ -554,7 +554,7 @@ async function transcribeEpisode(episodeId, button) {
         if (response.ok) {
             statusBadge.className = 'status-badge status-transcribing';
             statusBadge.textContent = 'queued';
-            actionsCell.innerHTML = '<span style="color: var(--muted-color);">Queued</span>';
+            actionsCell.innerHTML = '';
             startStatusPolling();
         } else {
             button.disabled = false;
@@ -589,7 +589,7 @@ async function queueAllTranscripts(feedId) {
                 const actionsCell = row.querySelector('.actions');
                 badge.className = 'status-badge status-downloading';
                 badge.textContent = 'queued';
-                actionsCell.innerHTML = '<span style="color: var(--muted-color);">Queued</span>';
+                actionsCell.innerHTML = '';
             });
             // Start polling for updates
             startStatusPolling();
