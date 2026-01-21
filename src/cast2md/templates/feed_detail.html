@@ -5,15 +5,20 @@
 {% block content %}
 <p><a href="/">&larr; Back to feeds</a></p>
 
-<hgroup>
-    <h1>
-        {{ feed.display_title }}
-        <button class="outline" style="padding: 0.25rem 0.5rem; font-size: 0.75rem; vertical-align: middle; margin-left: 0.5rem;" onclick="document.getElementById('editTitleModal').showModal()">Edit</button>
-    </h1>
-    {% if feed.author %}<p style="margin-bottom: 0.25rem;">by {{ feed.author }}</p>{% endif %}
-    {% set desc = feed.description|strip_html %}
-    <p>{{ desc[:200] + '...' if desc and desc|length > 200 else desc or 'No description' }}</p>
-</hgroup>
+<div style="display: flex; gap: 1.5rem; align-items: flex-start; margin-bottom: 1rem;">
+    {% if feed.image_url %}
+    <img src="{{ feed.image_url }}" alt="{{ feed.display_title }}" style="width: 120px; height: 120px; object-fit: cover; border-radius: 8px; flex-shrink: 0;">
+    {% endif %}
+    <hgroup style="margin: 0;">
+        <h1 style="margin-bottom: 0.25rem;">
+            {{ feed.display_title }}
+            <button class="outline" style="padding: 0.25rem 0.5rem; font-size: 0.75rem; vertical-align: middle; margin-left: 0.5rem;" onclick="document.getElementById('editTitleModal').showModal()">Edit</button>
+        </h1>
+        {% if feed.author %}<p style="margin-bottom: 0.25rem;">by {{ feed.author }}</p>{% endif %}
+        {% set desc = feed.description|strip_html %}
+        <p style="margin-bottom: 0;">{{ desc[:200] + '...' if desc and desc|length > 200 else desc or 'No description' }}</p>
+    </hgroup>
+</div>
 
 <p>
     {% if feed.link %}<a href="{{ feed.link }}" target="_blank">Website</a> | {% endif %}
