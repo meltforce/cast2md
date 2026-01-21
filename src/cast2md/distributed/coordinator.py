@@ -49,7 +49,7 @@ class RemoteTranscriptionCoordinator:
         # In-memory heartbeat tracking to reduce DB writes
         self._node_heartbeats: dict[str, datetime] = {}
         self._heartbeat_lock = threading.Lock()
-        self._last_db_sync: datetime = datetime.utcnow()
+        self._last_db_sync: datetime = datetime.now()
         self._db_sync_interval_seconds = 300  # Sync to DB every 5 minutes
 
     def start(self):
@@ -103,7 +103,7 @@ class RemoteTranscriptionCoordinator:
         Heartbeats are periodically synced to the database.
         """
         with self._heartbeat_lock:
-            self._node_heartbeats[node_id] = datetime.utcnow()
+            self._node_heartbeats[node_id] = datetime.now()
 
     def _sync_heartbeats_to_db(self) -> None:
         """Batch sync all heartbeat timestamps to DB."""
@@ -123,7 +123,7 @@ class RemoteTranscriptionCoordinator:
 
     def _check_nodes(self):
         """Check node heartbeats and mark stale nodes as offline."""
-        now = datetime.utcnow()
+        now = datetime.now()
 
         # Periodic DB sync
         if (now - self._last_db_sync).total_seconds() >= self._db_sync_interval_seconds:

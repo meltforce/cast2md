@@ -533,7 +533,7 @@ def queue_management(request: Request, status: str | None = None):
             jobs = job_repo.get_all_jobs(limit=100)
 
         # Build job info with episode and feed details
-        stuck_threshold = datetime.utcnow() - timedelta(hours=stuck_threshold_hours)
+        stuck_threshold = datetime.now() - timedelta(hours=stuck_threshold_hours)
         job_list = []
         for job in jobs:
             episode = episode_repo.get_by_id(job.episode_id)
@@ -545,7 +545,7 @@ def queue_management(request: Request, status: str | None = None):
             runtime_seconds = None
             is_stuck = False
             if job.status == JobStatus.RUNNING and job.started_at:
-                runtime_seconds = int((datetime.utcnow() - job.started_at).total_seconds())
+                runtime_seconds = int((datetime.now() - job.started_at).total_seconds())
                 is_stuck = job.started_at < stuck_threshold
 
             job_list.append({

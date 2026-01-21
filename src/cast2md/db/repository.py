@@ -34,7 +34,7 @@ class FeedRepository:
         categories: str | None = None,
     ) -> Feed:
         """Create a new feed."""
-        now = datetime.utcnow().isoformat()
+        now = datetime.now().isoformat()
         cursor = self.conn.execute(
             """
             INSERT INTO feed (url, title, description, image_url, author, link, categories,
@@ -76,7 +76,7 @@ class FeedRepository:
 
     def update_last_polled(self, feed_id: int) -> None:
         """Update the last_polled timestamp."""
-        now = datetime.utcnow().isoformat()
+        now = datetime.now().isoformat()
         self.conn.execute(
             "UPDATE feed SET last_polled = ?, updated_at = ? WHERE id = ?",
             (now, now, feed_id),
@@ -99,7 +99,7 @@ class FeedRepository:
         Returns:
             Updated feed or None if not found.
         """
-        now = datetime.utcnow().isoformat()
+        now = datetime.now().isoformat()
         # Allow setting to NULL by using empty string or None
         title_value = custom_title if custom_title else None
         self.conn.execute(
@@ -128,7 +128,7 @@ class FeedRepository:
             link: Feed website link.
             categories: JSON string of categories.
         """
-        now = datetime.utcnow().isoformat()
+        now = datetime.now().isoformat()
         self.conn.execute(
             """
             UPDATE feed
@@ -165,7 +165,7 @@ class EpisodeRepository:
         author: str | None = None,
     ) -> Episode:
         """Create a new episode."""
-        now = datetime.utcnow().isoformat()
+        now = datetime.now().isoformat()
         published_str = published_at.isoformat() if published_at else None
 
         cursor = self.conn.execute(
@@ -263,7 +263,7 @@ class EpisodeRepository:
         error_message: str | None = None,
     ) -> None:
         """Update episode status."""
-        now = datetime.utcnow().isoformat()
+        now = datetime.now().isoformat()
         self.conn.execute(
             """
             UPDATE episode
@@ -276,7 +276,7 @@ class EpisodeRepository:
 
     def update_audio_path(self, episode_id: int, audio_path: str) -> None:
         """Update episode audio path."""
-        now = datetime.utcnow().isoformat()
+        now = datetime.now().isoformat()
         self.conn.execute(
             """
             UPDATE episode
@@ -289,7 +289,7 @@ class EpisodeRepository:
 
     def update_transcript_path(self, episode_id: int, transcript_path: str) -> None:
         """Update episode transcript path."""
-        now = datetime.utcnow().isoformat()
+        now = datetime.now().isoformat()
         self.conn.execute(
             """
             UPDATE episode
@@ -316,7 +316,7 @@ class EpisodeRepository:
         Returns:
             Number of episodes updated.
         """
-        now = datetime.utcnow().isoformat()
+        now = datetime.now().isoformat()
 
         # Update audio_path
         cursor = self.conn.execute(
@@ -660,7 +660,7 @@ class JobRepository:
         max_attempts: int = 3,
     ) -> Job:
         """Create a new job in the queue."""
-        now = datetime.utcnow().isoformat()
+        now = datetime.now().isoformat()
 
         cursor = self.conn.execute(
             """
@@ -697,7 +697,7 @@ class JobRepository:
             job_type: Type of job to get.
             local_only: If True, only return jobs not assigned to a node.
         """
-        now = datetime.utcnow().isoformat()
+        now = datetime.now().isoformat()
         if local_only:
             cursor = self.conn.execute(
                 """
@@ -731,7 +731,7 @@ class JobRepository:
 
         Used by distributed transcription nodes to claim work.
         """
-        now = datetime.utcnow().isoformat()
+        now = datetime.now().isoformat()
         cursor = self.conn.execute(
             """
             SELECT * FROM job_queue
@@ -749,7 +749,7 @@ class JobRepository:
 
     def claim_job(self, job_id: int, node_id: str) -> None:
         """Claim a job for a specific node."""
-        now = datetime.utcnow().isoformat()
+        now = datetime.now().isoformat()
         self.conn.execute(
             """
             UPDATE job_queue
@@ -795,8 +795,8 @@ class JobRepository:
         Returns:
             Tuple of (jobs_requeued, jobs_failed).
         """
-        threshold = (datetime.utcnow() - timedelta(hours=timeout_hours)).isoformat()
-        now = datetime.utcnow().isoformat()
+        threshold = (datetime.now() - timedelta(hours=timeout_hours)).isoformat()
+        now = datetime.now().isoformat()
 
         # First, fail jobs that have exceeded max attempts
         # Use started_at (not claimed_at) so reclaim cycles don't reset the timeout
@@ -845,7 +845,7 @@ class JobRepository:
 
     def get_queued_jobs(self, job_type: JobType | None = None, limit: int = 100) -> list[Job]:
         """Get queued jobs ready to run (excludes jobs waiting for retry)."""
-        now = datetime.utcnow().isoformat()
+        now = datetime.now().isoformat()
         if job_type:
             cursor = self.conn.execute(
                 """
@@ -900,7 +900,7 @@ class JobRepository:
             job_id: The job ID to mark as running.
             node_id: The node ID processing this job (default: "local" for local workers).
         """
-        now = datetime.utcnow().isoformat()
+        now = datetime.now().isoformat()
         self.conn.execute(
             """
             UPDATE job_queue
@@ -914,7 +914,7 @@ class JobRepository:
 
     def mark_completed(self, job_id: int) -> None:
         """Mark a job as completed."""
-        now = datetime.utcnow().isoformat()
+        now = datetime.now().isoformat()
         self.conn.execute(
             """
             UPDATE job_queue
@@ -956,7 +956,7 @@ class JobRepository:
         """
         from cast2md.db.models import EpisodeStatus
 
-        now = datetime.utcnow().isoformat()
+        now = datetime.now().isoformat()
 
         # Find all running jobs with their attempt counts
         cursor = self.conn.execute(
@@ -1034,7 +1034,7 @@ class JobRepository:
 
     def mark_failed(self, job_id: int, error_message: str, retry: bool = True) -> None:
         """Mark a job as failed, optionally scheduling a retry."""
-        now = datetime.utcnow()
+        now = datetime.now()
 
         # Get current job to check attempts
         job = self.get_by_id(job_id)
@@ -1106,7 +1106,7 @@ class JobRepository:
 
     def cleanup_completed(self, older_than_days: int = 7) -> int:
         """Delete completed/failed jobs older than N days."""
-        cutoff = (datetime.utcnow() - timedelta(days=older_than_days)).isoformat()
+        cutoff = (datetime.now() - timedelta(days=older_than_days)).isoformat()
 
         cursor = self.conn.execute(
             """
@@ -1127,7 +1127,7 @@ class JobRepository:
         Returns:
             List of stuck jobs.
         """
-        threshold = (datetime.utcnow() - timedelta(hours=threshold_hours)).isoformat()
+        threshold = (datetime.now() - timedelta(hours=threshold_hours)).isoformat()
         cursor = self.conn.execute(
             """
             SELECT * FROM job_queue
@@ -1267,8 +1267,8 @@ class JobRepository:
         Returns:
             Tuple of (jobs_requeued, jobs_failed).
         """
-        threshold = (datetime.utcnow() - timedelta(hours=threshold_hours)).isoformat()
-        now = datetime.utcnow().isoformat()
+        threshold = (datetime.now() - timedelta(hours=threshold_hours)).isoformat()
+        now = datetime.now().isoformat()
 
         # First, fail jobs that have exceeded max attempts
         cursor = self.conn.execute(
@@ -1323,7 +1323,7 @@ class JobRepository:
         Returns:
             Number of stuck jobs.
         """
-        threshold = (datetime.utcnow() - timedelta(hours=threshold_hours)).isoformat()
+        threshold = (datetime.now() - timedelta(hours=threshold_hours)).isoformat()
         cursor = self.conn.execute(
             """
             SELECT COUNT(*) FROM job_queue
@@ -1356,7 +1356,7 @@ class SettingsRepository:
 
     def set(self, key: str, value: str) -> None:
         """Set a setting value (insert or update)."""
-        now = datetime.utcnow().isoformat()
+        now = datetime.now().isoformat()
         self.conn.execute(
             """
             INSERT INTO settings (key, value, updated_at)
@@ -1375,7 +1375,7 @@ class SettingsRepository:
 
     def set_many(self, settings: dict[str, str]) -> None:
         """Set multiple settings at once."""
-        now = datetime.utcnow().isoformat()
+        now = datetime.now().isoformat()
         for key, value in settings.items():
             self.conn.execute(
                 """
@@ -1449,7 +1449,7 @@ class WhisperModelRepository:
         is_enabled: bool = True,
     ) -> None:
         """Insert or update a model."""
-        now = datetime.utcnow().isoformat()
+        now = datetime.now().isoformat()
         self.conn.execute(
             """
             INSERT INTO whisper_models (id, backend, hf_repo, description, size_mb, is_enabled, created_at)
@@ -1488,7 +1488,7 @@ class WhisperModelRepository:
             ("large-v3-turbo", "both", "mlx-community/whisper-large-v3-turbo", "Fast large model", 1600),
         ]
 
-        now = datetime.utcnow().isoformat()
+        now = datetime.now().isoformat()
         for model_id, backend, hf_repo, description, size_mb in default_models:
             self.conn.execute(
                 """
@@ -1522,7 +1522,7 @@ class TranscriberNodeRepository:
         priority: int = 10,
     ) -> TranscriberNode:
         """Create a new transcriber node."""
-        now = datetime.utcnow().isoformat()
+        now = datetime.now().isoformat()
         self.conn.execute(
             """
             INSERT INTO transcriber_node (
@@ -1581,7 +1581,7 @@ class TranscriberNodeRepository:
         current_job_id: int | None = None,
     ) -> None:
         """Update node status."""
-        now = datetime.utcnow().isoformat()
+        now = datetime.now().isoformat()
         self.conn.execute(
             """
             UPDATE transcriber_node
@@ -1599,8 +1599,8 @@ class TranscriberNodeRepository:
             node_id: The node ID to update.
             timestamp: Optional timestamp to use (default: current time).
         """
-        ts = (timestamp or datetime.utcnow()).isoformat()
-        now = datetime.utcnow().isoformat()
+        ts = (timestamp or datetime.now()).isoformat()
+        now = datetime.now().isoformat()
         self.conn.execute(
             """
             UPDATE transcriber_node
@@ -1618,7 +1618,7 @@ class TranscriberNodeRepository:
         whisper_backend: str | None = None,
     ) -> None:
         """Update node whisper info."""
-        now = datetime.utcnow().isoformat()
+        now = datetime.now().isoformat()
         self.conn.execute(
             """
             UPDATE transcriber_node
@@ -1647,7 +1647,7 @@ class TranscriberNodeRepository:
         Returns:
             List of stale nodes.
         """
-        threshold = (datetime.utcnow() - timedelta(seconds=timeout_seconds)).isoformat()
+        threshold = (datetime.now() - timedelta(seconds=timeout_seconds)).isoformat()
         cursor = self.conn.execute(
             f"""
             SELECT {self.NODE_COLUMNS} FROM transcriber_node
@@ -1660,7 +1660,7 @@ class TranscriberNodeRepository:
 
     def mark_offline(self, node_id: str) -> None:
         """Mark a node as offline and clear its current job."""
-        now = datetime.utcnow().isoformat()
+        now = datetime.now().isoformat()
         self.conn.execute(
             """
             UPDATE transcriber_node

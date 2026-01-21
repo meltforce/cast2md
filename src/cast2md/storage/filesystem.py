@@ -68,7 +68,7 @@ def episode_filename(title: str, published_at: datetime | None, audio_url: str) 
     if published_at:
         date_str = published_at.strftime("%Y-%m-%d")
     else:
-        date_str = datetime.utcnow().strftime("%Y-%m-%d")
+        date_str = datetime.now().strftime("%Y-%m-%d")
 
     # Sanitize title
     safe_title = sanitize_filename(title, max_length=80)
@@ -136,7 +136,7 @@ def get_transcript_path(podcast_name: str, episode_title: str,
     if published_at:
         date_str = published_at.strftime("%Y-%m-%d")
     else:
-        date_str = datetime.utcnow().strftime("%Y-%m-%d")
+        date_str = datetime.now().strftime("%Y-%m-%d")
 
     safe_title = sanitize_filename(episode_title, max_length=80)
     filename = f"{date_str}_{safe_title}.md"

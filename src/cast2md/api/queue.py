@@ -711,7 +711,7 @@ def get_stuck_jobs(threshold_hours: int | None = None):
 
             runtime = 0
             if job.started_at:
-                runtime = int((datetime.utcnow() - job.started_at).total_seconds())
+                runtime = int((datetime.now() - job.started_at).total_seconds())
 
             jobs.append(StuckJobInfo(
                 job_id=job.id,
@@ -769,7 +769,7 @@ def get_all_jobs(
 
         threshold_hours = _get_stuck_threshold()
         jobs = job_repo.get_all_jobs(status=job_status, job_type=jt, limit=limit)
-        stuck_threshold = datetime.utcnow() - timedelta(hours=threshold_hours)
+        stuck_threshold = datetime.now() - timedelta(hours=threshold_hours)
         stuck_count = job_repo.count_stuck_jobs(threshold_hours)
 
         job_infos = []
@@ -783,7 +783,7 @@ def get_all_jobs(
             runtime = None
             is_stuck = False
             if job.status == JobStatus.RUNNING and job.started_at:
-                runtime = int((datetime.utcnow() - job.started_at).total_seconds())
+                runtime = int((datetime.now() - job.started_at).total_seconds())
                 is_stuck = job.started_at < stuck_threshold
 
             job_infos.append(AllJobInfo(
@@ -836,7 +836,7 @@ def _get_stuck_jobs_as_all_jobs(limit: int) -> AllJobsResponse:
 
             runtime = None
             if job.started_at:
-                runtime = int((datetime.utcnow() - job.started_at).total_seconds())
+                runtime = int((datetime.now() - job.started_at).total_seconds())
 
             job_infos.append(AllJobInfo(
                 job_id=job.id,
