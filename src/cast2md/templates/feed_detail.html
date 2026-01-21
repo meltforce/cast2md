@@ -400,7 +400,8 @@ async function refreshFeed(feedId) {
 
 async function downloadEpisode(episodeId) {
     try {
-        const response = await fetch(`/api/episodes/${episodeId}/download`, {method: 'POST'});
+        // Use queue endpoint instead of synchronous download
+        const response = await fetch(`/api/queue/episodes/${episodeId}/process`, {method: 'POST'});
         const data = await response.json();
 
         if (response.ok) {
@@ -415,12 +416,9 @@ async function downloadEpisode(episodeId) {
 }
 
 async function transcribeEpisode(episodeId) {
-    if (!confirm('Start transcription? This may take several minutes.')) {
-        return;
-    }
-
     try {
-        const response = await fetch(`/api/episodes/${episodeId}/transcribe`, {method: 'POST'});
+        // Use queue endpoint instead of synchronous transcription
+        const response = await fetch(`/api/queue/episodes/${episodeId}/transcribe`, {method: 'POST'});
         const data = await response.json();
 
         if (response.ok) {
