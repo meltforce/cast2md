@@ -117,6 +117,7 @@ class PocketCastsClient:
                 response = client.get(
                     url,
                     headers={"User-Agent": self.user_agent},
+                    follow_redirects=True,  # API returns redirect to static JSON
                 )
                 response.raise_for_status()
 
