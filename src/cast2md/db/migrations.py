@@ -78,6 +78,27 @@ MIGRATIONS = [
             "CREATE INDEX IF NOT EXISTS idx_segment_embeddings_episode ON segment_embeddings(episode_id)",
         ],
     },
+    {
+        "version": 8,
+        "description": "Migrate to vec0 virtual table for fast indexed vector search",
+        "sql": [
+            # Drop old table - will be recreated as vec0
+            "DROP TABLE IF EXISTS segment_embeddings",
+        ],
+        # Note: vec0 table creation handled specially in run_migrations
+        # because it requires sqlite-vec extension
+        "vec0_table": """
+            CREATE VIRTUAL TABLE IF NOT EXISTS segment_vec USING vec0(
+                episode_id INTEGER,
+                feed_id INTEGER,
+                embedding float[384],
+                +segment_start,
+                +segment_end,
+                +text_hash,
+                +model_name
+            )
+        """,
+    },
 ]
 
 
@@ -167,6 +188,20 @@ def run_migrations(conn: sqlite3.Connection) -> int:
                     logger.debug(f"Column already exists, skipping: {e}")
                     continue
                 raise
+
+        # Handle vec0 virtual table creation (requires sqlite-vec extension)
+        if "vec0_table" in migration:
+            try:
+                conn.execute(migration["vec0_table"])
+                logger.info("Created vec0 virtual table for vector search")
+            except sqlite3.OperationalError as e:
+                if "no such module: vec0" in str(e).lower():
+                    logger.warning(
+                        "sqlite-vec extension not available, vec0 table not created. "
+                        "Semantic search will be unavailable."
+                    )
+                else:
+                    raise
 
         set_schema_version(conn, version)
         conn.commit()
