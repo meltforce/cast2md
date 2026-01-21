@@ -11,63 +11,71 @@ from cast2md.config.settings import (
 class TestSettingSource:
     """Tests for get_setting_source function."""
 
-    def test_node_specific_with_env_override(self):
-        """Node-specific settings from env file should show 'env_file'."""
-        # whisper_model is node-specific, default is 'base'
-        # If current value differs from default, it's from env file
+    def test_setting_from_database(self):
+        """Settings with DB override should show 'database'."""
+        source = get_setting_source("whisper_model", "large-v3-turbo", "large-v3-turbo")
+        assert source == "database"
+
+    def test_setting_from_env_file(self):
+        """Settings from env file (differs from default, no DB) should show 'env_file'."""
+        # whisper_model default is 'base'
         source = get_setting_source("whisper_model", "large-v3-turbo", None)
         assert source == "env_file"
 
-    def test_node_specific_with_default(self):
-        """Node-specific settings at default value should show 'default'."""
+    def test_setting_at_default(self):
+        """Settings at default value should show 'default'."""
         source = get_setting_source("whisper_model", "base", None)
         assert source == "default"
 
-    def test_node_specific_ignores_db_value(self):
-        """Node-specific settings should ignore DB values and report env_file."""
-        # Even if there's a DB value, node-specific settings come from env
-        source = get_setting_source("whisper_model", "large-v3-turbo", "medium")
-        assert source == "env_file"
-
-    def test_node_specific_with_default_ignores_db(self):
-        """Node-specific at default should show 'default' even with DB value."""
-        source = get_setting_source("whisper_model", "base", "large-v3-turbo")
-        assert source == "default"
-
-    def test_regular_setting_from_database(self):
+    def test_stuck_threshold_from_database(self):
         """Regular settings with DB override should show 'database'."""
         source = get_setting_source("stuck_threshold_hours", 4, "4")
         assert source == "database"
 
-    def test_regular_setting_from_env_file(self):
+    def test_stuck_threshold_from_env_file(self):
         """Regular settings from env file should show 'env_file'."""
         # stuck_threshold_hours default is 2
         source = get_setting_source("stuck_threshold_hours", 5, None)
         assert source == "env_file"
 
-    def test_regular_setting_at_default(self):
+    def test_stuck_threshold_at_default(self):
         """Regular settings at default should show 'default'."""
         source = get_setting_source("stuck_threshold_hours", 2, None)
         assert source == "default"
 
-    def test_all_node_specific_keys_in_defaults(self):
-        """All node-specific keys should have default values defined."""
-        for key in NODE_SPECIFIC_SETTINGS:
-            assert key in _DEFAULTS, f"Missing default for node-specific key: {key}"
-
 
 class TestNodeSpecificSettings:
-    """Tests for NODE_SPECIFIC_SETTINGS constant."""
+    """Tests for NODE_SPECIFIC_SETTINGS constant.
 
-    def test_whisper_settings_are_node_specific(self):
-        """Whisper settings should be node-specific."""
-        assert "whisper_model" in NODE_SPECIFIC_SETTINGS
-        assert "whisper_device" in NODE_SPECIFIC_SETTINGS
-        assert "whisper_compute_type" in NODE_SPECIFIC_SETTINGS
-        assert "whisper_backend" in NODE_SPECIFIC_SETTINGS
+    NODE_SPECIFIC_SETTINGS is empty for the server - all settings can be
+    configured via the UI. Remote nodes have their own Settings class.
+    """
 
-    def test_non_whisper_settings_not_node_specific(self):
-        """Non-whisper settings should not be node-specific."""
-        assert "stuck_threshold_hours" not in NODE_SPECIFIC_SETTINGS
-        assert "ntfy_enabled" not in NODE_SPECIFIC_SETTINGS
-        assert "distributed_transcription_enabled" not in NODE_SPECIFIC_SETTINGS
+    def test_node_specific_settings_empty_for_server(self):
+        """Server has no node-specific settings - all configurable via UI."""
+        assert len(NODE_SPECIFIC_SETTINGS) == 0
+
+    def test_whisper_settings_configurable_via_ui(self):
+        """Whisper settings should be configurable via UI (not node-specific)."""
+        assert "whisper_model" not in NODE_SPECIFIC_SETTINGS
+        assert "whisper_device" not in NODE_SPECIFIC_SETTINGS
+        assert "whisper_compute_type" not in NODE_SPECIFIC_SETTINGS
+        assert "whisper_backend" not in NODE_SPECIFIC_SETTINGS
+
+
+class TestDefaults:
+    """Tests for _DEFAULTS dictionary."""
+
+    def test_whisper_defaults_exist(self):
+        """Whisper settings should have defaults defined."""
+        assert "whisper_model" in _DEFAULTS
+        assert "whisper_device" in _DEFAULTS
+        assert "whisper_compute_type" in _DEFAULTS
+        assert "whisper_backend" in _DEFAULTS
+
+    def test_whisper_default_values(self):
+        """Whisper defaults should match Settings class defaults."""
+        assert _DEFAULTS["whisper_model"] == "base"
+        assert _DEFAULTS["whisper_device"] == "auto"
+        assert _DEFAULTS["whisper_compute_type"] == "int8"
+        assert _DEFAULTS["whisper_backend"] == "auto"

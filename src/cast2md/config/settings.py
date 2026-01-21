@@ -65,14 +65,11 @@ class Settings(BaseSettings):
 # Cached settings instance
 _settings: Settings | None = None
 
-# Node-specific settings that come from .env, not database.
-# Remote nodes are slim installations without a database.
-NODE_SPECIFIC_SETTINGS = frozenset({
-    "whisper_model",
-    "whisper_device",
-    "whisper_compute_type",
-    "whisper_backend",
-})
+# Node-specific settings - these are empty for the server.
+# The server uses DB settings for everything (configurable via UI).
+# Remote nodes are separate installations with their own .env files
+# and don't share this Settings class.
+NODE_SPECIFIC_SETTINGS = frozenset()
 
 # Default values for comparison (to detect env file overrides)
 _DEFAULTS = {
@@ -105,9 +102,9 @@ def get_settings() -> Settings:
 def _apply_db_overrides() -> None:
     """Apply settings overrides from database (if available).
 
-    Note: Node-specific settings (whisper_model, whisper_device, etc.) are
-    excluded because remote nodes are slim installations without a database.
-    These settings must come from the local .env file on each node/server.
+    All server settings can be configured via the UI and stored in the database.
+    Remote nodes are separate installations with their own Settings class and
+    .env files - they don't share this database.
     """
     global _settings
     if _settings is None:
@@ -123,8 +120,6 @@ def _apply_db_overrides() -> None:
             overrides = repo.get_all()
 
             for key, value in overrides.items():
-                if key in NODE_SPECIFIC_SETTINGS:
-                    continue  # Node-specific settings come from .env
                 if hasattr(_settings, key):
                     current_value = getattr(_settings, key)
                     field_type = type(current_value)
