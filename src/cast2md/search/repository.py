@@ -497,6 +497,7 @@ class TranscriptSearchRepository:
         Returns:
             Number of segments embedded.
         """
+        from cast2md.db.repository import EpisodeRepository
         from cast2md.search.embeddings import (
             DEFAULT_MODEL_NAME,
             generate_embeddings_batch,
@@ -515,9 +516,16 @@ class TranscriptSearchRepository:
         if not segments:
             return 0
 
+        # Get feed_id for the episode
+        episode_repo = EpisodeRepository(self.conn)
+        episode = episode_repo.get_by_id(episode_id)
+        if not episode:
+            return 0
+        feed_id = episode.feed_id
+
         # Remove existing embeddings for this episode
         self.conn.execute(
-            "DELETE FROM segment_embeddings WHERE episode_id = ?",
+            "DELETE FROM segment_vec WHERE episode_id = ?",
             (episode_id,),
         )
 
@@ -525,20 +533,21 @@ class TranscriptSearchRepository:
         texts = [seg.text for seg in segments]
         embeddings = generate_embeddings_batch(texts, model_name)
 
-        # Insert embeddings
+        # Insert embeddings into vec0 table
         for segment, embedding in zip(segments, embeddings):
             self.conn.execute(
                 """
-                INSERT INTO segment_embeddings
-                (episode_id, segment_start, segment_end, text_hash, embedding, model_name)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO segment_vec
+                (episode_id, feed_id, embedding, segment_start, segment_end, text_hash, model_name)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     episode_id,
+                    feed_id,
+                    embedding,
                     segment.start,
                     segment.end,
                     text_hash(segment.text),
-                    embedding,
                     model_name,
                 ),
             )
@@ -556,7 +565,7 @@ class TranscriptSearchRepository:
             Number of embeddings removed.
         """
         cursor = self.conn.execute(
-            "DELETE FROM segment_embeddings WHERE episode_id = ?",
+            "DELETE FROM segment_vec WHERE episode_id = ?",
             (episode_id,),
         )
         self.conn.commit()
@@ -564,15 +573,23 @@ class TranscriptSearchRepository:
 
     def get_embedded_episodes(self) -> set[int]:
         """Get set of episode IDs that have embeddings."""
-        cursor = self.conn.execute(
-            "SELECT DISTINCT episode_id FROM segment_embeddings"
-        )
-        return {row[0] for row in cursor.fetchall()}
+        try:
+            cursor = self.conn.execute(
+                "SELECT DISTINCT episode_id FROM segment_vec"
+            )
+            return {row[0] for row in cursor.fetchall()}
+        except sqlite3.OperationalError:
+            # Table doesn't exist (sqlite-vec not available)
+            return set()
 
     def get_embedding_count(self) -> int:
         """Get total number of segment embeddings."""
-        cursor = self.conn.execute("SELECT COUNT(*) FROM segment_embeddings")
-        return cursor.fetchone()[0]
+        try:
+            cursor = self.conn.execute("SELECT COUNT(*) FROM segment_vec")
+            return cursor.fetchone()[0]
+        except sqlite3.OperationalError:
+            # Table doesn't exist (sqlite-vec not available)
+            return 0
 
     def _vector_search(
         self,
@@ -580,7 +597,7 @@ class TranscriptSearchRepository:
         feed_id: int | None = None,
         limit: int = 50,
     ) -> list[tuple]:
-        """Perform vector similarity search.
+        """Perform vector similarity search using vec0 indexed KNN.
 
         Args:
             query_embedding: Query embedding as bytes.
@@ -595,56 +612,80 @@ class TranscriptSearchRepository:
         if not is_sqlite_vec_available():
             return []
 
-        # Build query with optional feed filter
-        if feed_id is not None:
-            sql = """
-                SELECT
-                    se.episode_id,
-                    e.title as episode_title,
-                    e.feed_id,
-                    COALESCE(f.custom_title, f.title) as feed_title,
-                    e.published_at,
-                    se.segment_start,
-                    se.segment_end,
-                    t.text,
-                    vec_distance_cosine(se.embedding, ?) as distance
-                FROM segment_embeddings se
-                JOIN episode e ON se.episode_id = e.id
-                JOIN feed f ON e.feed_id = f.id
-                LEFT JOIN transcript_fts t ON t.episode_id = se.episode_id
-                    AND t.segment_start = se.segment_start
-                    AND t.segment_end = se.segment_end
-                WHERE e.feed_id = ?
-                ORDER BY distance ASC
-                LIMIT ?
-            """
-            params = (query_embedding, feed_id, limit)
-        else:
-            sql = """
-                SELECT
-                    se.episode_id,
-                    e.title as episode_title,
-                    e.feed_id,
-                    COALESCE(f.custom_title, f.title) as feed_title,
-                    e.published_at,
-                    se.segment_start,
-                    se.segment_end,
-                    t.text,
-                    vec_distance_cosine(se.embedding, ?) as distance
-                FROM segment_embeddings se
-                JOIN episode e ON se.episode_id = e.id
-                JOIN feed f ON e.feed_id = f.id
-                LEFT JOIN transcript_fts t ON t.episode_id = se.episode_id
-                    AND t.segment_start = se.segment_start
-                    AND t.segment_end = se.segment_end
-                ORDER BY distance ASC
-                LIMIT ?
-            """
-            params = (query_embedding, limit)
+        # vec0 KNN search - uses indexed search for O(log n) performance
+        # The MATCH syntax triggers the indexed KNN search
+        # We fetch more results than needed if filtering by feed_id
+        fetch_limit = limit * 3 if feed_id is not None else limit
 
         try:
-            cursor = self.conn.execute(sql, params)
-            return cursor.fetchall()
+            # First, get KNN results from vec0 using indexed search
+            knn_sql = """
+                SELECT
+                    rowid,
+                    episode_id,
+                    feed_id,
+                    segment_start,
+                    segment_end,
+                    distance
+                FROM segment_vec
+                WHERE embedding MATCH ?
+                  AND k = ?
+            """
+            cursor = self.conn.execute(knn_sql, (query_embedding, fetch_limit))
+            knn_results = cursor.fetchall()
+
+            # Filter by feed_id if specified
+            if feed_id is not None:
+                knn_results = [r for r in knn_results if r[2] == feed_id][:limit]
+            else:
+                knn_results = knn_results[:limit]
+
+            if not knn_results:
+                return []
+
+            # Get episode/feed metadata and text for the matched segments
+            results = []
+            for row in knn_results:
+                _, ep_id, f_id, seg_start, seg_end, distance = row
+
+                # Get episode and feed info
+                meta_sql = """
+                    SELECT
+                        e.title as episode_title,
+                        COALESCE(f.custom_title, f.title) as feed_title,
+                        e.published_at
+                    FROM episode e
+                    JOIN feed f ON e.feed_id = f.id
+                    WHERE e.id = ?
+                """
+                meta_cursor = self.conn.execute(meta_sql, (ep_id,))
+                meta_row = meta_cursor.fetchone()
+                if not meta_row:
+                    continue
+
+                # Get text from FTS table
+                text_sql = """
+                    SELECT text FROM transcript_fts
+                    WHERE episode_id = ? AND segment_start = ? AND segment_end = ?
+                """
+                text_cursor = self.conn.execute(text_sql, (ep_id, seg_start, seg_end))
+                text_row = text_cursor.fetchone()
+                text = text_row[0] if text_row else ""
+
+                results.append((
+                    ep_id,
+                    meta_row[0],  # episode_title
+                    f_id,
+                    meta_row[1],  # feed_title
+                    meta_row[2],  # published_at
+                    seg_start,
+                    seg_end,
+                    text,
+                    distance,
+                ))
+
+            return results
+
         except sqlite3.OperationalError as e:
             logger.warning(f"Vector search failed: {e}")
             return []
