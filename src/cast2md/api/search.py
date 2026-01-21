@@ -1,5 +1,7 @@
 """API endpoints for transcript search."""
 
+from typing import Literal
+
 from fastapi import APIRouter, Query
 from pydantic import BaseModel
 
@@ -303,4 +305,111 @@ def get_episode_detail(
         duration=episode.duration_seconds,
         description=episode.description,
         transcript_matches=transcript_matches,
+    )
+
+
+class SemanticResult(BaseModel):
+    """A result from semantic/hybrid search."""
+
+    episode_id: int
+    episode_title: str
+    feed_id: int
+    feed_title: str
+    published_at: str | None
+    segment_start: float
+    segment_end: float
+    text: str
+    score: float
+    match_type: str
+
+
+class SemanticSearchResponse(BaseModel):
+    """Response from semantic search."""
+
+    query: str
+    total: int
+    mode: str
+    results: list[SemanticResult]
+
+
+class SemanticSearchStats(BaseModel):
+    """Statistics about semantic search index."""
+
+    total_embeddings: int
+    embedded_episodes: int
+    embeddings_available: bool
+    sqlite_vec_available: bool
+
+
+@router.get("/semantic", response_model=SemanticSearchResponse)
+def semantic_search(
+    q: str = Query(..., min_length=1, description="Search query"),
+    feed_id: int | None = Query(None, description="Filter by feed ID"),
+    limit: int = Query(20, ge=1, le=100, description="Max results"),
+    mode: Literal["hybrid", "semantic", "keyword"] = Query(
+        "hybrid", description="Search mode: hybrid, semantic, or keyword"
+    ),
+):
+    """Search transcripts using natural language understanding.
+
+    Combines keyword search (FTS5) with semantic search (embeddings)
+    using Reciprocal Rank Fusion for best results.
+
+    Modes:
+    - **hybrid**: Combines keyword + semantic results (recommended)
+    - **semantic**: Only semantic/vector similarity search
+    - **keyword**: Only FTS5 keyword search
+
+    Example queries:
+    - "protein and strength" - finds content about muscle, fitness, nutrition
+    - "machine learning" - exact keyword match
+    - "discussions about building muscle" - conceptual search
+    """
+    with get_db() as conn:
+        search_repo = TranscriptSearchRepository(conn)
+        response = search_repo.hybrid_search(
+            query=q,
+            feed_id=feed_id,
+            limit=limit,
+            mode=mode,
+        )
+
+    return SemanticSearchResponse(
+        query=response.query,
+        total=response.total,
+        mode=response.mode,
+        results=[
+            SemanticResult(
+                episode_id=r.episode_id,
+                episode_title=r.episode_title,
+                feed_id=r.feed_id,
+                feed_title=r.feed_title,
+                published_at=r.published_at,
+                segment_start=r.segment_start,
+                segment_end=r.segment_end,
+                text=r.text,
+                score=r.score,
+                match_type=r.match_type,
+            )
+            for r in response.results
+        ],
+    )
+
+
+@router.get("/semantic/stats", response_model=SemanticSearchStats)
+def get_semantic_stats():
+    """Get statistics about the semantic search index."""
+    from cast2md.db.connection import is_sqlite_vec_available
+    from cast2md.search.embeddings import is_embeddings_available
+
+    with get_db() as conn:
+        search_repo = TranscriptSearchRepository(conn)
+        total_embeddings = search_repo.get_embedding_count()
+        embedded_episodes = len(search_repo.get_embedded_episodes())
+
+    return SemanticSearchStats(
+        total_embeddings=total_embeddings,
+        embedded_episodes=embedded_episodes,
+        embeddings_available=is_embeddings_available(),
+        sqlite_vec_available=is_sqlite_vec_available(),
     )

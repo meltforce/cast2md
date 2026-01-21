@@ -51,6 +51,7 @@ class WorkerManager:
         self._download_threads: list[threading.Thread] = []
         self._transcript_download_threads: list[threading.Thread] = []
         self._transcribe_thread: Optional[threading.Thread] = None
+        self._embed_thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
         self._coordinator = None
 
@@ -98,6 +99,15 @@ class WorkerManager:
         self._transcribe_thread.start()
         logger.info("Started transcription worker")
 
+        # Start embedding worker (single, low priority background task)
+        self._embed_thread = threading.Thread(
+            target=self._embed_worker,
+            name="embed-worker",
+            daemon=True,
+        )
+        self._embed_thread.start()
+        logger.info("Started embedding worker")
+
         # Start distributed transcription coordinator if enabled
         if _is_distributed_enabled():
             from cast2md.distributed import get_coordinator
@@ -131,6 +141,7 @@ class WorkerManager:
             len(self._download_threads)
             + len(self._transcript_download_threads)
             + (1 if self._transcribe_thread else 0)
+            + (1 if self._embed_thread else 0)
         )
         per_worker_timeout = timeout / max(total_workers, 1)
 
@@ -146,9 +157,14 @@ class WorkerManager:
         if self._transcribe_thread:
             self._transcribe_thread.join(timeout=per_worker_timeout)
 
+        # Wait for embedding worker
+        if self._embed_thread:
+            self._embed_thread.join(timeout=per_worker_timeout)
+
         self._download_threads.clear()
         self._transcript_download_threads.clear()
         self._transcribe_thread = None
+        self._embed_thread = None
         logger.info("All workers stopped")
 
     def _download_worker(self):
@@ -197,6 +213,22 @@ class WorkerManager:
 
             except Exception as e:
                 logger.error(f"Transcript download worker error: {e}")
+                time.sleep(5.0)
+
+    def _embed_worker(self):
+        """Worker thread for processing embedding jobs (low priority background task)."""
+        while not self._stop_event.is_set():
+            try:
+                job = self._get_next_job(JobType.EMBED)
+                if job is None:
+                    # No jobs, wait longer since embeddings are low priority
+                    self._stop_event.wait(timeout=10.0)
+                    continue
+
+                self._process_embed_job(job.id, job.episode_id)
+
+            except Exception as e:
+                logger.error(f"Embedding worker error: {e}")
                 time.sleep(5.0)
 
     def _get_next_job(self, job_type: JobType):
@@ -312,6 +344,9 @@ class WorkerManager:
                 job_repo.mark_completed(job_id)
                 logger.info(f"Transcription job {job_id} completed")
 
+                # Queue embedding job for semantic search
+                self._queue_embedding(conn, episode_id)
+
             # Send success notification
             notify_transcription_complete(episode.title, feed.title)
 
@@ -388,6 +423,9 @@ class WorkerManager:
 
                     job_repo.mark_completed(job_id)
 
+                    # Queue embedding job for semantic search
+                    self._queue_embedding(conn, episode.id)
+
                 logger.info(
                     f"Transcript download job {job_id} completed ({result.source}) for episode: {episode.title}"
                 )
@@ -410,6 +448,61 @@ class WorkerManager:
 
         except Exception as e:
             logger.error(f"Transcript download job {job_id} failed: {e}")
+            with get_db() as conn:
+                job_repo = JobRepository(conn)
+                job_repo.mark_failed(job_id, str(e))
+
+    def _process_embed_job(self, job_id: int, episode_id: int):
+        """Process an embedding job for semantic search.
+
+        Generates embeddings for an episode's transcript segments.
+        """
+        logger.info(f"Processing embedding job {job_id} for episode {episode_id}")
+
+        with get_db() as conn:
+            job_repo = JobRepository(conn)
+            episode_repo = EpisodeRepository(conn)
+
+            # Mark job as running
+            job_repo.mark_running(job_id)
+
+            episode = episode_repo.get_by_id(episode_id)
+            if not episode:
+                job_repo.mark_failed(job_id, "Episode not found", retry=False)
+                return
+
+            if not episode.transcript_path:
+                job_repo.mark_failed(job_id, "Episode has no transcript", retry=False)
+                return
+
+        try:
+            from cast2md.search.embeddings import is_embeddings_available
+            from cast2md.search.repository import TranscriptSearchRepository
+
+            if not is_embeddings_available():
+                with get_db() as conn:
+                    job_repo = JobRepository(conn)
+                    job_repo.mark_failed(
+                        job_id, "Embeddings not available (sentence-transformers not installed)", retry=False
+                    )
+                return
+
+            with get_db() as conn:
+                search_repo = TranscriptSearchRepository(conn)
+                count = search_repo.index_episode_embeddings(
+                    episode_id=episode_id,
+                    transcript_path=episode.transcript_path,
+                )
+
+                job_repo = JobRepository(conn)
+                job_repo.mark_completed(job_id)
+
+            logger.info(
+                f"Embedding job {job_id} completed: {count} segments embedded for episode {episode_id}"
+            )
+
+        except Exception as e:
+            logger.error(f"Embedding job {job_id} failed: {e}")
             with get_db() as conn:
                 job_repo = JobRepository(conn)
                 job_repo.mark_failed(job_id, str(e))
@@ -468,6 +561,9 @@ class WorkerManager:
                         f"Failed to index downloaded transcript for episode {episode.id}: {index_error}"
                     )
 
+                # Queue embedding job for semantic search
+                self._queue_embedding(conn, episode.id)
+
                 logger.info(
                     f"Downloaded transcript ({result.source}) for episode: {episode.title}"
                 )
@@ -490,6 +586,32 @@ class WorkerManager:
         )
         logger.info(f"Queued Whisper transcription for episode {episode_id}")
 
+    def _queue_embedding(self, conn, episode_id: int):
+        """Queue an embedding job for semantic search.
+
+        Called after a transcript is created (transcription or download).
+        Low priority since embeddings are not required for basic functionality.
+        """
+        from cast2md.db.connection import is_sqlite_vec_available
+        from cast2md.search.embeddings import is_embeddings_available
+
+        # Check if embedding infrastructure is available
+        if not is_embeddings_available() or not is_sqlite_vec_available():
+            return
+
+        job_repo = JobRepository(conn)
+
+        # Check if already queued
+        if job_repo.has_pending_job(episode_id, JobType.EMBED):
+            return
+
+        job_repo.create(
+            episode_id=episode_id,
+            job_type=JobType.EMBED,
+            priority=5,  # Medium priority for new transcripts
+        )
+        logger.debug(f"Queued embedding job for episode {episode_id}")
+
     @property
     def is_running(self) -> bool:
         """Check if workers are running."""
@@ -503,16 +625,19 @@ class WorkerManager:
             download_counts = job_repo.count_by_status(JobType.DOWNLOAD)
             transcribe_counts = job_repo.count_by_status(JobType.TRANSCRIBE)
             transcript_download_counts = job_repo.count_by_status(JobType.TRANSCRIPT_DOWNLOAD)
+            embed_counts = job_repo.count_by_status(JobType.EMBED)
 
             download_running = job_repo.get_running_jobs(JobType.DOWNLOAD)
             transcribe_running = job_repo.get_running_jobs(JobType.TRANSCRIBE)
             transcript_download_running = job_repo.get_running_jobs(JobType.TRANSCRIPT_DOWNLOAD)
+            embed_running = job_repo.get_running_jobs(JobType.EMBED)
 
         status = {
             "running": self._running,
             "download_workers": len(self._download_threads),
             "transcript_download_workers": len(self._transcript_download_threads),
             "transcribe_workers": 1 if self._transcribe_thread else 0,
+            "embed_workers": 1 if self._embed_thread else 0,
             "download_queue": {
                 "queued": download_counts.get(JobStatus.QUEUED.value, 0),
                 "running": len(download_running),
@@ -530,6 +655,12 @@ class WorkerManager:
                 "running": len(transcribe_running),
                 "completed": transcribe_counts.get(JobStatus.COMPLETED.value, 0),
                 "failed": transcribe_counts.get(JobStatus.FAILED.value, 0),
+            },
+            "embed_queue": {
+                "queued": embed_counts.get(JobStatus.QUEUED.value, 0),
+                "running": len(embed_running),
+                "completed": embed_counts.get(JobStatus.COMPLETED.value, 0),
+                "failed": embed_counts.get(JobStatus.FAILED.value, 0),
             },
             "distributed_enabled": _is_distributed_enabled(),
         }

@@ -52,6 +52,40 @@ def search_transcripts(query: str, feed_id: int | None = None, limit: int = 20) 
         }
 
 
+def semantic_search(
+    query: str, feed_id: int | None = None, limit: int = 20, mode: str = "hybrid"
+) -> dict:
+    """Semantic search via API."""
+    with get_client() as client:
+        params = {"q": query, "limit": limit, "mode": mode}
+        if feed_id:
+            params["feed_id"] = feed_id
+        resp = client.get("/api/search/semantic", params=params)
+        resp.raise_for_status()
+        data = resp.json()
+        return {
+            "query": data["query"],
+            "total": data["total"],
+            "mode": data["mode"],
+            "hint": "Use cast2md://episodes/{episode_id}/transcript to read full transcript",
+            "results": [
+                {
+                    "episode_id": r["episode_id"],
+                    "episode_title": r["episode_title"],
+                    "feed_id": r["feed_id"],
+                    "feed_title": r["feed_title"],
+                    "published_at": r["published_at"],
+                    "segment_start": r["segment_start"],
+                    "segment_end": r["segment_end"],
+                    "text": r["text"],
+                    "score": r["score"],
+                    "match_type": r["match_type"],
+                }
+                for r in data["results"]
+            ],
+        }
+
+
 def search_episodes(query: str, feed_id: int | None = None, limit: int = 25) -> dict:
     """Search episodes via API."""
     with get_client() as client:

@@ -1,5 +1,6 @@
 """Database connection management."""
 
+import logging
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
@@ -8,6 +9,76 @@ from typing import Generator
 from cast2md.config.settings import get_settings
 from cast2md.db.migrations import run_migrations
 from cast2md.db.schema import get_schema
+
+logger = logging.getLogger(__name__)
+
+# Track if sqlite-vec extension is available
+_sqlite_vec_available: bool | None = None
+
+
+def _load_sqlite_vec(conn: sqlite3.Connection) -> bool:
+    """Load the sqlite-vec extension for vector similarity search.
+
+    Args:
+        conn: SQLite connection to load extension into.
+
+    Returns:
+        True if extension loaded successfully, False otherwise.
+    """
+    global _sqlite_vec_available
+
+    # Return cached result if we've already checked
+    if _sqlite_vec_available is not None:
+        if _sqlite_vec_available:
+            try:
+                import sqlite_vec
+
+                conn.enable_load_extension(True)
+                sqlite_vec.load(conn)
+                conn.enable_load_extension(False)
+            except Exception:
+                pass
+        return _sqlite_vec_available
+
+    try:
+        import sqlite_vec
+
+        conn.enable_load_extension(True)
+        sqlite_vec.load(conn)
+        conn.enable_load_extension(False)
+        _sqlite_vec_available = True
+        logger.info("sqlite-vec extension loaded successfully")
+        return True
+    except ImportError:
+        _sqlite_vec_available = False
+        logger.warning("sqlite-vec not installed, semantic search will be unavailable")
+        return False
+    except Exception as e:
+        _sqlite_vec_available = False
+        logger.warning(f"Failed to load sqlite-vec extension: {e}")
+        return False
+
+
+def is_sqlite_vec_available() -> bool:
+    """Check if sqlite-vec extension is available.
+
+    Returns:
+        True if sqlite-vec can be loaded, False otherwise.
+    """
+    global _sqlite_vec_available
+    if _sqlite_vec_available is None:
+        # Do a test load to check availability
+        try:
+            import sqlite_vec
+
+            test_conn = sqlite3.connect(":memory:")
+            test_conn.enable_load_extension(True)
+            sqlite_vec.load(test_conn)
+            test_conn.close()
+            _sqlite_vec_available = True
+        except Exception:
+            _sqlite_vec_available = False
+    return _sqlite_vec_available
 
 
 def get_connection(db_path: Path | None = None) -> sqlite3.Connection:
@@ -32,6 +103,9 @@ def get_connection(db_path: Path | None = None) -> sqlite3.Connection:
 
     # Set busy timeout to 5 seconds
     conn.execute("PRAGMA busy_timeout=5000")
+
+    # Load sqlite-vec extension for vector similarity search
+    _load_sqlite_vec(conn)
 
     return conn
 

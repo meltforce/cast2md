@@ -24,6 +24,7 @@ class JobType(str, Enum):
     DOWNLOAD = "download"
     TRANSCRIBE = "transcribe"
     TRANSCRIPT_DOWNLOAD = "transcript_download"
+    EMBED = "embed"
 
 
 class JobStatus(str, Enum):

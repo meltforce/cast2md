@@ -49,6 +49,55 @@ def reset_orphaned_jobs():
             logger.info(f"Reset orphaned jobs: {requeued} requeued, {failed} failed (max attempts)")
 
 
+def queue_missing_embeddings():
+    """Queue embedding jobs for episodes that have transcripts but no embeddings.
+
+    Runs on startup to backfill embeddings for existing transcripts.
+    Uses low priority (10) so these don't interfere with normal operations.
+    """
+    from cast2md.db.connection import get_db, is_sqlite_vec_available
+    from cast2md.db.models import EpisodeStatus, JobType
+    from cast2md.db.repository import EpisodeRepository, JobRepository
+    from cast2md.search.embeddings import is_embeddings_available
+    from cast2md.search.repository import TranscriptSearchRepository
+
+    # Check if embedding infrastructure is available
+    if not is_embeddings_available():
+        logger.info("Embeddings not available (sentence-transformers not installed), skipping backfill")
+        return
+
+    if not is_sqlite_vec_available():
+        logger.info("sqlite-vec not available, skipping embedding backfill")
+        return
+
+    with get_db() as conn:
+        episode_repo = EpisodeRepository(conn)
+        job_repo = JobRepository(conn)
+        search_repo = TranscriptSearchRepository(conn)
+
+        # Get episodes with transcripts
+        completed_episodes = episode_repo.get_by_status(EpisodeStatus.COMPLETED)
+
+        # Get episodes that already have embeddings
+        embedded_episode_ids = search_repo.get_embedded_episodes()
+
+        # Queue jobs for episodes without embeddings
+        queued = 0
+        for episode in completed_episodes:
+            if episode.id not in embedded_episode_ids and episode.transcript_path:
+                # Check if there's already a pending embed job
+                if not job_repo.has_pending_job(episode.id, JobType.EMBED):
+                    job_repo.create(
+                        episode_id=episode.id,
+                        job_type=JobType.EMBED,
+                        priority=10,  # Low priority for backfill
+                    )
+                    queued += 1
+
+        if queued > 0:
+            logger.info(f"Queued {queued} embedding jobs for backfill")
+
+
 def setup_signal_handlers():
     """Setup signal handlers for graceful shutdown.
 
@@ -90,6 +139,9 @@ async def lifespan(app: FastAPI):
 
     # Reset any orphaned jobs from previous run
     reset_orphaned_jobs()
+
+    # Queue embedding jobs for episodes missing embeddings
+    queue_missing_embeddings()
 
     # Start scheduler
     start_scheduler(interval_minutes=60)

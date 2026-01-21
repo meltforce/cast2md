@@ -51,6 +51,76 @@ def search_transcripts(
 
 
 @mcp.tool()
+def semantic_search(
+    query: str,
+    feed_id: int | None = None,
+    limit: int = 20,
+    mode: str = "hybrid",
+) -> dict:
+    """Search transcripts using natural language understanding.
+
+    Uses hybrid search combining keyword matching with semantic similarity
+    to find conceptually related content even without exact keyword matches.
+
+    Args:
+        query: Natural language search query (e.g., "protein and strength",
+               "discussions about building muscle").
+        feed_id: Optional feed ID to limit search to a specific podcast.
+        limit: Maximum number of results to return (default: 20).
+        mode: Search mode - "hybrid" (recommended), "semantic", or "keyword".
+
+    Returns:
+        Search results with matching segments, scores, and match types.
+
+    Example:
+        semantic_search("discussions about building muscle")
+        # Returns episodes about weightlifting, nutrition, fitness
+        # even if they don't explicitly say "muscle"
+    """
+    if remote.is_remote_mode():
+        return remote.semantic_search(query, feed_id, limit, mode)
+
+    from cast2md.db.connection import get_db
+    from cast2md.search.repository import TranscriptSearchRepository
+
+    # Validate mode
+    valid_modes = ("hybrid", "semantic", "keyword")
+    if mode not in valid_modes:
+        mode = "hybrid"
+
+    with get_db() as conn:
+        search_repo = TranscriptSearchRepository(conn)
+        response = search_repo.hybrid_search(
+            query=query,
+            feed_id=feed_id,
+            limit=limit,
+            mode=mode,  # type: ignore
+        )
+
+    return {
+        "query": response.query,
+        "total": response.total,
+        "mode": response.mode,
+        "hint": "Use cast2md://episodes/{episode_id}/transcript to read full transcript",
+        "results": [
+            {
+                "episode_id": r.episode_id,
+                "episode_title": r.episode_title,
+                "feed_id": r.feed_id,
+                "feed_title": r.feed_title,
+                "published_at": r.published_at,
+                "segment_start": r.segment_start,
+                "segment_end": r.segment_end,
+                "text": r.text,
+                "score": r.score,
+                "match_type": r.match_type,
+            }
+            for r in response.results
+        ],
+    }
+
+
+@mcp.tool()
 def search_episodes(
     query: str,
     feed_id: int | None = None,

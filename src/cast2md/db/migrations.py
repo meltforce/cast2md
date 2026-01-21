@@ -58,6 +58,26 @@ MIGRATIONS = [
             "ALTER TABLE feed ADD COLUMN pocketcasts_uuid TEXT",
         ],
     },
+    {
+        "version": 7,
+        "description": "Add segment_embeddings table for semantic search",
+        "sql": [
+            """
+            CREATE TABLE IF NOT EXISTS segment_embeddings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                episode_id INTEGER NOT NULL REFERENCES episode(id) ON DELETE CASCADE,
+                segment_start REAL NOT NULL,
+                segment_end REAL NOT NULL,
+                text_hash TEXT NOT NULL,
+                embedding BLOB NOT NULL,
+                model_name TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                UNIQUE(episode_id, segment_start, segment_end)
+            )
+            """,
+            "CREATE INDEX IF NOT EXISTS idx_segment_embeddings_episode ON segment_embeddings(episode_id)",
+        ],
+    },
 ]
 
 
