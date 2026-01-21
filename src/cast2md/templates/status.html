@@ -87,7 +87,9 @@
                     {% endif %}
                 </td>
                 <td>
-                    {% if worker.status == 'stuck' %}
+                    {% if worker.type == 'transcript_download_summary' %}
+                    -
+                    {% elif worker.status == 'stuck' %}
                     <span style="color: var(--pico-del-color);">needs cancellation</span>
                     {% elif worker.progress is not none %}
                     <div class="progress-container">
