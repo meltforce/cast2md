@@ -697,6 +697,7 @@ class TranscriptSearchRepository:
         query: str,
         feed_id: int | None = None,
         limit: int = 20,
+        offset: int = 0,
         mode: Literal["hybrid", "semantic", "keyword"] = "hybrid",
     ) -> HybridSearchResponse:
         """Perform hybrid search combining keyword and semantic search.
@@ -708,6 +709,7 @@ class TranscriptSearchRepository:
             query: Search query.
             feed_id: Optional feed ID to filter results.
             limit: Maximum results to return.
+            offset: Offset for pagination.
             mode: Search mode - "hybrid", "semantic", or "keyword".
 
         Returns:
@@ -819,8 +821,8 @@ class TranscriptSearchRepository:
             reverse=True,
         )
 
-        # Apply limit
-        limited = sorted_results[:limit]
+        # Apply pagination (offset + limit)
+        limited = sorted_results[offset:offset + limit]
 
         results = [
             HybridSearchResult(

@@ -655,11 +655,23 @@ def transcript_search_page(
     request: Request,
     q: str | None = None,
     feed_id: str | None = None,
+    mode: str = "hybrid",
     page: int = 1,
     per_page: int = 20,
 ):
-    """Unified search page for episodes and transcripts."""
+    """Unified search page for episodes and transcripts.
+
+    Supports three search modes:
+    - hybrid: Combines keyword and semantic search using RRF
+    - keyword: Traditional FTS5 full-text search
+    - semantic: Vector similarity search for conceptual matching
+    """
     from cast2md.search.repository import TranscriptSearchRepository
+
+    # Validate mode
+    valid_modes = ("hybrid", "keyword", "semantic")
+    if mode not in valid_modes:
+        mode = "hybrid"
 
     # Convert feed_id to int or None (handles empty string from form)
     feed_id_int: int | None = None
@@ -672,8 +684,9 @@ def transcript_search_page(
     results = []
     total = 0
     total_pages = 1
-    index_stats = {"total_segments": 0, "indexed_episodes": 0}
+    index_stats = {"total_segments": 0, "indexed_episodes": 0, "embedded_episodes": 0, "total_embeddings": 0}
     feeds = []
+    actual_mode = mode
 
     with get_db() as conn:
         feed_repo = FeedRepository(conn)
@@ -682,23 +695,27 @@ def transcript_search_page(
         # Get all feeds for dropdown
         feeds = feed_repo.get_all()
 
-        # Get index stats
+        # Get index stats including semantic search stats
         index_stats = {
             "total_segments": search_repo.get_indexed_count(),
             "indexed_episodes": len(search_repo.get_indexed_episodes()),
+            "embedded_episodes": len(search_repo.get_embedded_episodes()),
+            "total_embeddings": search_repo.get_embedding_count(),
         }
 
-        # Perform unified search if query provided
+        # Perform hybrid search if query provided
         if q:
             offset = (page - 1) * per_page
-            response = search_repo.unified_search(
+            response = search_repo.hybrid_search(
                 query=q,
                 feed_id=feed_id_int,
                 limit=per_page,
                 offset=offset,
+                mode=mode,  # type: ignore[arg-type]
             )
             results = response.results
             total = response.total
+            actual_mode = response.mode
             total_pages = max(1, (total + per_page - 1) // per_page)
 
     return templates.TemplateResponse(
@@ -714,5 +731,7 @@ def transcript_search_page(
             "per_page": per_page,
             "total_pages": total_pages,
             "index_stats": index_stats,
+            "mode": mode,
+            "actual_mode": actual_mode,
         },
     )
