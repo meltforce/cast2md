@@ -91,7 +91,7 @@ check_github_auth() {
     print_step "2/7" "GitHub authentication"
 
     # Try to access repo without auth first (in case it's public)
-    if git ls-remote https://github.com/linus/cast2md.git HEAD &> /dev/null; then
+    if git ls-remote https://github.com/meltforce/cast2md.git HEAD &> /dev/null; then
         print_success "Repository is public, no auth needed"
         GITHUB_TOKEN=""
         return
@@ -101,7 +101,7 @@ check_github_auth() {
     if [ -f "$TOKEN_FILE" ]; then
         GITHUB_TOKEN=$(cat "$TOKEN_FILE")
         # Validate token
-        if git ls-remote "https://${GITHUB_TOKEN}@github.com/linus/cast2md.git" HEAD &> /dev/null; then
+        if git ls-remote "https://${GITHUB_TOKEN}@github.com/meltforce/cast2md.git" HEAD &> /dev/null; then
             print_success "Using saved token"
             return
         else
@@ -118,7 +118,7 @@ check_github_auth() {
     echo ""
 
     # Validate token
-    if git ls-remote "https://${GITHUB_TOKEN}@github.com/linus/cast2md.git" HEAD &> /dev/null; then
+    if git ls-remote "https://${GITHUB_TOKEN}@github.com/meltforce/cast2md.git" HEAD &> /dev/null; then
         # Save token
         mkdir -p "$INSTALL_DIR"
         echo "$GITHUB_TOKEN" > "$TOKEN_FILE"
@@ -136,9 +136,9 @@ clone_repo() {
     mkdir -p "$INSTALL_DIR"
 
     if [ -n "$GITHUB_TOKEN" ]; then
-        git clone "https://${GITHUB_TOKEN}@github.com/linus/cast2md.git" "$REPO_DIR" 2>/dev/null
+        git clone "https://${GITHUB_TOKEN}@github.com/meltforce/cast2md.git" "$REPO_DIR" 2>/dev/null
     else
-        git clone "https://github.com/linus/cast2md.git" "$REPO_DIR" 2>/dev/null
+        git clone "https://github.com/meltforce/cast2md.git" "$REPO_DIR" 2>/dev/null
     fi
 
     print_success "Cloned to $REPO_DIR"
@@ -285,7 +285,7 @@ update_install() {
     echo "Pulling latest changes..."
     cd "$REPO_DIR"
     if [ -n "$GITHUB_TOKEN" ]; then
-        git remote set-url origin "https://${GITHUB_TOKEN}@github.com/linus/cast2md.git"
+        git remote set-url origin "https://${GITHUB_TOKEN}@github.com/meltforce/cast2md.git"
     fi
     git pull
 
