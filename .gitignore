@@ -89,6 +89,7 @@ screenshots/
 # Claude Code
 .claude/
 CLAUDE.md
+.mcp.json
 
 # Test client
 test_client/

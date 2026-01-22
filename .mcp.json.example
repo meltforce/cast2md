@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "podcasts": {
+      "command": "/path/to/cast2md",
+      "args": ["mcp"],
+      "env": {
+        "MCP_API_URL": "https://your-server.example.com"
+      }
+    }
+  }
+}
