@@ -66,6 +66,13 @@ def _get_configurable_settings() -> dict:
             "min": 1,
             "max": 48,
         },
+        "transcript_unavailable_age_days": {
+            "type": "int",
+            "label": "Transcript Unavailable Age (days)",
+            "description": "Episodes older than this without external transcript URLs are marked unavailable",
+            "min": 7,
+            "max": 365,
+        },
         "storage_path": {
             "type": "path",
             "label": "Storage Path",

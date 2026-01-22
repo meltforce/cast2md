@@ -477,26 +477,46 @@ class WorkerManager:
 
             else:
                 # No transcript available from any provider (result is None)
-                # Mark job as completed (not failed - this is expected)
-                # Episode stays in PENDING status for user to manually queue download
+                # Check if episode is old - if so, mark as unavailable
+                # Otherwise, leave in PENDING for user to manually queue download
+                settings = get_settings()
+                unavailable_age = timedelta(days=settings.transcript_unavailable_age_days)
+                episode_age = timedelta(days=365)  # Default to old if no published date
+                if episode.published_at:
+                    episode_age = now - episode.published_at
+
                 with get_db_write() as conn:
                     episode_repo = EpisodeRepository(conn)
                     job_repo = JobRepository(conn)
 
-                    # Record that we checked but found nothing
-                    episode_repo.update_transcript_check(
-                        episode.id,
-                        status=EpisodeStatus.PENDING,
-                        checked_at=now,
-                        next_retry_at=None,
-                        failure_reason=None,
-                    )
-                    job_repo.mark_completed(job_id)
+                    if episode_age >= unavailable_age:
+                        # Old episode with no external transcript - mark as unavailable
+                        episode_repo.update_transcript_check(
+                            episode.id,
+                            status=EpisodeStatus.TRANSCRIPT_UNAVAILABLE,
+                            checked_at=now,
+                            next_retry_at=None,
+                            failure_reason="no_external_url_old_episode",
+                        )
+                        logger.info(
+                            f"Marked old episode as transcript unavailable: {episode.title} "
+                            f"(age: {episode_age.days}d)"
+                        )
+                    else:
+                        # Newer episode - leave in PENDING for potential future transcripts
+                        episode_repo.update_transcript_check(
+                            episode.id,
+                            status=EpisodeStatus.PENDING,
+                            checked_at=now,
+                            next_retry_at=None,
+                            failure_reason=None,
+                        )
+                        logger.info(
+                            f"No external transcript for episode: {episode.title} "
+                            f"(age: {episode_age.days}d, stays PENDING)"
+                        )
 
-                logger.info(
-                    f"No external transcript available for episode: {episode.title} "
-                    "(episode stays PENDING for manual download)"
-                )
+                    job_repo.mark_completed(job_id)
 
         except Exception as e:
             logger.error(f"Transcript download job {job_id} failed: {e}")

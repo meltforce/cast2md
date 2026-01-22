@@ -4,14 +4,14 @@ import json
 import logging
 import re
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
 import httpx
 
 from cast2md.config.settings import get_settings
 from cast2md.db.connection import get_db
-from cast2md.db.models import Episode, Feed, JobType
+from cast2md.db.models import Episode, EpisodeStatus, Feed, JobType
 from cast2md.db.repository import EpisodeRepository, FeedRepository, JobRepository
 from cast2md.feed.parser import ParsedFeed, parse_feed
 
@@ -329,6 +329,9 @@ def discover_new_episodes(
         # Episodes that get transcripts won't need audio download
         if auto_queue and new_episode_ids:
             episodes_to_queue = new_episode_ids[:1] if queue_only_latest else new_episode_ids
+            settings = get_settings()
+            unavailable_age = timedelta(days=settings.transcript_unavailable_age_days)
+            now = datetime.now()
 
             for episode_id in episodes_to_queue:
                 episode = episode_repo.get_by_id(episode_id)
@@ -340,6 +343,27 @@ def discover_new_episodes(
                 if job_repo.has_pending_job(episode_id, JobType.TRANSCRIPT_DOWNLOAD):
                     continue
                 if job_repo.has_pending_job(episode_id, JobType.DOWNLOAD):
+                    continue
+
+                # Check if episode is old and has no external transcript URL
+                has_external_url = episode.transcript_url or episode.pocketcasts_transcript_url
+                episode_age = timedelta(days=365)  # Default to old if no published date
+                if episode.published_at:
+                    episode_age = now - episode.published_at
+
+                if not has_external_url and episode_age >= unavailable_age:
+                    # Old episode with no external URL - mark as unavailable, skip queuing
+                    episode_repo.update_transcript_check(
+                        episode.id,
+                        status=EpisodeStatus.TRANSCRIPT_UNAVAILABLE,
+                        checked_at=now,
+                        next_retry_at=None,
+                        failure_reason="no_external_url_old_episode",
+                    )
+                    logger.debug(
+                        f"Marked old episode as transcript unavailable: {episode.title} "
+                        f"(age: {episode_age.days}d, threshold: {unavailable_age.days}d)"
+                    )
                     continue
 
                 # Queue transcript download job with priority 1 (high) for new episodes
