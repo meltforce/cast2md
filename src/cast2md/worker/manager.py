@@ -499,9 +499,18 @@ class WorkerManager:
 
         except Exception as e:
             logger.error(f"Transcript download job {job_id} failed: {e}")
-            with get_db() as conn:
-                job_repo = JobRepository(conn)
-                job_repo.mark_failed(job_id, str(e))
+            # Retry marking as failed with exponential backoff to handle database locks
+            for attempt in range(3):
+                try:
+                    with get_db() as conn:
+                        job_repo = JobRepository(conn)
+                        job_repo.mark_failed(job_id, str(e))
+                    break
+                except Exception as mark_error:
+                    if attempt < 2:
+                        time.sleep(0.5 * (2 ** attempt))  # 0.5s, 1s, 2s
+                    else:
+                        logger.error(f"Failed to mark job {job_id} as failed after retries: {mark_error}")
 
     def _process_embed_job(self, job_id: int, episode_id: int):
         """Process an embedding job for semantic search.

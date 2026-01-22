@@ -232,6 +232,7 @@ def feed_detail(
     with get_db() as conn:
         feed_repo = FeedRepository(conn)
         episode_repo = EpisodeRepository(conn)
+        job_repo = JobRepository(conn)
 
         feed = feed_repo.get_by_id(feed_id)
         if not feed:
@@ -270,6 +271,15 @@ def feed_detail(
         # Get transcript source stats for this feed
         transcript_stats = episode_repo.get_transcript_source_stats(feed_id)
 
+        # Get set of episode IDs that have pending/running jobs (for "queued" display)
+        episode_ids = [ep.id for ep in episodes]
+        queued_episode_ids = set()
+        for ep_id in episode_ids:
+            if job_repo.has_pending_job(ep_id, JobType.TRANSCRIPT_DOWNLOAD):
+                queued_episode_ids.add(ep_id)
+            elif job_repo.has_pending_job(ep_id, JobType.DOWNLOAD):
+                queued_episode_ids.add(ep_id)
+
     return templates.TemplateResponse(
         "feed_detail.html",
         {
@@ -286,6 +296,7 @@ def feed_detail(
             "status_filter": status or "",
             "statuses": [s.value for s in EpisodeStatus],
             "transcript_stats": transcript_stats,
+            "queued_episode_ids": queued_episode_ids,
         },
     )
 
