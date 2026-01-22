@@ -184,10 +184,13 @@
     </thead>
     <tbody>
         {% for episode in episodes %}
-        <tr data-has-external-transcript="{{ 'true' if (episode.transcript_url or episode.pocketcasts_transcript_url) else 'false' }}">
+        <tr id="episode-row-{{ episode.id }}"
+            data-episode-id="{{ episode.id }}"
+            data-has-external-transcript="{{ 'true' if (episode.transcript_url or episode.pocketcasts_transcript_url) else 'false' }}"
+            data-is-queued="{{ 'true' if episode.id in queued_episode_ids else 'false' }}">
             <td>
                 <input type="checkbox" class="episode-checkbox" value="{{ episode.id }}"
-                       onchange="updateSelectedCount()" {% if episode.status.value != 'pending' %}disabled{% endif %}>
+                       onchange="updateSelectedCount()" {% if episode.status.value != 'pending' or episode.id in queued_episode_ids %}disabled{% endif %}>
             </td>
             <td>
                 {% set ep_params = [] %}
@@ -201,10 +204,16 @@
             </td>
             <td style="white-space: nowrap;">{{ episode.published_at.strftime('%Y-%m-%d') if episode.published_at else 'Unknown' }}</td>
             <td style="white-space: nowrap;">
+                {% if episode.id in queued_episode_ids and episode.status.value == 'pending' %}
+                <span class="status-badge status-downloading">queued</span>
+                {% else %}
                 <span class="status-badge status-{{ episode.status.value }}">{{ episode.status.value }}</span>
+                {% endif %}
             </td>
             <td class="actions" style="white-space: nowrap;">
-                {% if episode.status.value == 'pending' %}
+                {% if episode.id in queued_episode_ids %}
+                    <button class="outline" disabled>...</button>
+                {% elif episode.status.value == 'pending' %}
                     {% if episode.transcript_url or episode.pocketcasts_transcript_url %}
                         <button class="outline" onclick="tryTranscript({{ episode.id }}, this)">Get Transcript</button>
                     {% else %}
@@ -400,13 +409,28 @@ function updateEpisodeRow(row, ep) {
     const actionsCell = row.querySelector('.actions');
     const checkbox = row.querySelector('.episode-checkbox');
     const hasExternalTranscript = row.dataset.hasExternalTranscript === 'true';
+    const wasQueued = row.dataset.isQueued === 'true';
+
+    // Determine if this is a "queued" state (job is running but episode status is still pending)
+    // This happens for fast transcript downloads
+    const isQueued = wasQueued && ep.status === 'pending';
 
     // Update status badge
-    statusBadge.className = `status-badge status-${ep.status}`;
-    statusBadge.textContent = ep.status;
+    if (isQueued) {
+        statusBadge.className = 'status-badge status-downloading';
+        statusBadge.textContent = 'queued';
+    } else {
+        statusBadge.className = `status-badge status-${ep.status}`;
+        statusBadge.textContent = ep.status;
+        // Clear queued flag once status changes
+        row.dataset.isQueued = 'false';
+    }
 
     // Update actions based on new status
-    if (ep.status === 'pending') {
+    if (isQueued) {
+        actionsCell.innerHTML = '<button class="outline" disabled>...</button>';
+        if (checkbox) checkbox.disabled = true;
+    } else if (ep.status === 'pending') {
         if (hasExternalTranscript) {
             actionsCell.innerHTML = `<button class="outline" onclick="tryTranscript(${ep.id}, this)">Get Transcript</button>`;
         } else {
@@ -429,7 +453,7 @@ function updateEpisodeRow(row, ep) {
         actionsCell.innerHTML = `<button class="outline secondary" onclick="retryEpisode(${ep.id})">Retry</button>`;
         if (checkbox) checkbox.disabled = true;
     } else {
-        // downloading, transcribing, queued - show disabled button to prevent layout jump
+        // downloading, transcribing - show disabled button to prevent layout jump
         actionsCell.innerHTML = '<button class="outline" disabled>...</button>';
         if (checkbox) checkbox.disabled = true;
     }
