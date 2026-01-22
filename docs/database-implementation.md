@@ -308,6 +308,25 @@ Both database code paths remain functional.
 - **Cons:** Requires separate server, more setup
 - **Best for:** Multi-worker deployments, high throughput
 
+### Real-World Benchmark (January 2026)
+
+Test configuration: 10 transcript download workers, PostgreSQL with pgvector.
+
+| Feed | Episodes | Processing Time | Transcript Source |
+|------|----------|-----------------|-------------------|
+| Podcasting 2.0 | 180 | ~40 seconds | `podcast2.0:srt` (native) |
+| Acquired | 212 | ~25 seconds | `pocketcasts` (auto-generated) |
+| Lex Fridman | 490 | ~50 seconds | Mixed |
+
+**Key findings:**
+
+- **Throughput:** ~10 transcripts/second with 10 parallel workers
+- **Zero lock errors:** No "database is locked" errors during high-throughput processing
+- **Stable worker count:** Workers consistently reported as 10/10 running (SQLite would show erratic counts like 3/10 due to lock contention)
+- **API responsiveness:** REST API remained responsive during heavy background processing
+
+With SQLite, the same workload caused frequent "database is locked" errors and required limiting workers to 2. PostgreSQL eliminated this bottleneck entirely.
+
 ### Vector Search Performance
 
 | Operation | sqlite-vec | pgvector (HNSW) |
