@@ -167,7 +167,8 @@ class EpisodeRepository:
     EPISODE_COLUMNS = """id, feed_id, guid, title, description, audio_url, duration_seconds,
                          published_at, status, audio_path, transcript_path, transcript_url,
                          transcript_model, transcript_source, transcript_type,
-                         pocketcasts_transcript_url, link, author,
+                         pocketcasts_transcript_url, transcript_checked_at, next_transcript_retry_at,
+                         transcript_failure_reason, link, author,
                          error_message, created_at, updated_at"""
 
     def __init__(self, conn: sqlite3.Connection):
@@ -404,6 +405,79 @@ class EpisodeRepository:
             (pocketcasts_transcript_url, now, episode_id),
         )
         self.conn.commit()
+
+    def update_transcript_check(
+        self,
+        episode_id: int,
+        status: EpisodeStatus,
+        checked_at: datetime | None,
+        next_retry_at: datetime | None,
+        failure_reason: str | None,
+    ) -> None:
+        """Update episode transcript check status and timing.
+
+        Called after a transcript download attempt to record the result
+        and schedule any retry.
+
+        Args:
+            episode_id: Episode ID to update.
+            status: New status (PENDING, TRANSCRIPT_PENDING, or TRANSCRIPT_UNAVAILABLE).
+            checked_at: When the check was performed (None to clear).
+            next_retry_at: When to retry (for TRANSCRIPT_PENDING), or None.
+            failure_reason: Type of failure (e.g., 'forbidden'), or None.
+        """
+        now = datetime.now().isoformat()
+        checked_str = checked_at.isoformat() if checked_at else None
+        retry_str = next_retry_at.isoformat() if next_retry_at else None
+        self.conn.execute(
+            """
+            UPDATE episode
+            SET status = ?, transcript_checked_at = ?, next_transcript_retry_at = ?,
+                transcript_failure_reason = ?, updated_at = ?
+            WHERE id = ?
+            """,
+            (status.value, checked_str, retry_str, failure_reason, now, episode_id),
+        )
+        self.conn.commit()
+
+    def get_episodes_for_transcript_retry(self) -> list[Episode]:
+        """Get episodes that are due for transcript retry.
+
+        Returns episodes with:
+        - status = 'transcript_pending'
+        - next_transcript_retry_at <= now
+
+        Returns:
+            List of episodes ready for retry.
+        """
+        now = datetime.now().isoformat()
+        cursor = self.conn.execute(
+            f"""
+            SELECT {self.EPISODE_COLUMNS} FROM episode
+            WHERE status = ?
+              AND next_transcript_retry_at IS NOT NULL
+              AND next_transcript_retry_at <= ?
+            ORDER BY next_transcript_retry_at ASC
+            """,
+            (EpisodeStatus.TRANSCRIPT_PENDING.value, now),
+        )
+        return [Episode.from_row(row) for row in cursor.fetchall()]
+
+    def get_status_counts_for_feed(self, feed_id: int) -> dict[str, int]:
+        """Get episode counts by status for a feed.
+
+        Returns:
+            Dict mapping status values to counts.
+        """
+        cursor = self.conn.execute(
+            """
+            SELECT status, COUNT(*) FROM episode
+            WHERE feed_id = ?
+            GROUP BY status
+            """,
+            (feed_id,),
+        )
+        return dict(cursor.fetchall())
 
     def get_retranscribable_episodes(
         self, feed_id: int, current_model: str

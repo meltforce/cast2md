@@ -629,6 +629,8 @@ python-dotenv>=1.0.0
 - [x] Vector/semantic search (see docs/PLAN-semantic-search.md)
 - [ ] Native summarization pipeline (Ollama/OpenAI integration)
 - [ ] Backup and restore (see section 11)
+- [ ] Configurable logging levels (see section 14)
+- [ ] Enhanced episode states for transcript discovery (see section 15)
 
 ---
 
@@ -655,7 +657,7 @@ python-dotenv>=1.0.0
 | Soft Delete | Mark feeds/episodes as deleted instead of hard delete | Medium |
 | Trash UI | View and restore trashed feeds from web UI | Low |
 | Export to Trash | Save feed+episodes JSON alongside files when deleting | Low |
-| Pocket Casts Discovery | Investigate why Huberman Lab doesn't get Pocket Casts transcripts detected (they exist on PC) - may be author matching or search ranking issue | Medium |
+| Pocket Casts Discovery | ✅ Investigated - 403 errors on transcript downloads due to timing (transcripts not ready yet on S3) - see Section 15 for solution | Done |
 
 ### Backup Options
 
@@ -788,3 +790,152 @@ def episode_filename(published_at: datetime, title: str, extension: str) -> str:
 - [faster-whisper GitHub](https://github.com/SYSTRAN/faster-whisper)
 - [Whisper Model Comparison](https://github.com/openai/whisper#available-models-and-languages)
 - [SQLite WAL Mode](https://www.sqlite.org/wal.html)
+
+---
+
+## 14. Configurable Logging
+
+### Current State
+
+Basic structured logging exists (`logger = logging.getLogger(__name__)`) but lacks user-configurable verbosity.
+
+### Requirements
+
+| Requirement | Description | Priority |
+|-------------|-------------|----------|
+| Log Level Config | Configurable via `.env` (`LOG_LEVEL=DEBUG\|INFO\|WARNING\|ERROR`) | Medium |
+| Per-Module Levels | Different levels for different components (e.g., verbose HTTP, quiet scheduler) | Low |
+| HTTP Request Logging | Optional verbose logging of all HTTP requests (URL, status, timing) | Medium |
+| Structured JSON Logs | Machine-readable format for log aggregation | Low |
+
+### Proposed Configuration
+
+```bash
+# .env
+LOG_LEVEL=INFO                    # Global default
+LOG_LEVEL_HTTP=DEBUG              # HTTP client requests
+LOG_LEVEL_TRANSCRIPTION=INFO      # Whisper operations
+LOG_LEVEL_SCHEDULER=WARNING       # APScheduler noise reduction
+LOG_FORMAT=text                   # text or json
+```
+
+### Use Cases
+
+1. **Debugging transcript discovery**: Set `LOG_LEVEL_HTTP=DEBUG` to see all Pocket Casts API calls
+2. **Production quiet mode**: Set `LOG_LEVEL=WARNING` to reduce noise
+3. **Log aggregation**: Set `LOG_FORMAT=json` for ELK/Loki ingestion
+
+### Implementation Notes
+
+```python
+# config/logging.py
+import logging
+from cast2md.config.settings import get_settings
+
+def configure_logging():
+    settings = get_settings()
+
+    # Global level
+    logging.basicConfig(level=getattr(logging, settings.log_level))
+
+    # Per-module overrides
+    if settings.log_level_http:
+        logging.getLogger("cast2md.clients").setLevel(settings.log_level_http)
+    if settings.log_level_scheduler:
+        logging.getLogger("apscheduler").setLevel(settings.log_level_scheduler)
+```
+
+---
+
+## 15. Enhanced Episode States for Transcript Discovery
+
+**Status: Implementing in v0.9**
+
+### Problem
+
+Pocket Casts API returns transcript URLs before files actually exist on S3 (returns 403). Current behavior:
+- Episode stays `pending` forever
+- Retried on every batch operation
+- No distinction between "never tried" and "tried but unavailable"
+
+### Observed Patterns
+
+- New episodes (< 7 days): 403 often means transcript still generating
+- Old episodes (≥ 7 days): 403 means transcript won't appear (~6% permanent failure rate)
+- Failures are scattered, not strictly date-based
+
+### Proposed States
+
+| Status | Meaning | Auto-retry | UI Button |
+|--------|---------|------------|-----------|
+| `pending` | Never tried transcript download | — | "Get Transcript" |
+| `transcript_pending` | Got 403, episode < 7 days old | Yes (24h) | "Waiting..." (disabled) |
+| `transcript_unavailable` | Got 403, episode ≥ 7 days old | No | "Download Audio" |
+| `downloaded` | Has audio, ready for Whisper | — | "Transcribe" |
+| `completed` | Has transcript (any source) | — | (link to view) |
+| `failed` | Download/transcription error | — | "Retry" |
+
+### Decision Logic
+
+```python
+def handle_transcript_download_failure(episode):
+    episode_age = now - episode.published_at
+
+    if episode_age < timedelta(days=7):
+        # New episode - might get transcript later
+        episode.status = "transcript_pending"
+        episode.next_retry_at = now + timedelta(hours=24)
+    else:
+        # Old episode - won't get transcript
+        episode.status = "transcript_unavailable"
+        # No auto-retry, user must click "Download Audio" for Whisper
+```
+
+### UI Behavior
+
+| Status | Badge | Color | User Action |
+|--------|-------|-------|-------------|
+| `pending` | — | — | Click "Get Transcript" |
+| `transcript_pending` | "Waiting" | Yellow | Auto-retries every 24h for 7 days |
+| `transcript_unavailable` | "No transcript" | Gray | Click "Download Audio" for Whisper fallback |
+| `completed` | "✓" | Green | Click to view transcript |
+
+### Database Changes
+
+```sql
+-- Add new status values to episode.status enum
+-- (or update validation if using TEXT)
+
+-- New columns
+ALTER TABLE episode ADD COLUMN transcript_checked_at TIMESTAMP;
+ALTER TABLE episode ADD COLUMN next_transcript_retry_at TIMESTAMP;
+```
+
+### Scheduler Integration
+
+Add periodic job to retry `transcript_pending` episodes:
+
+```python
+@scheduler.scheduled_job('interval', hours=1)
+def retry_pending_transcripts():
+    episodes = get_episodes_where(
+        status='transcript_pending',
+        next_transcript_retry_at__lte=now
+    )
+    for episode in episodes:
+        if episode.published_at < now - timedelta(days=7):
+            # Episode aged out - mark unavailable
+            episode.status = 'transcript_unavailable'
+        else:
+            # Retry transcript download
+            queue_transcript_download(episode)
+```
+
+### Benefits
+
+| Aspect | Current | Proposed |
+|--------|---------|----------|
+| Wasted requests | Every batch operation | Once per 24h (new) or never (old) |
+| User clarity | All look "pending" | Clear status for each case |
+| Server load | High (repeated 403s) | Low (smart retries) |
+| Whisper fallback | Manual for all | Guided by status |

@@ -14,7 +14,7 @@ from cast2md.db.connection import get_db
 from cast2md.db.models import Episode, Feed
 from cast2md.db.repository import FeedRepository
 from cast2md.transcription.formats import convert_to_markdown
-from cast2md.transcription.providers.base import TranscriptProvider, TranscriptResult
+from cast2md.transcription.providers.base import TranscriptError, TranscriptProvider, TranscriptResult
 
 logger = logging.getLogger(__name__)
 
@@ -130,7 +130,7 @@ class PocketCastsProvider(TranscriptProvider):
         """
         return True
 
-    def fetch(self, episode: Episode, feed: Feed) -> Optional[TranscriptResult]:
+    def fetch(self, episode: Episode, feed: Feed) -> TranscriptResult | TranscriptError | None:
         """Fetch transcript from Pocket Casts.
 
         1. Get or search for the Pocket Casts show UUID
@@ -143,7 +143,9 @@ class PocketCastsProvider(TranscriptProvider):
             feed: Feed the episode belongs to.
 
         Returns:
-            TranscriptResult with markdown content, or None if not available.
+            TranscriptResult with markdown content,
+            TranscriptError if download failed (e.g., 403),
+            or None if not available.
         """
         client = PocketCastsClient()
 
@@ -171,14 +173,24 @@ class PocketCastsProvider(TranscriptProvider):
             return None
 
         # Download transcript
-        content = client.download_transcript(pc_episode.transcript_url)
-        if not content:
-            return None
+        result = client.download_transcript(pc_episode.transcript_url)
+        if not result.success:
+            # Return TranscriptError for known failures (especially 403)
+            error_type = "forbidden" if result.status_code == 403 else (
+                "not_found" if result.status_code == 404 else "request_error"
+            )
+            logger.debug(f"Pocket Casts transcript download failed for {episode.title}: {result.error}")
+            return TranscriptError(
+                error_type=error_type,
+                source=self.source_id,
+                source_url=pc_episode.transcript_url,
+                status_code=result.status_code,
+            )
 
         # Convert VTT to markdown
         try:
             markdown, format_id = convert_to_markdown(
-                content=content,
+                content=result.content,
                 mime_type="text/vtt",
                 title=episode.title,
                 url=pc_episode.transcript_url,

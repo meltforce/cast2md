@@ -210,6 +210,10 @@
                     {% else %}
                         <button class="outline secondary" onclick="downloadEpisode({{ episode.id }})">Download Audio</button>
                     {% endif %}
+                {% elif episode.status.value == 'transcript_pending' %}
+                    <button class="outline secondary" onclick="downloadEpisode({{ episode.id }})" title="Transcript not ready yet - download audio for Whisper instead">Download Audio</button>
+                {% elif episode.status.value == 'transcript_unavailable' %}
+                    <button class="outline secondary" onclick="downloadEpisode({{ episode.id }})" title="No external transcript available - use Whisper">Download Audio</button>
                 {% elif episode.status.value == 'downloaded' %}
                     <button class="outline" onclick="transcribeEpisode({{ episode.id }}, this)">Transcribe</button>
                 {% elif episode.status.value == 'completed' and episode.transcript_path %}
@@ -374,8 +378,8 @@ async function pollEpisodeStatus() {
                 }
             }
 
-            // Track if there are still active jobs
-            if (['downloading', 'transcribing', 'queued'].includes(ep.status) ||
+            // Track if there are still active jobs (only downloading/transcribing need polling)
+            if (['downloading', 'transcribing'].includes(ep.status) ||
                 currentStatus === 'queued') {
                 hasActiveJobs = true;
             }
@@ -409,6 +413,12 @@ function updateEpisodeRow(row, ep) {
             actionsCell.innerHTML = `<button class="outline secondary" onclick="downloadEpisode(${ep.id})">Download Audio</button>`;
         }
         if (checkbox) checkbox.disabled = false;
+    } else if (ep.status === 'transcript_pending') {
+        actionsCell.innerHTML = `<button class="outline secondary" onclick="downloadEpisode(${ep.id})" title="Transcript not ready yet - download audio for Whisper instead">Download Audio</button>`;
+        if (checkbox) checkbox.disabled = true;
+    } else if (ep.status === 'transcript_unavailable') {
+        actionsCell.innerHTML = `<button class="outline secondary" onclick="downloadEpisode(${ep.id})" title="No external transcript available - use Whisper">Download Audio</button>`;
+        if (checkbox) checkbox.disabled = true;
     } else if (ep.status === 'downloaded') {
         actionsCell.innerHTML = `<button class="outline" onclick="transcribeEpisode(${ep.id}, this)">Transcribe</button>`;
         if (checkbox) checkbox.disabled = true;

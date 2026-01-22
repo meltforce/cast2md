@@ -11,6 +11,8 @@ class EpisodeStatus(str, Enum):
     """Episode processing status."""
 
     PENDING = "pending"
+    TRANSCRIPT_PENDING = "transcript_pending"  # Got 403, will retry (< 7 days old)
+    TRANSCRIPT_UNAVAILABLE = "transcript_unavailable"  # Won't retry (>= 7 days old)
     DOWNLOADING = "downloading"
     DOWNLOADED = "downloaded"
     TRANSCRIBING = "transcribing"
@@ -119,6 +121,9 @@ class Episode:
     transcript_source: Optional[str]  # e.g., 'whisper', 'podcast2.0:vtt', 'pocketcasts'
     transcript_type: Optional[str]  # MIME type of original transcript
     pocketcasts_transcript_url: Optional[str]  # Pocket Casts transcript URL (discovered upfront)
+    transcript_checked_at: Optional[datetime]  # When transcript was last checked
+    next_transcript_retry_at: Optional[datetime]  # When to retry transcript download
+    transcript_failure_reason: Optional[str]  # Error type (e.g., 'forbidden', 'not_found')
     link: Optional[str]
     author: Optional[str]
     error_message: Optional[str]
@@ -145,11 +150,14 @@ class Episode:
             transcript_source=row[13] if len(row) > 13 else None,
             transcript_type=row[14] if len(row) > 14 else None,
             pocketcasts_transcript_url=row[15] if len(row) > 15 else None,
-            link=row[16] if len(row) > 16 else None,
-            author=row[17] if len(row) > 17 else None,
-            error_message=row[18] if len(row) > 18 else None,
-            created_at=datetime.fromisoformat(row[19]) if len(row) > 19 else datetime.now(),
-            updated_at=datetime.fromisoformat(row[20]) if len(row) > 20 else datetime.now(),
+            transcript_checked_at=datetime.fromisoformat(row[16]) if len(row) > 16 and row[16] else None,
+            next_transcript_retry_at=datetime.fromisoformat(row[17]) if len(row) > 17 and row[17] else None,
+            transcript_failure_reason=row[18] if len(row) > 18 else None,
+            link=row[19] if len(row) > 19 else None,
+            author=row[20] if len(row) > 20 else None,
+            error_message=row[21] if len(row) > 21 else None,
+            created_at=datetime.fromisoformat(row[22]) if len(row) > 22 else datetime.now(),
+            updated_at=datetime.fromisoformat(row[23]) if len(row) > 23 else datetime.now(),
         )
 
 

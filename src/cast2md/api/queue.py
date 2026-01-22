@@ -1148,3 +1148,53 @@ def batch_retranscribe_feed(feed_id: int, request: BatchQueueRequest | None = No
         skipped=skipped,
         message=f"Queued {queued} episodes for re-transcription with {current_model} ({skipped} skipped)",
     )
+
+
+@router.post("/episodes/{episode_id}/force-transcript-retry", response_model=MessageResponse)
+def force_transcript_retry(episode_id: int, request: QueueEpisodeRequest | None = None):
+    """Force retry transcript download for an episode.
+
+    Resets transcript_unavailable or transcript_pending status back to pending
+    and queues a TRANSCRIPT_DOWNLOAD job. Useful for retrying after external
+    transcripts become available.
+    """
+    from cast2md.db.models import EpisodeStatus
+
+    priority = request.priority if request else 10
+
+    with get_db() as conn:
+        episode_repo = EpisodeRepository(conn)
+        job_repo = JobRepository(conn)
+
+        episode = episode_repo.get_by_id(episode_id)
+        if not episode:
+            raise HTTPException(status_code=404, detail="Episode not found")
+
+        # Only allow for transcript_pending or transcript_unavailable
+        if episode.status not in (EpisodeStatus.TRANSCRIPT_PENDING, EpisodeStatus.TRANSCRIPT_UNAVAILABLE):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Can only force retry for transcript_pending or transcript_unavailable episodes (current: {episode.status.value})"
+            )
+
+        # Check if already has pending job
+        if job_repo.has_pending_job(episode_id, JobType.TRANSCRIPT_DOWNLOAD):
+            raise HTTPException(status_code=409, detail="Transcript download already queued")
+
+        # Reset status to pending and clear retry tracking
+        episode_repo.update_transcript_check(
+            episode_id,
+            status=EpisodeStatus.PENDING,
+            checked_at=None,
+            next_retry_at=None,
+            failure_reason=None,
+        )
+
+        # Queue transcript download job
+        job = job_repo.create(
+            episode_id=episode_id,
+            job_type=JobType.TRANSCRIPT_DOWNLOAD,
+            priority=priority,
+        )
+
+    return MessageResponse(message="Transcript download retry queued", job_id=job.id)
