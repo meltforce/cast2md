@@ -4,7 +4,11 @@
 # =========================
 # Single script for installing and updating cast2md transcriber nodes on macOS.
 #
-# Usage:
+# Usage (public repo):
+#   curl -fsSL https://raw.githubusercontent.com/meltforce/cast2md/main/scripts/cast2md-node.sh | bash
+#
+# Usage (private repo):
+#   export GITHUB_TOKEN=ghp_xxx
 #   curl -fsSL https://gist.githubusercontent.com/.../cast2md-node.sh | bash
 #
 # The script auto-detects install vs update:
@@ -49,23 +53,45 @@ print_error() {
     echo -e "  ${RED}✗${NC} $1"
 }
 
+# Find Python 3.11+ (prefer Homebrew over system)
+find_python() {
+    # Try Homebrew Python first
+    for py in /opt/homebrew/bin/python3 /usr/local/bin/python3; do
+        if [ -x "$py" ]; then
+            version=$("$py" --version 2>&1 | cut -d' ' -f2)
+            major=$(echo "$version" | cut -d. -f1)
+            minor=$(echo "$version" | cut -d. -f2)
+            if [ "$major" -ge 3 ] && [ "$minor" -ge 11 ]; then
+                PYTHON_BIN="$py"
+                PYTHON_VERSION="$version"
+                return 0
+            fi
+        fi
+    done
+
+    # Fall back to system python3
+    if command -v python3 &> /dev/null; then
+        version=$(python3 --version 2>&1 | cut -d' ' -f2)
+        major=$(echo "$version" | cut -d. -f1)
+        minor=$(echo "$version" | cut -d. -f2)
+        if [ "$major" -ge 3 ] && [ "$minor" -ge 11 ]; then
+            PYTHON_BIN="python3"
+            PYTHON_VERSION="$version"
+            return 0
+        fi
+    fi
+
+    return 1
+}
+
 check_prerequisites() {
     print_step "1/7" "Checking prerequisites..."
 
     # Check Python
-    if command -v python3 &> /dev/null; then
-        PYTHON_VERSION=$(python3 --version 2>&1 | cut -d' ' -f2)
-        PYTHON_MAJOR=$(echo "$PYTHON_VERSION" | cut -d. -f1)
-        PYTHON_MINOR=$(echo "$PYTHON_VERSION" | cut -d. -f2)
-
-        if [ "$PYTHON_MAJOR" -ge 3 ] && [ "$PYTHON_MINOR" -ge 11 ]; then
-            print_success "Python $PYTHON_VERSION"
-        else
-            print_error "Python 3.11+ required (found $PYTHON_VERSION)"
-            exit 1
-        fi
+    if find_python; then
+        print_success "Python $PYTHON_VERSION ($PYTHON_BIN)"
     else
-        print_error "Python 3 not found. Install with: brew install python@3.12"
+        print_error "Python 3.11+ required. Install with: brew install python@3.12"
         exit 1
     fi
 
@@ -85,6 +111,15 @@ check_prerequisites() {
         brew install ffmpeg
         print_success "ffmpeg installed"
     fi
+
+    # Detect architecture
+    if [ "$(uname -m)" = "arm64" ]; then
+        print_success "Apple Silicon detected (will use MLX backend)"
+        USE_MLX=true
+    else
+        print_success "Intel Mac (will use faster-whisper backend)"
+        USE_MLX=false
+    fi
 }
 
 check_github_auth() {
@@ -100,7 +135,7 @@ check_github_auth() {
 
     # Check for GITHUB_TOKEN env variable
     if [ -n "$GITHUB_TOKEN" ]; then
-        if git ls-remote "https://${GITHUB_TOKEN}@github.com/meltforce/cast2md.git" HEAD &> /dev/null; then
+        if GIT_TERMINAL_PROMPT=0 git ls-remote "https://oauth2:${GITHUB_TOKEN}@github.com/meltforce/cast2md.git" HEAD &> /dev/null; then
             # Save token for future updates
             mkdir -p "$INSTALL_DIR"
             echo "$GITHUB_TOKEN" > "$TOKEN_FILE"
@@ -116,7 +151,7 @@ check_github_auth() {
     # Check for saved token
     if [ -f "$TOKEN_FILE" ]; then
         GITHUB_TOKEN=$(cat "$TOKEN_FILE")
-        if git ls-remote "https://${GITHUB_TOKEN}@github.com/meltforce/cast2md.git" HEAD &> /dev/null; then
+        if GIT_TERMINAL_PROMPT=0 git ls-remote "https://oauth2:${GITHUB_TOKEN}@github.com/meltforce/cast2md.git" HEAD &> /dev/null; then
             print_success "Using saved token"
             return
         else
@@ -127,7 +162,10 @@ check_github_auth() {
 
     # No token available
     print_error "Repository is private. Set GITHUB_TOKEN environment variable:"
-    echo "  GITHUB_TOKEN=ghp_xxx curl -fsSL ... | bash"
+    echo ""
+    echo "  export GITHUB_TOKEN=your_token_here"
+    echo "  curl -fsSL ... | bash"
+    echo ""
     exit 1
 }
 
@@ -137,7 +175,7 @@ clone_repo() {
     mkdir -p "$INSTALL_DIR"
 
     if [ -n "$GITHUB_TOKEN" ]; then
-        git clone "https://${GITHUB_TOKEN}@github.com/meltforce/cast2md.git" "$REPO_DIR" 2>/dev/null
+        GIT_TERMINAL_PROMPT=0 git clone "https://oauth2:${GITHUB_TOKEN}@github.com/meltforce/cast2md.git" "$REPO_DIR" 2>/dev/null
     else
         git clone "https://github.com/meltforce/cast2md.git" "$REPO_DIR" 2>/dev/null
     fi
@@ -148,16 +186,9 @@ clone_repo() {
 create_venv() {
     print_step "4/7" "Creating virtual environment..."
 
-    python3 -m venv "$VENV_DIR"
+    "$PYTHON_BIN" -m venv "$VENV_DIR"
 
-    # Detect Apple Silicon
-    if [ "$(uname -m)" = "arm64" ]; then
-        print_success "Detected Apple Silicon, will use MLX backend"
-        USE_MLX=true
-    else
-        print_success "Using faster-whisper backend"
-        USE_MLX=false
-    fi
+    print_success "Created venv with $PYTHON_BIN"
 }
 
 install_deps() {
@@ -168,13 +199,31 @@ install_deps() {
     # Upgrade pip
     pip install --quiet --upgrade pip
 
-    # Install with node extras (minimal dependencies)
+    # Install cast2md package without dependencies
     cd "$REPO_DIR"
     pip install --quiet --no-deps -e .
-    pip install --quiet -e ".[node]"
 
+    # Install node dependencies directly (not using extras which are additive)
+    # Core deps needed by all nodes
+    echo "  Installing core dependencies..."
+    pip install --quiet \
+        httpx \
+        pydantic-settings \
+        python-dotenv \
+        click \
+        fastapi \
+        'uvicorn[standard]' \
+        jinja2 \
+        feedparser \
+        python-multipart
+
+    # Install transcription backend based on architecture
     if [ "$USE_MLX" = true ]; then
-        pip install --quiet -e ".[node-mlx]"
+        echo "  Installing MLX Whisper (Apple Silicon)..."
+        pip install --quiet mlx-whisper
+    else
+        echo "  Installing faster-whisper (Intel)..."
+        pip install --quiet faster-whisper
     fi
 
     deactivate
@@ -212,6 +261,13 @@ setup_service() {
     printf "  Install as startup service? [Y/n] "
     read INSTALL_SERVICE < /dev/tty
 
+    # Determine whisper backend for env var
+    if [ "$USE_MLX" = true ]; then
+        WHISPER_BACKEND="mlx"
+    else
+        WHISPER_BACKEND="faster-whisper"
+    fi
+
     if [ "$INSTALL_SERVICE" != "n" ] && [ "$INSTALL_SERVICE" != "N" ]; then
         # Create launchd plist
         cat > "$PLIST_PATH" << EOF
@@ -226,7 +282,6 @@ setup_service() {
         <string>$VENV_DIR/bin/cast2md</string>
         <string>node</string>
         <string>start</string>
-        <string>--no-browser</string>
     </array>
     <key>WorkingDirectory</key>
     <string>$REPO_DIR</string>
@@ -241,7 +296,9 @@ setup_service() {
     <key>EnvironmentVariables</key>
     <dict>
         <key>PATH</key>
-        <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin</string>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <key>WHISPER_BACKEND</key>
+        <string>$WHISPER_BACKEND</string>
     </dict>
 </dict>
 </plist>
@@ -289,7 +346,7 @@ update_install() {
     echo "Pulling latest changes..."
     cd "$REPO_DIR"
     if [ -n "$GITHUB_TOKEN" ]; then
-        git remote set-url origin "https://${GITHUB_TOKEN}@github.com/meltforce/cast2md.git"
+        git remote set-url origin "https://oauth2:${GITHUB_TOKEN}@github.com/meltforce/cast2md.git"
     fi
     git pull
 
@@ -297,11 +354,24 @@ update_install() {
     source "$VENV_DIR/bin/activate"
     pip install --quiet --upgrade pip
     pip install --quiet --no-deps -e .
-    pip install --quiet -e ".[node]"
+
+    # Reinstall node deps
+    pip install --quiet \
+        httpx \
+        pydantic-settings \
+        python-dotenv \
+        click \
+        fastapi \
+        'uvicorn[standard]' \
+        jinja2 \
+        feedparser \
+        python-multipart
 
     # Check for MLX
     if [ "$(uname -m)" = "arm64" ]; then
-        pip install --quiet -e ".[node-mlx]"
+        pip install --quiet mlx-whisper
+    else
+        pip install --quiet faster-whisper
     fi
 
     deactivate
