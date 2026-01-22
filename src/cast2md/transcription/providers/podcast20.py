@@ -12,7 +12,7 @@ import httpx
 from cast2md.config.settings import get_settings
 from cast2md.db.models import Episode, Feed
 from cast2md.transcription.formats import convert_to_markdown, detect_format_from_url
-from cast2md.transcription.providers.base import TranscriptProvider, TranscriptResult
+from cast2md.transcription.providers.base import TranscriptError, TranscriptProvider, TranscriptResult
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +33,7 @@ class Podcast20Provider(TranscriptProvider):
         """Check if episode has a transcript URL from RSS feed."""
         return bool(episode.transcript_url)
 
-    def fetch(self, episode: Episode, feed: Feed) -> Optional[TranscriptResult]:
+    def fetch(self, episode: Episode, feed: Feed) -> TranscriptResult | TranscriptError | None:
         """Download and convert transcript from podcast:transcript URL.
 
         Args:
@@ -41,7 +41,9 @@ class Podcast20Provider(TranscriptProvider):
             feed: Feed the episode belongs to.
 
         Returns:
-            TranscriptResult with markdown content, or None on failure.
+            TranscriptResult with markdown content,
+            TranscriptError if download failed (e.g., 403),
+            or None if no transcript URL available.
         """
         if not episode.transcript_url:
             return None
@@ -101,10 +103,22 @@ class Podcast20Provider(TranscriptProvider):
 
         except httpx.HTTPStatusError as e:
             logger.warning(f"HTTP error fetching transcript from {url}: {e.response.status_code}")
-            return None
+            error_type = "forbidden" if e.response.status_code == 403 else (
+                "not_found" if e.response.status_code == 404 else "request_error"
+            )
+            return TranscriptError(
+                error_type=error_type,
+                source=self.source_id,
+                source_url=url,
+                status_code=e.response.status_code,
+            )
         except httpx.RequestError as e:
             logger.warning(f"Request error fetching transcript from {url}: {e}")
-            return None
+            return TranscriptError(
+                error_type="request_error",
+                source=self.source_id,
+                source_url=url,
+            )
         except Exception as e:
             logger.warning(f"Error processing transcript from {url}: {e}")
             return None

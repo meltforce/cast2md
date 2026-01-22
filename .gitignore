@@ -88,3 +88,6 @@ screenshots/
 # Claude Code
 .claude/
 CLAUDE.md
+
+# Test client
+test_client/

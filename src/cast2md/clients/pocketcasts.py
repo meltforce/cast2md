@@ -37,6 +37,16 @@ class PocketCastsEpisode:
     transcript_url: Optional[str]  # From pocket_casts_transcripts[]
 
 
+@dataclass
+class TranscriptDownloadResult:
+    """Result from transcript download attempt."""
+
+    content: Optional[str] = None
+    success: bool = False
+    status_code: Optional[int] = None
+    error: Optional[str] = None
+
+
 class PocketCastsClient:
     """Client for Pocket Casts public API.
 
@@ -181,14 +191,14 @@ class PocketCastsClient:
             logger.warning(f"Error parsing Pocket Casts episodes response: {e}")
             return []
 
-    def download_transcript(self, url: str) -> Optional[str]:
+    def download_transcript(self, url: str) -> TranscriptDownloadResult:
         """Download transcript content from URL.
 
         Args:
             url: Transcript URL (typically VTT format).
 
         Returns:
-            Transcript content as string, or None on failure.
+            TranscriptDownloadResult with content on success, or status_code/error on failure.
         """
         try:
             with httpx.Client(timeout=self.timeout) as client:
@@ -202,13 +212,28 @@ class PocketCastsClient:
             content = response.text
             if not content or not content.strip():
                 logger.warning(f"Empty transcript from {url}")
-                return None
+                return TranscriptDownloadResult(
+                    success=False,
+                    status_code=response.status_code,
+                    error="empty_response",
+                )
 
-            return content
+            return TranscriptDownloadResult(
+                content=content,
+                success=True,
+                status_code=response.status_code,
+            )
 
         except httpx.HTTPStatusError as e:
             logger.warning(f"HTTP error downloading transcript from {url}: {e.response.status_code}")
-            return None
+            return TranscriptDownloadResult(
+                success=False,
+                status_code=e.response.status_code,
+                error=f"http_{e.response.status_code}",
+            )
         except httpx.RequestError as e:
             logger.warning(f"Request error downloading transcript from {url}: {e}")
-            return None
+            return TranscriptDownloadResult(
+                success=False,
+                error="request_error",
+            )

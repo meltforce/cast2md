@@ -1,13 +1,14 @@
-"""Background scheduler for feed polling."""
+"""Background scheduler for feed polling and transcript retries."""
 
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 
 from cast2md.db.connection import get_db
-from cast2md.db.repository import FeedRepository
+from cast2md.db.models import EpisodeStatus, JobType
+from cast2md.db.repository import EpisodeRepository, FeedRepository, JobRepository
 from cast2md.feed.discovery import discover_new_episodes
 
 logger = logging.getLogger(__name__)
@@ -39,6 +40,68 @@ def poll_all_feeds():
     logger.info(f"Feed poll complete. Total new episodes: {total_new}, queued: {total_queued}")
 
 
+def retry_pending_transcripts():
+    """Retry transcript downloads for episodes that are due.
+
+    Runs hourly to check for:
+    1. Episodes with status=transcript_pending and next_transcript_retry_at <= now
+       - If episode age >= 7 days: mark as transcript_unavailable (aged out)
+       - Else: queue TRANSCRIPT_DOWNLOAD job for retry
+
+    This handles the case where Pocket Casts returns 403 for new episodes
+    (transcripts not yet generated) - we retry daily for up to 7 days.
+    """
+    logger.info("Starting scheduled transcript retry check")
+
+    now = datetime.now()
+    seven_days_ago = now - timedelta(days=7)
+
+    with get_db() as conn:
+        episode_repo = EpisodeRepository(conn)
+        job_repo = JobRepository(conn)
+
+        # Get episodes due for retry
+        episodes = episode_repo.get_episodes_for_transcript_retry()
+        logger.info(f"Found {len(episodes)} episodes due for transcript retry")
+
+        aged_out = 0
+        queued = 0
+        skipped = 0
+
+        for episode in episodes:
+            # Check if episode has aged out (>= 7 days old)
+            if episode.published_at and episode.published_at < seven_days_ago:
+                # Transition to transcript_unavailable
+                episode_repo.update_transcript_check(
+                    episode.id,
+                    status=EpisodeStatus.TRANSCRIPT_UNAVAILABLE,
+                    checked_at=now,
+                    next_retry_at=None,
+                    failure_reason=episode.transcript_failure_reason,
+                )
+                aged_out += 1
+                logger.debug(f"Episode '{episode.title}' aged out, marking as transcript_unavailable")
+                continue
+
+            # Check if already has pending job
+            if job_repo.has_pending_job(episode.id, JobType.TRANSCRIPT_DOWNLOAD):
+                skipped += 1
+                continue
+
+            # Queue transcript download job
+            job_repo.create(
+                episode_id=episode.id,
+                job_type=JobType.TRANSCRIPT_DOWNLOAD,
+                priority=5,  # Medium priority for retries
+            )
+            queued += 1
+            logger.debug(f"Queued transcript retry for episode: {episode.title}")
+
+    logger.info(
+        f"Transcript retry check complete. Queued: {queued}, aged out: {aged_out}, skipped: {skipped}"
+    )
+
+
 def start_scheduler(interval_minutes: int = 60):
     """Start the background scheduler.
 
@@ -63,8 +126,19 @@ def start_scheduler(interval_minutes: int = 60):
         next_run_time=datetime.now(),  # Run immediately on start
     )
 
+    # Add transcript retry job (runs hourly)
+    scheduler.add_job(
+        retry_pending_transcripts,
+        trigger=IntervalTrigger(hours=1),
+        id="retry_pending_transcripts",
+        name="Retry pending transcript downloads",
+        replace_existing=True,
+        # Don't run immediately - let feed polling complete first
+        next_run_time=datetime.now() + timedelta(minutes=5),
+    )
+
     scheduler.start()
-    logger.info(f"Scheduler started. Polling interval: {interval_minutes} minutes")
+    logger.info(f"Scheduler started. Feed polling interval: {interval_minutes} minutes, transcript retry: hourly")
 
 
 def stop_scheduler():

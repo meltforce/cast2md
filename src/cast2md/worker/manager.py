@@ -16,7 +16,7 @@ from cast2md.notifications.ntfy import (
     notify_transcription_failed,
 )
 from cast2md.storage.filesystem import ensure_podcast_directories, get_transcript_path
-from cast2md.transcription.providers import try_fetch_transcript
+from cast2md.transcription.providers import TranscriptError, TranscriptResult, try_fetch_transcript
 from cast2md.transcription.service import transcribe_episode
 
 logger = logging.getLogger(__name__)
@@ -364,8 +364,11 @@ class WorkerManager:
 
         Tries to download transcript from external providers (Podcast 2.0, Pocket Casts).
         If successful, saves the transcript and marks episode as COMPLETED.
+        If 403 error, marks episode with retry info based on age.
         If no transcript is available, episode stays PENDING for manual audio download.
         """
+        from datetime import datetime, timedelta
+
         logger.info(f"Processing transcript download job {job_id} for episode {episode_id}")
 
         with get_db() as conn:
@@ -389,8 +392,9 @@ class WorkerManager:
         try:
             # Try to fetch transcript from external providers
             result = try_fetch_transcript(episode, feed)
+            now = datetime.now()
 
-            if result:
+            if isinstance(result, TranscriptResult):
                 # Save the downloaded transcript
                 with get_db() as conn:
                     episode_repo = EpisodeRepository(conn)
@@ -433,12 +437,59 @@ class WorkerManager:
                 # Send success notification
                 notify_transcription_complete(episode.title, feed.title)
 
+            elif isinstance(result, TranscriptError):
+                # Got an error from provider (e.g., 403 forbidden)
+                # Apply age-based status logic
+                with get_db() as conn:
+                    episode_repo = EpisodeRepository(conn)
+                    job_repo = JobRepository(conn)
+
+                    episode_age = timedelta(days=365)  # Default to old if no published date
+                    if episode.published_at:
+                        episode_age = now - episode.published_at
+
+                    if episode_age < timedelta(days=7):
+                        # New episode - might get transcript later, schedule retry
+                        new_status = EpisodeStatus.TRANSCRIPT_PENDING
+                        next_retry = now + timedelta(hours=24)
+                        logger.info(
+                            f"Episode {episode.title} got {result.error_type}, "
+                            f"will retry in 24h (age: {episode_age.days}d)"
+                        )
+                    else:
+                        # Old episode - transcript won't appear, mark as unavailable
+                        new_status = EpisodeStatus.TRANSCRIPT_UNAVAILABLE
+                        next_retry = None
+                        logger.info(
+                            f"Episode {episode.title} got {result.error_type}, "
+                            f"marking as unavailable (age: {episode_age.days}d)"
+                        )
+
+                    episode_repo.update_transcript_check(
+                        episode.id,
+                        status=new_status,
+                        checked_at=now,
+                        next_retry_at=next_retry,
+                        failure_reason=result.error_type,
+                    )
+                    job_repo.mark_completed(job_id)
+
             else:
-                # No transcript available from any provider
+                # No transcript available from any provider (result is None)
                 # Mark job as completed (not failed - this is expected)
                 # Episode stays in PENDING status for user to manually queue download
                 with get_db() as conn:
+                    episode_repo = EpisodeRepository(conn)
                     job_repo = JobRepository(conn)
+
+                    # Record that we checked but found nothing
+                    episode_repo.update_transcript_check(
+                        episode.id,
+                        status=EpisodeStatus.PENDING,
+                        checked_at=now,
+                        next_retry_at=None,
+                        failure_reason=None,
+                    )
                     job_repo.mark_completed(job_id)
 
                 logger.info(

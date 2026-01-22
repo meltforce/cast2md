@@ -108,6 +108,15 @@ MIGRATIONS = [
             "ALTER TABLE episode ADD COLUMN pocketcasts_transcript_url TEXT",
         ],
     },
+    {
+        "version": 10,
+        "description": "Add transcript discovery tracking columns for 403 retry handling",
+        "sql": [
+            "ALTER TABLE episode ADD COLUMN transcript_checked_at TEXT",
+            "ALTER TABLE episode ADD COLUMN next_transcript_retry_at TEXT",
+            "ALTER TABLE episode ADD COLUMN transcript_failure_reason TEXT",
+        ],
+    },
 ]
 
 

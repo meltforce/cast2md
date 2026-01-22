@@ -5,10 +5,9 @@ before falling back to Whisper transcription.
 """
 
 import logging
-from typing import Optional
 
 from cast2md.db.models import Episode, Feed
-from cast2md.transcription.providers.base import TranscriptProvider, TranscriptResult
+from cast2md.transcription.providers.base import TranscriptError, TranscriptProvider, TranscriptResult
 from cast2md.transcription.providers.pocketcasts import PocketCastsProvider
 from cast2md.transcription.providers.podcast20 import Podcast20Provider
 
@@ -23,8 +22,8 @@ _providers: list[TranscriptProvider] = [
 ]
 
 
-def try_fetch_transcript(episode: Episode, feed: Feed) -> Optional[TranscriptResult]:
-    """Try all transcript providers in order, return first success.
+def try_fetch_transcript(episode: Episode, feed: Feed) -> TranscriptResult | TranscriptError | None:
+    """Try all transcript providers in order, return first success or error.
 
     Providers are tried in priority order. The first provider that both
     can_provide() returns True AND fetch() returns a result wins.
@@ -34,8 +33,12 @@ def try_fetch_transcript(episode: Episode, feed: Feed) -> Optional[TranscriptRes
         feed: Feed the episode belongs to.
 
     Returns:
-        TranscriptResult from the first successful provider, or None if all fail.
+        TranscriptResult from the first successful provider,
+        TranscriptError if a provider returned an error (e.g., 403 forbidden),
+        or None if no providers could provide a transcript.
     """
+    last_error: TranscriptError | None = None
+
     for provider in _providers:
         if not provider.can_provide(episode, feed):
             continue
@@ -44,16 +47,32 @@ def try_fetch_transcript(episode: Episode, feed: Feed) -> Optional[TranscriptRes
 
         try:
             result = provider.fetch(episode, feed)
-            if result:
+
+            if isinstance(result, TranscriptResult):
                 logger.info(
                     f"Provider {provider.source_id} succeeded for episode: {episode.title}"
                 )
                 return result
+            elif isinstance(result, TranscriptError):
+                # Track error but continue to try other providers
+                logger.debug(
+                    f"Provider {provider.source_id} returned error {result.error_type} "
+                    f"for episode: {episode.title}"
+                )
+                last_error = result
+                continue
+            # result is None - continue to next provider
+
         except Exception as e:
             logger.warning(
                 f"Provider {provider.source_id} failed for episode {episode.title}: {e}"
             )
             continue
+
+    # If we got an error from any provider, return it (useful for 403 handling)
+    if last_error:
+        logger.debug(f"Returning last error for episode: {episode.title} - {last_error.error_type}")
+        return last_error
 
     logger.debug(f"No providers could fetch transcript for episode: {episode.title}")
     return None
@@ -67,6 +86,7 @@ def get_available_providers() -> list[str]:
 __all__ = [
     "TranscriptProvider",
     "TranscriptResult",
+    "TranscriptError",
     "try_fetch_transcript",
     "get_available_providers",
 ]
