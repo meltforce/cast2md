@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+    cast2md Node LaunchAgent Template
+    ==================================
+
+    This template is for manually setting up cast2md as a macOS startup service.
+    The install script (cast2md-node.sh) generates this automatically with correct paths.
+
+    Installation:
+    1. Copy this file to ~/Library/LaunchAgents/com.cast2md.node.plist
+    2. Replace VENV_PATH and REPO_PATH with your actual paths
+    3. Run: launchctl load ~/Library/LaunchAgents/com.cast2md.node.plist
+
+    Management:
+    - Start:   launchctl load ~/Library/LaunchAgents/com.cast2md.node.plist
+    - Stop:    launchctl unload ~/Library/LaunchAgents/com.cast2md.node.plist
+    - Status:  launchctl list | grep cast2md
+    - Logs:    tail -f ~/.cast2md/node.log
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.cast2md.node</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <!-- Replace VENV_PATH with your venv path, e.g., /Users/you/.cast2md/venv -->
+        <string>VENV_PATH/bin/cast2md</string>
+        <string>node</string>
+        <string>start</string>
+        <string>--no-browser</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <!-- Replace REPO_PATH with your repo path, e.g., /Users/you/.cast2md/cast2md -->
+    <string>REPO_PATH</string>
+
+    <!-- Start automatically at login -->
+    <key>RunAtLoad</key>
+    <true/>
+
+    <!-- Restart if it crashes -->
+    <key>KeepAlive</key>
+    <true/>
+
+    <!-- Log files -->
+    <key>StandardOutPath</key>
+    <string>~/.cast2md/node.log</string>
+    <key>StandardErrorPath</key>
+    <string>~/.cast2md/node.log</string>
+
+    <!-- Ensure Homebrew paths are available for ffmpeg -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin</string>
+    </dict>
+</dict>
+</plist>

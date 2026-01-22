@@ -63,17 +63,43 @@ You'll need the server's URL for node registration. Examples:
 
 Perform these steps on each machine you want to use as a transcriber node.
 
+### Quick Install (Recommended for macOS)
+
+The easiest way to set up a node is with the guided install script:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/linus/cast2md/main/scripts/cast2md-node.sh | bash
+```
+
+This script:
+- Checks prerequisites (Python 3.11+, Homebrew, ffmpeg)
+- Handles GitHub authentication (for private repo access)
+- Clones the repo to `~/.cast2md/cast2md`
+- Creates a virtual environment with minimal dependencies (~80-120 MB vs ~600 MB full install)
+- Detects Apple Silicon and installs MLX backend automatically
+- Prompts for server URL and node name
+- Optionally sets up as a startup service via launchd
+
+**Updating:** Run the same command again. The script detects existing installations and updates in place.
+
+### Manual Install
+
+If you prefer manual installation:
+
 ### Step 1: Install cast2md
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-repo/cast2md.git
+git clone https://github.com/linus/cast2md.git
 cd cast2md
 
-# Install with dependencies
-pip install -e ".[mlx]"    # For Apple Silicon
+# Install with minimal node dependencies (faster, smaller)
+pip install --no-deps -e . && pip install -e ".[node,node-mlx]"  # Apple Silicon
 # or
-pip install -e ".[cuda]"   # For NVIDIA GPU
+pip install --no-deps -e . && pip install -e ".[node]"           # Intel/CPU
+
+# Or full install (includes server dependencies)
+pip install -e ".[mlx]"    # For Apple Silicon
 # or
 pip install -e .           # CPU only
 ```
