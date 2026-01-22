@@ -98,10 +98,24 @@ check_github_auth() {
         return
     fi
 
+    # Check for GITHUB_TOKEN env variable
+    if [ -n "$GITHUB_TOKEN" ]; then
+        if git ls-remote "https://${GITHUB_TOKEN}@github.com/meltforce/cast2md.git" HEAD &> /dev/null; then
+            # Save token for future updates
+            mkdir -p "$INSTALL_DIR"
+            echo "$GITHUB_TOKEN" > "$TOKEN_FILE"
+            chmod 600 "$TOKEN_FILE"
+            print_success "Using token from environment"
+            return
+        else
+            print_error "GITHUB_TOKEN is invalid"
+            exit 1
+        fi
+    fi
+
     # Check for saved token
     if [ -f "$TOKEN_FILE" ]; then
         GITHUB_TOKEN=$(cat "$TOKEN_FILE")
-        # Validate token
         if git ls-remote "https://${GITHUB_TOKEN}@github.com/meltforce/cast2md.git" HEAD &> /dev/null; then
             print_success "Using saved token"
             return
@@ -111,27 +125,10 @@ check_github_auth() {
         fi
     fi
 
-    # Prompt for token
-    echo "  This repo is private. Create a token at:"
-    echo "  https://github.com/settings/tokens (repo scope)"
-    echo ""
-    printf "  GitHub token: "
-    stty -echo
-    read GITHUB_TOKEN < /dev/tty
-    stty echo
-    echo ""
-
-    # Validate token
-    if git ls-remote "https://${GITHUB_TOKEN}@github.com/meltforce/cast2md.git" HEAD &> /dev/null; then
-        # Save token
-        mkdir -p "$INSTALL_DIR"
-        echo "$GITHUB_TOKEN" > "$TOKEN_FILE"
-        chmod 600 "$TOKEN_FILE"
-        print_success "Token saved"
-    else
-        print_error "Invalid token or no access to repository"
-        exit 1
-    fi
+    # No token available
+    print_error "Repository is private. Set GITHUB_TOKEN environment variable:"
+    echo "  GITHUB_TOKEN=ghp_xxx curl -fsSL ... | bash"
+    exit 1
 }
 
 clone_repo() {
