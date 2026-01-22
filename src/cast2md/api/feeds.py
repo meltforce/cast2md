@@ -15,6 +15,7 @@ from cast2md.db.repository import EpisodeRepository, FeedRepository
 from cast2md.export.formats import export_transcript
 from cast2md.feed.discovery import discover_new_episodes, validate_feed_url
 from cast2md.feed.itunes import resolve_feed_url
+from cast2md.worker.manager import WorkerManager
 
 router = APIRouter(prefix="/api/feeds", tags=["feeds"])
 
@@ -150,9 +151,15 @@ def create_feed(feed_data: FeedCreate):
             itunes_id=itunes_id,
         )
 
-    # Discover episodes and auto-queue ALL for transcript download
-    # External transcripts are fast to check, so queue everything
-    result = discover_new_episodes(feed, auto_queue=True, queue_only_latest=False)
+    # Pause transcript download workers to avoid DB contention during discovery
+    manager = WorkerManager()
+    manager.pause_transcript_downloads()
+    try:
+        # Discover episodes and auto-queue ALL for transcript download
+        # External transcripts are fast to check, so queue everything
+        result = discover_new_episodes(feed, auto_queue=True, queue_only_latest=False)
+    finally:
+        manager.resume_transcript_downloads()
 
     with get_db() as conn:
         episode_repo = EpisodeRepository(conn)
@@ -258,6 +265,9 @@ def refresh_feed(feed_id: int, auto_queue: bool = True):
     if not feed:
         raise HTTPException(status_code=404, detail="Feed not found")
 
+    # Pause transcript download workers to avoid DB contention during discovery
+    manager = WorkerManager()
+    manager.pause_transcript_downloads()
     try:
         result = discover_new_episodes(feed, auto_queue=auto_queue, queue_only_latest=False)
         queued = len(result.new_episode_ids) if auto_queue else 0
@@ -268,6 +278,8 @@ def refresh_feed(feed_id: int, auto_queue: bool = True):
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to poll feed: {e}")
+    finally:
+        manager.resume_transcript_downloads()
 
 
 @router.get("/{feed_id}/export")

@@ -55,9 +55,32 @@ class WorkerManager:
         self._stop_event = threading.Event()
         self._coordinator = None
 
+        # Pause mechanism for transcript download workers
+        self._tdl_pause_event = threading.Event()
+        self._tdl_pause_event.set()  # Not paused initially
+        self._tdl_pause_count = 0
+        self._tdl_pause_lock = threading.Lock()
+
         settings = get_settings()
         self._max_download_workers = settings.max_concurrent_downloads
         self._max_transcript_download_workers = settings.max_transcript_download_workers
+
+    def pause_transcript_downloads(self):
+        """Pause transcript download workers. Use with try/finally to ensure resume."""
+        with self._tdl_pause_lock:
+            self._tdl_pause_count += 1
+            self._tdl_pause_event.clear()
+            logger.info(f"Transcript download workers paused (count: {self._tdl_pause_count})")
+
+    def resume_transcript_downloads(self):
+        """Resume transcript download workers."""
+        with self._tdl_pause_lock:
+            self._tdl_pause_count = max(0, self._tdl_pause_count - 1)
+            if self._tdl_pause_count == 0:
+                self._tdl_pause_event.set()
+                logger.info("Transcript download workers resumed")
+            else:
+                logger.info(f"Transcript download workers still paused (count: {self._tdl_pause_count})")
 
     def start(self):
         """Start the worker threads."""
@@ -203,6 +226,11 @@ class WorkerManager:
         """Worker thread for processing transcript download jobs (fast, parallel)."""
         while not self._stop_event.is_set():
             try:
+                # Wait if paused (with 60s timeout as safety net)
+                if not self._tdl_pause_event.wait(timeout=60.0):
+                    # Timeout - check stop event and continue waiting
+                    continue
+
                 job = self._get_next_job(JobType.TRANSCRIPT_DOWNLOAD)
                 if job is None:
                     # No jobs, wait before checking again
