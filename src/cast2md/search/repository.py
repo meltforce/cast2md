@@ -1,6 +1,7 @@
 """Repository for transcript full-text search operations."""
 
 import logging
+import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, Optional
@@ -688,22 +689,26 @@ class TranscriptSearchRepository:
 
     def get_embedded_episodes(self) -> set[int]:
         """Get set of episode IDs that have embeddings."""
+        config = get_db_config()
+        table = "segment_embeddings" if config.is_postgresql else "segment_vec"
         try:
-            cursor = self.conn.execute(
-                "SELECT DISTINCT episode_id FROM segment_vec"
+            cursor = execute(
+                self.conn, f"SELECT DISTINCT episode_id FROM {table}", ()
             )
             return {row[0] for row in cursor.fetchall()}
-        except sqlite3.OperationalError:
-            # Table doesn't exist (sqlite-vec not available)
+        except Exception:
+            # Table doesn't exist (embeddings not available)
             return set()
 
     def get_embedding_count(self) -> int:
         """Get total number of segment embeddings."""
+        config = get_db_config()
+        table = "segment_embeddings" if config.is_postgresql else "segment_vec"
         try:
-            cursor = self.conn.execute("SELECT COUNT(*) FROM segment_vec")
+            cursor = execute(self.conn, f"SELECT COUNT(*) FROM {table}", ())
             return cursor.fetchone()[0]
-        except sqlite3.OperationalError:
-            # Table doesn't exist (sqlite-vec not available)
+        except Exception:
+            # Table doesn't exist (embeddings not available)
             return 0
 
     def _vector_search(
