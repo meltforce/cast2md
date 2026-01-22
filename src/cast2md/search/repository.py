@@ -401,15 +401,25 @@ class TranscriptSearchRepository:
 
     def get_indexed_count(self) -> int:
         """Get the total number of indexed segments."""
-        cursor = self.conn.execute("SELECT COUNT(*) FROM transcript_fts")
-        return cursor.fetchone()[0]
+        config = get_db_config()
+        table = "transcript_segments" if config.is_postgresql else "transcript_fts"
+        try:
+            cursor = execute(self.conn, f"SELECT COUNT(*) FROM {table}", ())
+            return cursor.fetchone()[0]
+        except Exception:
+            return 0
 
     def get_indexed_episodes(self) -> set[int]:
         """Get set of episode IDs that have been indexed."""
-        cursor = self.conn.execute(
-            "SELECT DISTINCT episode_id FROM transcript_fts"
-        )
-        return {row[0] for row in cursor.fetchall()}
+        config = get_db_config()
+        table = "transcript_segments" if config.is_postgresql else "transcript_fts"
+        try:
+            cursor = execute(
+                self.conn, f"SELECT DISTINCT episode_id FROM {table}", ()
+            )
+            return {row[0] for row in cursor.fetchall()}
+        except Exception:
+            return set()
 
     def reindex_all(self, episode_transcripts: dict[int, str]) -> tuple[int, int]:
         """Reindex all transcripts.
@@ -737,11 +747,15 @@ class TranscriptSearchRepository:
     ) -> list[tuple]:
         """PostgreSQL pgvector search using cosine similarity."""
         import struct
+        import numpy as np
 
         # Convert bytes to list if needed
         if isinstance(query_embedding, bytes):
             count = len(query_embedding) // 4
             query_embedding = list(struct.unpack(f"{count}f", query_embedding))
+
+        # Convert to numpy array for pgvector compatibility
+        query_embedding = np.array(query_embedding, dtype=np.float32)
 
         cursor = self.conn.cursor()
 
