@@ -1,12 +1,10 @@
 """Repository for transcript full-text search operations."""
 
 import logging
-import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, Optional
 
-from cast2md.db.config import get_db_config
 from cast2md.db.sql import execute
 from cast2md.search.parser import parse_transcript_file
 
@@ -41,29 +39,6 @@ class SearchResponse:
 
 
 @dataclass
-class UnifiedSearchResult:
-    """A unified search result grouping matches by episode."""
-
-    episode_id: int
-    episode_title: str
-    feed_id: int
-    feed_title: str
-    published_at: Optional[str]
-    match_sources: list[str]  # e.g., ["title", "description", "transcript"]
-    transcript_match_count: int
-    best_rank: float  # Best (lowest) BM25 rank across matches
-
-
-@dataclass
-class UnifiedSearchResponse:
-    """Response from unified search."""
-
-    query: str
-    total: int
-    results: list[UnifiedSearchResult]
-
-
-@dataclass
 class HybridSearchResult:
     """A result from hybrid (keyword + semantic) search."""
 
@@ -94,7 +69,6 @@ class TranscriptSearchRepository:
 
     def __init__(self, conn: Connection):
         self.conn = conn
-        self.config = get_db_config()
 
     def index_episode(self, episode_id: int, transcript_path: str) -> int:
         """Index a transcript into full-text search.
@@ -111,34 +85,21 @@ class TranscriptSearchRepository:
             return 0
 
         # Remove existing segments for this episode
-        if self.config.is_postgresql:
-            execute(self.conn, "DELETE FROM transcript_segments WHERE episode_id = %s", (episode_id,))
-        else:
-            execute(self.conn, "DELETE FROM transcript_fts WHERE episode_id = %s", (episode_id,))
+        execute(self.conn, "DELETE FROM transcript_segments WHERE episode_id = %s", (episode_id,))
 
         # Parse transcript
         segments = parse_transcript_file(path)
 
         # Insert segments
         for segment in segments:
-            if self.config.is_postgresql:
-                execute(
-                    self.conn,
-                    """
-                    INSERT INTO transcript_segments (episode_id, segment_start, segment_end, text)
-                    VALUES (%s, %s, %s, %s)
-                    """,
-                    (episode_id, segment.start, segment.end, segment.text),
-                )
-            else:
-                execute(
-                    self.conn,
-                    """
-                    INSERT INTO transcript_fts (text, episode_id, segment_start, segment_end)
-                    VALUES (%s, %s, %s, %s)
-                    """,
-                    (segment.text, episode_id, segment.start, segment.end),
-                )
+            execute(
+                self.conn,
+                """
+                INSERT INTO transcript_segments (episode_id, segment_start, segment_end, text)
+                VALUES (%s, %s, %s, %s)
+                """,
+                (episode_id, segment.start, segment.end, segment.text),
+            )
 
         self.conn.commit()
         return len(segments)
@@ -152,10 +113,7 @@ class TranscriptSearchRepository:
         Returns:
             Number of segments removed.
         """
-        if self.config.is_postgresql:
-            cursor = execute(self.conn, "DELETE FROM transcript_segments WHERE episode_id = %s", (episode_id,))
-        else:
-            cursor = execute(self.conn, "DELETE FROM transcript_fts WHERE episode_id = %s", (episode_id,))
+        cursor = execute(self.conn, "DELETE FROM transcript_segments WHERE episode_id = %s", (episode_id,))
         self.conn.commit()
         return cursor.rowcount
 
@@ -182,149 +140,72 @@ class TranscriptSearchRepository:
             return SearchResponse(query=query, total=0, results=[])
 
         try:
-            if self.config.is_postgresql:
-                return self._search_postgres(safe_query, feed_id, limit, offset)
+            # Build the query
+            if feed_id is not None:
+                count_sql = """
+                    SELECT COUNT(DISTINCT t.episode_id)
+                    FROM transcript_segments t
+                    JOIN episode e ON t.episode_id = e.id
+                    WHERE t.text_search @@ plainto_tsquery('english', %s)
+                      AND e.feed_id = %s
+                """
+                count_params = (safe_query, feed_id)
+
+                results_sql = """
+                    SELECT
+                        t.episode_id,
+                        e.title as episode_title,
+                        e.feed_id,
+                        COALESCE(f.custom_title, f.title) as feed_title,
+                        e.published_at,
+                        t.segment_start,
+                        t.segment_end,
+                        ts_headline('english', t.text, plainto_tsquery('english', %s),
+                                   'StartSel=<mark>, StopSel=</mark>, MaxFragments=1, MaxWords=32') as snippet,
+                        ts_rank(t.text_search, plainto_tsquery('english', %s)) as rank
+                    FROM transcript_segments t
+                    JOIN episode e ON t.episode_id = e.id
+                    JOIN feed f ON e.feed_id = f.id
+                    WHERE t.text_search @@ plainto_tsquery('english', %s)
+                      AND e.feed_id = %s
+                    ORDER BY rank DESC
+                    LIMIT %s OFFSET %s
+                """
+                results_params = (safe_query, safe_query, safe_query, feed_id, limit, offset)
             else:
-                return self._search_sqlite(safe_query, feed_id, limit, offset)
-        except Exception as e:
-            logger.warning(f"Search failed: {e}")
-            return SearchResponse(query=query, total=0, results=[])
+                count_sql = """
+                    SELECT COUNT(DISTINCT t.episode_id)
+                    FROM transcript_segments t
+                    WHERE t.text_search @@ plainto_tsquery('english', %s)
+                """
+                count_params = (safe_query,)
 
-    def _search_postgres(
-        self, query: str, feed_id: Optional[int], limit: int, offset: int
-    ) -> SearchResponse:
-        """PostgreSQL tsvector search."""
-        # Build the query
-        if feed_id is not None:
-            count_sql = """
-                SELECT COUNT(DISTINCT t.episode_id)
-                FROM transcript_segments t
-                JOIN episode e ON t.episode_id = e.id
-                WHERE t.text_search @@ plainto_tsquery('english', %s)
-                  AND e.feed_id = %s
-            """
-            count_params = (query, feed_id)
+                results_sql = """
+                    SELECT
+                        t.episode_id,
+                        e.title as episode_title,
+                        e.feed_id,
+                        COALESCE(f.custom_title, f.title) as feed_title,
+                        e.published_at,
+                        t.segment_start,
+                        t.segment_end,
+                        ts_headline('english', t.text, plainto_tsquery('english', %s),
+                                   'StartSel=<mark>, StopSel=</mark>, MaxFragments=1, MaxWords=32') as snippet,
+                        ts_rank(t.text_search, plainto_tsquery('english', %s)) as rank
+                    FROM transcript_segments t
+                    JOIN episode e ON t.episode_id = e.id
+                    JOIN feed f ON e.feed_id = f.id
+                    WHERE t.text_search @@ plainto_tsquery('english', %s)
+                    ORDER BY rank DESC
+                    LIMIT %s OFFSET %s
+                """
+                results_params = (safe_query, safe_query, safe_query, limit, offset)
 
-            results_sql = """
-                SELECT
-                    t.episode_id,
-                    e.title as episode_title,
-                    e.feed_id,
-                    COALESCE(f.custom_title, f.title) as feed_title,
-                    e.published_at,
-                    t.segment_start,
-                    t.segment_end,
-                    ts_headline('english', t.text, plainto_tsquery('english', %s),
-                               'StartSel=<mark>, StopSel=</mark>, MaxFragments=1, MaxWords=32') as snippet,
-                    ts_rank(t.text_search, plainto_tsquery('english', %s)) as rank
-                FROM transcript_segments t
-                JOIN episode e ON t.episode_id = e.id
-                JOIN feed f ON e.feed_id = f.id
-                WHERE t.text_search @@ plainto_tsquery('english', %s)
-                  AND e.feed_id = %s
-                ORDER BY rank DESC
-                LIMIT %s OFFSET %s
-            """
-            results_params = (query, query, query, feed_id, limit, offset)
-        else:
-            count_sql = """
-                SELECT COUNT(DISTINCT t.episode_id)
-                FROM transcript_segments t
-                WHERE t.text_search @@ plainto_tsquery('english', %s)
-            """
-            count_params = (query,)
+            cursor = self.conn.cursor()
+            cursor.execute(count_sql, count_params)
+            total = cursor.fetchone()[0]
 
-            results_sql = """
-                SELECT
-                    t.episode_id,
-                    e.title as episode_title,
-                    e.feed_id,
-                    COALESCE(f.custom_title, f.title) as feed_title,
-                    e.published_at,
-                    t.segment_start,
-                    t.segment_end,
-                    ts_headline('english', t.text, plainto_tsquery('english', %s),
-                               'StartSel=<mark>, StopSel=</mark>, MaxFragments=1, MaxWords=32') as snippet,
-                    ts_rank(t.text_search, plainto_tsquery('english', %s)) as rank
-                FROM transcript_segments t
-                JOIN episode e ON t.episode_id = e.id
-                JOIN feed f ON e.feed_id = f.id
-                WHERE t.text_search @@ plainto_tsquery('english', %s)
-                ORDER BY rank DESC
-                LIMIT %s OFFSET %s
-            """
-            results_params = (query, query, query, limit, offset)
-
-        cursor = self.conn.cursor()
-        cursor.execute(count_sql, count_params)
-        total = cursor.fetchone()[0]
-
-        cursor.execute(results_sql, results_params)
-        results = [
-            SearchResult(
-                episode_id=row[0],
-                episode_title=row[1],
-                feed_id=row[2],
-                feed_title=row[3],
-                published_at=row[4],
-                segment_start=row[5],
-                segment_end=row[6],
-                snippet=row[7],
-                rank=row[8],
-            )
-            for row in cursor.fetchall()
-        ]
-
-        return SearchResponse(query=query, total=total, results=results)
-
-    def _search_sqlite(
-        self, query: str, feed_id: Optional[int], limit: int, offset: int
-    ) -> SearchResponse:
-        """SQLite FTS5 search."""
-        import sqlite3
-
-        # Base query with joins to get episode and feed info
-        base_sql = """
-            FROM transcript_fts t
-            JOIN episode e ON t.episode_id = e.id
-            JOIN feed f ON e.feed_id = f.id
-            WHERE t.text MATCH ?
-        """
-        params: list = [query]
-
-        # Add feed filter if specified
-        if feed_id is not None:
-            base_sql += " AND e.feed_id = ?"
-            params.append(feed_id)
-
-        # Get total count
-        count_sql = f"SELECT COUNT(DISTINCT t.episode_id) {base_sql}"
-        try:
-            count_cursor = self.conn.execute(count_sql, params)
-            total = count_cursor.fetchone()[0]
-        except sqlite3.OperationalError:
-            return SearchResponse(query=query, total=0, results=[])
-
-        # Get results with snippets and ranking
-        results_sql = f"""
-            SELECT
-                t.episode_id,
-                e.title as episode_title,
-                e.feed_id,
-                COALESCE(f.custom_title, f.title) as feed_title,
-                e.published_at,
-                t.segment_start,
-                t.segment_end,
-                snippet(transcript_fts, 0, '<mark>', '</mark>', '...', 32) as snippet,
-                bm25(transcript_fts) as rank
-            {base_sql}
-            ORDER BY rank
-            LIMIT ? OFFSET ?
-        """
-        params.extend([limit, offset])
-
-        try:
-            cursor = self.conn.execute(results_sql, params)
+            cursor.execute(results_sql, results_params)
             results = [
                 SearchResult(
                     episode_id=row[0],
@@ -339,10 +220,11 @@ class TranscriptSearchRepository:
                 )
                 for row in cursor.fetchall()
             ]
-        except sqlite3.OperationalError:
-            return SearchResponse(query=query, total=0, results=[])
 
-        return SearchResponse(query=query, total=total, results=results)
+            return SearchResponse(query=query, total=total, results=results)
+        except Exception as e:
+            logger.warning(f"Search failed: {e}")
+            return SearchResponse(query=query, total=0, results=[])
 
     def search_episode(
         self,
@@ -360,7 +242,6 @@ class TranscriptSearchRepository:
         Returns:
             List of matching segments.
         """
-        # Note: snippet() and bm25() require the actual table name, not alias
         sql = """
             SELECT
                 t.episode_id,
@@ -370,18 +251,20 @@ class TranscriptSearchRepository:
                 e.published_at,
                 t.segment_start,
                 t.segment_end,
-                snippet(transcript_fts, 0, '<mark>', '</mark>', '...', 32) as snippet,
-                bm25(transcript_fts) as rank
-            FROM transcript_fts t
+                ts_headline('english', t.text, plainto_tsquery('english', %s),
+                           'StartSel=<mark>, StopSel=</mark>, MaxFragments=1, MaxWords=32') as snippet,
+                ts_rank(t.text_search, plainto_tsquery('english', %s)) as rank
+            FROM transcript_segments t
             JOIN episode e ON t.episode_id = e.id
             JOIN feed f ON e.feed_id = f.id
-            WHERE t.text MATCH ? AND t.episode_id = ?
+            WHERE t.text_search @@ plainto_tsquery('english', %s) AND t.episode_id = %s
             ORDER BY t.segment_start
-            LIMIT ?
+            LIMIT %s
         """
 
         try:
-            cursor = self.conn.execute(sql, (query, episode_id, limit))
+            cursor = self.conn.cursor()
+            cursor.execute(sql, (query, query, query, episode_id, limit))
             return [
                 SearchResult(
                     episode_id=row[0],
@@ -396,26 +279,22 @@ class TranscriptSearchRepository:
                 )
                 for row in cursor.fetchall()
             ]
-        except sqlite3.OperationalError:
+        except Exception:
             return []
 
     def get_indexed_count(self) -> int:
         """Get the total number of indexed segments."""
-        config = get_db_config()
-        table = "transcript_segments" if config.is_postgresql else "transcript_fts"
         try:
-            cursor = execute(self.conn, f"SELECT COUNT(*) FROM {table}", ())
+            cursor = execute(self.conn, "SELECT COUNT(*) FROM transcript_segments", ())
             return cursor.fetchone()[0]
         except Exception:
             return 0
 
     def get_indexed_episodes(self) -> set[int]:
         """Get set of episode IDs that have been indexed."""
-        config = get_db_config()
-        table = "transcript_segments" if config.is_postgresql else "transcript_fts"
         try:
             cursor = execute(
-                self.conn, f"SELECT DISTINCT episode_id FROM {table}", ()
+                self.conn, "SELECT DISTINCT episode_id FROM transcript_segments", ()
             )
             return {row[0] for row in cursor.fetchall()}
         except Exception:
@@ -431,7 +310,7 @@ class TranscriptSearchRepository:
             Tuple of (episodes_indexed, segments_indexed).
         """
         # Clear existing index
-        self.conn.execute("DELETE FROM transcript_fts")
+        execute(self.conn, "DELETE FROM transcript_segments", ())
         self.conn.commit()
 
         episodes_indexed = 0
@@ -444,169 +323,6 @@ class TranscriptSearchRepository:
                 segments_indexed += count
 
         return episodes_indexed, segments_indexed
-
-    def unified_search(
-        self,
-        query: str,
-        feed_id: Optional[int] = None,
-        limit: int = 20,
-        offset: int = 0,
-    ) -> UnifiedSearchResponse:
-        """Unified search across episodes and transcripts.
-
-        Searches both episode FTS (title/description) and transcript FTS,
-        groups results by episode, and returns merged results.
-
-        Args:
-            query: Search query (supports FTS5 syntax).
-            feed_id: Optional feed ID to filter results.
-            limit: Maximum results to return.
-            offset: Offset for pagination.
-
-        Returns:
-            UnifiedSearchResponse with grouped results and total count.
-        """
-        safe_query = query.strip()
-        if not safe_query:
-            return UnifiedSearchResponse(query=query, total=0, results=[])
-
-        # Normalize query for FTS (match word boundaries, like existing episode search)
-        fts_query = " ".join(word for word in safe_query.split() if word)
-
-        # Build feed filter clauses
-        episode_feed_filter = ""
-        transcript_feed_filter = ""
-        episode_feed_params: list = []
-        transcript_feed_params: list = []
-        if feed_id is not None:
-            episode_feed_filter = " AND ef.feed_id = ?"
-            transcript_feed_filter = " AND e.feed_id = ?"
-            episode_feed_params = [feed_id]
-            transcript_feed_params = [feed_id]
-
-        # Query 1: Get episodes matching in episode_fts (title/description)
-        # episode_fts has columns: title, description, episode_id, feed_id
-        episode_fts_sql = f"""
-            SELECT
-                ef.episode_id,
-                e.title as episode_title,
-                e.feed_id,
-                COALESCE(f.custom_title, f.title) as feed_title,
-                e.published_at,
-                bm25(episode_fts) as rank
-            FROM episode_fts ef
-            JOIN episode e ON ef.episode_id = e.id
-            JOIN feed f ON e.feed_id = f.id
-            WHERE episode_fts MATCH ?{episode_feed_filter}
-        """
-
-        # Query 2: Get episodes with transcript matches and count
-        # Note: bm25() can't be used with aggregate functions, so we get best rank via subquery
-        transcript_fts_sql = f"""
-            SELECT
-                e.id as episode_id,
-                e.title as episode_title,
-                e.feed_id,
-                COALESCE(f.custom_title, f.title) as feed_title,
-                e.published_at,
-                (SELECT bm25(transcript_fts) FROM transcript_fts
-                 WHERE text MATCH ? AND episode_id = e.id
-                 ORDER BY bm25(transcript_fts) LIMIT 1) as rank,
-                (SELECT COUNT(*) FROM transcript_fts
-                 WHERE text MATCH ? AND episode_id = e.id) as match_count
-            FROM episode e
-            JOIN feed f ON e.feed_id = f.id
-            WHERE e.id IN (
-                SELECT DISTINCT episode_id FROM transcript_fts WHERE text MATCH ?
-            ){transcript_feed_filter}
-        """
-
-        # Combine and aggregate results in Python
-        try:
-            # Get episode FTS matches
-            episode_matches: dict[int, dict] = {}
-            cursor = self.conn.execute(
-                episode_fts_sql,
-                [fts_query] + episode_feed_params,
-            )
-            for row in cursor.fetchall():
-                ep_id = row[0]
-                episode_matches[ep_id] = {
-                    "episode_id": ep_id,
-                    "episode_title": row[1],
-                    "feed_id": row[2],
-                    "feed_title": row[3],
-                    "published_at": row[4],
-                    "match_sources": ["episode"],  # Matches in title or description
-                    "transcript_match_count": 0,
-                    "best_rank": row[5],
-                }
-
-            # Get transcript FTS matches
-            cursor = self.conn.execute(
-                transcript_fts_sql,
-                [fts_query, fts_query, fts_query] + transcript_feed_params,
-            )
-            for row in cursor.fetchall():
-                ep_id = row[0]
-                if ep_id in episode_matches:
-                    # Merge with existing episode match
-                    episode_matches[ep_id]["match_sources"].append("transcript")
-                    episode_matches[ep_id]["transcript_match_count"] = row[6]
-                    # Keep the better (lower) rank
-                    if row[5] < episode_matches[ep_id]["best_rank"]:
-                        episode_matches[ep_id]["best_rank"] = row[5]
-                else:
-                    # New episode from transcript match
-                    episode_matches[ep_id] = {
-                        "episode_id": ep_id,
-                        "episode_title": row[1],
-                        "feed_id": row[2],
-                        "feed_title": row[3],
-                        "published_at": row[4],
-                        "match_sources": ["transcript"],
-                        "transcript_match_count": row[6],
-                        "best_rank": row[5],
-                    }
-
-        except sqlite3.OperationalError:
-            # Invalid FTS5 query syntax
-            return UnifiedSearchResponse(query=query, total=0, results=[])
-
-        # Sort by rank (ascending, since BM25 returns negative values where lower is better)
-        # Then by published_at (descending for recency)
-        def sort_key(x):
-            rank = x["best_rank"]
-            # For secondary sort by date (descending), we reverse the string
-            # since we can't negate a string
-            pub = x["published_at"] or ""
-            return (rank, pub)
-
-        # Sort by rank ascending, then by date descending (reverse=True for date would mess up rank)
-        # So we do two-phase sort: first by date descending, then stable sort by rank ascending
-        sorted_results = sorted(episode_matches.values(), key=lambda x: x["published_at"] or "", reverse=True)
-        sorted_results = sorted(sorted_results, key=lambda x: x["best_rank"])
-
-        total = len(sorted_results)
-
-        # Apply pagination
-        paginated = sorted_results[offset : offset + limit]
-
-        results = [
-            UnifiedSearchResult(
-                episode_id=r["episode_id"],
-                episode_title=r["episode_title"],
-                feed_id=r["feed_id"],
-                feed_title=r["feed_title"],
-                published_at=r["published_at"],
-                match_sources=r["match_sources"],
-                transcript_match_count=r["transcript_match_count"],
-                best_rank=r["best_rank"],
-            )
-            for r in paginated
-        ]
-
-        return UnifiedSearchResponse(query=query, total=total, results=results)
 
     def index_episode_embeddings(
         self, episode_id: int, transcript_path: str, model_name: str | None = None
@@ -648,67 +364,36 @@ class TranscriptSearchRepository:
         feed_id = episode.feed_id
 
         # Remove existing embeddings for this episode
-        config = get_db_config()
-        if config.is_postgresql:
-            cursor = self.conn.cursor()
-            cursor.execute(
-                "DELETE FROM segment_embeddings WHERE episode_id = %s",
-                (episode_id,),
-            )
-        else:
-            self.conn.execute(
-                "DELETE FROM segment_vec WHERE episode_id = ?",
-                (episode_id,),
-            )
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "DELETE FROM segment_embeddings WHERE episode_id = %s",
+            (episode_id,),
+        )
 
-        # Generate embeddings in batch
+        # Generate embeddings in batch (numpy arrays for PostgreSQL)
         texts = [seg.text for seg in segments]
-        # Use numpy arrays for PostgreSQL, binary for SQLite
-        embeddings = generate_embeddings_batch(texts, model_name, as_numpy=config.is_postgresql)
+        embeddings = generate_embeddings_batch(texts, model_name, as_numpy=True)
 
         # Insert embeddings
-        if config.is_postgresql:
-            cursor = self.conn.cursor()
-            for segment, embedding in zip(segments, embeddings):
-                cursor.execute(
-                    """
-                    INSERT INTO segment_embeddings
-                    (episode_id, feed_id, segment_start, segment_end, text_hash, model_name, embedding)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (episode_id, segment_start, segment_end)
-                    DO UPDATE SET embedding = EXCLUDED.embedding, text_hash = EXCLUDED.text_hash
-                    """,
-                    (
-                        episode_id,
-                        feed_id,
-                        float(segment.start),
-                        float(segment.end),
-                        text_hash(segment.text),
-                        model_name,
-                        embedding,
-                    ),
-                )
-        else:
-            # SQLite with sqlite-vec
-            # Column order: embedding, then auxiliary columns
-            # Note: vec0 FLOAT columns require explicit float type (not int)
-            for segment, embedding in zip(segments, embeddings):
-                self.conn.execute(
-                    """
-                    INSERT INTO segment_vec
-                    (embedding, episode_id, feed_id, segment_start, segment_end, text_hash, model_name)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        embedding,
-                        episode_id,
-                        feed_id,
-                        float(segment.start),
-                        float(segment.end),
-                        text_hash(segment.text),
-                        model_name,
-                    ),
-                )
+        for segment, embedding in zip(segments, embeddings):
+            cursor.execute(
+                """
+                INSERT INTO segment_embeddings
+                (episode_id, feed_id, segment_start, segment_end, text_hash, model_name, embedding)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (episode_id, segment_start, segment_end)
+                DO UPDATE SET embedding = EXCLUDED.embedding, text_hash = EXCLUDED.text_hash
+                """,
+                (
+                    episode_id,
+                    feed_id,
+                    float(segment.start),
+                    float(segment.end),
+                    text_hash(segment.text),
+                    model_name,
+                    embedding,
+                ),
+            )
 
         self.conn.commit()
         return len(segments)
@@ -722,8 +407,9 @@ class TranscriptSearchRepository:
         Returns:
             Number of embeddings removed.
         """
-        cursor = self.conn.execute(
-            "DELETE FROM segment_vec WHERE episode_id = ?",
+        cursor = execute(
+            self.conn,
+            "DELETE FROM segment_embeddings WHERE episode_id = %s",
             (episode_id,),
         )
         self.conn.commit()
@@ -731,11 +417,9 @@ class TranscriptSearchRepository:
 
     def get_embedded_episodes(self) -> set[int]:
         """Get set of episode IDs that have embeddings."""
-        config = get_db_config()
-        table = "segment_embeddings" if config.is_postgresql else "segment_vec"
         try:
             cursor = execute(
-                self.conn, f"SELECT DISTINCT episode_id FROM {table}", ()
+                self.conn, "SELECT DISTINCT episode_id FROM segment_embeddings", ()
             )
             return {row[0] for row in cursor.fetchall()}
         except Exception:
@@ -744,10 +428,8 @@ class TranscriptSearchRepository:
 
     def get_embedding_count(self) -> int:
         """Get total number of segment embeddings."""
-        config = get_db_config()
-        table = "segment_embeddings" if config.is_postgresql else "segment_vec"
         try:
-            cursor = execute(self.conn, f"SELECT COUNT(*) FROM {table}", ())
+            cursor = execute(self.conn, "SELECT COUNT(*) FROM segment_embeddings", ())
             return cursor.fetchone()[0]
         except Exception:
             # Table doesn't exist (embeddings not available)
@@ -759,26 +441,18 @@ class TranscriptSearchRepository:
         feed_id: int | None = None,
         limit: int = 50,
     ) -> list[tuple]:
-        """Perform vector similarity search.
+        """Perform vector similarity search using pgvector.
 
         Args:
-            query_embedding: Query embedding (bytes for SQLite, list for PostgreSQL).
+            query_embedding: Query embedding (numpy array or list).
             feed_id: Optional feed ID to filter results.
             limit: Maximum results to return.
 
         Returns:
             List of tuples with segment info and distance.
         """
-        if self.config.is_postgresql:
-            return self._vector_search_postgres(query_embedding, feed_id, limit)
-        else:
-            return self._vector_search_sqlite(query_embedding, feed_id, limit)
-
-    def _vector_search_postgres(
-        self, query_embedding: list, feed_id: int | None, limit: int
-    ) -> list[tuple]:
-        """PostgreSQL pgvector search using cosine similarity."""
         import struct
+
         import numpy as np
 
         # Convert bytes to list if needed
@@ -845,87 +519,6 @@ class TranscriptSearchRepository:
 
         return cursor.fetchall()
 
-    def _vector_search_sqlite(
-        self, query_embedding: bytes, feed_id: int | None, limit: int
-    ) -> list[tuple]:
-        """SQLite sqlite-vec KNN search."""
-        import sqlite3
-
-        from cast2md.db.connection import is_sqlite_vec_available
-
-        if not is_sqlite_vec_available():
-            return []
-
-        fetch_limit = limit * 3 if feed_id is not None else limit
-
-        try:
-            knn_sql = """
-                SELECT
-                    rowid,
-                    episode_id,
-                    feed_id,
-                    segment_start,
-                    segment_end,
-                    distance
-                FROM segment_vec
-                WHERE embedding MATCH ?
-                  AND k = ?
-            """
-            cursor = self.conn.execute(knn_sql, (query_embedding, fetch_limit))
-            knn_results = cursor.fetchall()
-
-            if feed_id is not None:
-                knn_results = [r for r in knn_results if r[2] == feed_id][:limit]
-            else:
-                knn_results = knn_results[:limit]
-
-            if not knn_results:
-                return []
-
-            results = []
-            for row in knn_results:
-                _, ep_id, f_id, seg_start, seg_end, distance = row
-
-                meta_sql = """
-                    SELECT
-                        e.title as episode_title,
-                        COALESCE(f.custom_title, f.title) as feed_title,
-                        e.published_at
-                    FROM episode e
-                    JOIN feed f ON e.feed_id = f.id
-                    WHERE e.id = ?
-                """
-                meta_cursor = self.conn.execute(meta_sql, (ep_id,))
-                meta_row = meta_cursor.fetchone()
-                if not meta_row:
-                    continue
-
-                text_sql = """
-                    SELECT text FROM transcript_fts
-                    WHERE episode_id = ? AND segment_start = ? AND segment_end = ?
-                """
-                text_cursor = self.conn.execute(text_sql, (ep_id, seg_start, seg_end))
-                text_row = text_cursor.fetchone()
-                text = text_row[0] if text_row else ""
-
-                results.append((
-                    ep_id,
-                    meta_row[0],
-                    f_id,
-                    meta_row[1],
-                    meta_row[2],
-                    seg_start,
-                    seg_end,
-                    text,
-                    distance,
-                ))
-
-            return results
-
-        except sqlite3.OperationalError as e:
-            logger.warning(f"Vector search failed: {e}")
-            return []
-
     def hybrid_search(
         self,
         query: str,
@@ -951,7 +544,7 @@ class TranscriptSearchRepository:
         """
         import time
 
-        from cast2md.db.connection import is_pgvector_available, is_sqlite_vec_available
+        from cast2md.db.connection import is_pgvector_available
         from cast2md.search.embeddings import generate_embedding, is_embeddings_available
 
         safe_query = query.strip()
@@ -1003,14 +596,8 @@ class TranscriptSearchRepository:
             except Exception as e:
                 logger.warning(f"Keyword search failed: {e}")
 
-        # Semantic search (vector similarity)
-        # Use pgvector for PostgreSQL, sqlite-vec for SQLite
-        vector_available = (
-            (self.config.is_postgresql and is_pgvector_available()) or
-            (self.config.is_sqlite and is_sqlite_vec_available())
-        )
-
-        if mode in ("hybrid", "semantic") and is_embeddings_available() and vector_available:
+        # Semantic search (vector similarity with pgvector)
+        if mode in ("hybrid", "semantic") and is_embeddings_available() and is_pgvector_available():
             try:
                 t_embed_start = time.perf_counter()
                 query_embedding = generate_embedding(safe_query)

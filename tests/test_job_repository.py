@@ -104,12 +104,13 @@ class TestReclaimStaleJobs:
 
         # Simulate a job that started and got stuck
         old_time = (datetime.now() - timedelta(hours=3)).isoformat()
-        db_conn.execute(
+        cursor = db_conn.cursor()
+        cursor.execute(
             """
             UPDATE job_queue
-            SET status = ?, started_at = ?, claimed_at = ?,
+            SET status = %s, started_at = %s, claimed_at = %s,
                 assigned_node_id = 'node-1', attempts = 1
-            WHERE id = ?
+            WHERE id = %s
             """,
             (JobStatus.RUNNING.value, old_time, old_time, job.id),
         )
@@ -135,12 +136,13 @@ class TestReclaimStaleJobs:
 
         # Simulate a job that has already been attempted 3+ times
         old_time = (datetime.now() - timedelta(hours=3)).isoformat()
-        db_conn.execute(
+        cursor = db_conn.cursor()
+        cursor.execute(
             """
             UPDATE job_queue
-            SET status = ?, started_at = ?, claimed_at = ?,
+            SET status = %s, started_at = %s, claimed_at = %s,
                 assigned_node_id = 'node-1', attempts = 3
-            WHERE id = ?
+            WHERE id = %s
             """,
             (JobStatus.RUNNING.value, old_time, old_time, job.id),
         )
@@ -179,25 +181,26 @@ class TestReclaimStaleJobs:
 
         # Make both jobs stale, but with different attempt counts
         old_time = (datetime.now() - timedelta(hours=3)).isoformat()
+        cursor = db_conn.cursor()
 
         # Job 1: only 1 attempt, should be requeued
-        db_conn.execute(
+        cursor.execute(
             """
             UPDATE job_queue
-            SET status = ?, started_at = ?, claimed_at = ?,
+            SET status = %s, started_at = %s, claimed_at = %s,
                 assigned_node_id = 'node-1', attempts = 1
-            WHERE id = ?
+            WHERE id = %s
             """,
             (JobStatus.RUNNING.value, old_time, old_time, job1.id),
         )
 
         # Job 2: 5 attempts (exceeded max of 3), should fail
-        db_conn.execute(
+        cursor.execute(
             """
             UPDATE job_queue
-            SET status = ?, started_at = ?, claimed_at = ?,
+            SET status = %s, started_at = %s, claimed_at = %s,
                 assigned_node_id = 'node-1', attempts = 5
-            WHERE id = ?
+            WHERE id = %s
             """,
             (JobStatus.RUNNING.value, old_time, old_time, job2.id),
         )
@@ -229,12 +232,13 @@ class TestReclaimStaleJobs:
         # Simulate the bug scenario: job has been reclaimed many times
         # and has 19 attempts but is still running
         old_time = (datetime.now() - timedelta(hours=3)).isoformat()
-        db_conn.execute(
+        cursor = db_conn.cursor()
+        cursor.execute(
             """
             UPDATE job_queue
-            SET status = ?, started_at = ?, claimed_at = ?,
+            SET status = %s, started_at = %s, claimed_at = %s,
                 assigned_node_id = 'node-1', attempts = 19
-            WHERE id = ?
+            WHERE id = %s
             """,
             (JobStatus.RUNNING.value, old_time, old_time, job.id),
         )
@@ -263,11 +267,12 @@ class TestResetRunningJobs:
         )
 
         # Simulate running job with 1 attempt
-        db_conn.execute(
+        cursor = db_conn.cursor()
+        cursor.execute(
             """
             UPDATE job_queue
-            SET status = ?, started_at = ?, attempts = 1
-            WHERE id = ?
+            SET status = %s, started_at = %s, attempts = 1
+            WHERE id = %s
             """,
             (JobStatus.RUNNING.value, datetime.now().isoformat(), job.id),
         )
@@ -290,11 +295,12 @@ class TestResetRunningJobs:
         )
 
         # Simulate running job at max attempts
-        db_conn.execute(
+        cursor = db_conn.cursor()
+        cursor.execute(
             """
             UPDATE job_queue
-            SET status = ?, started_at = ?, attempts = 3
-            WHERE id = ?
+            SET status = %s, started_at = %s, attempts = 3
+            WHERE id = %s
             """,
             (JobStatus.RUNNING.value, datetime.now().isoformat(), job.id),
         )
@@ -326,11 +332,12 @@ class TestBatchForceResetStuck:
 
         # Make job stuck with max attempts
         old_time = (datetime.now() - timedelta(hours=5)).isoformat()
-        db_conn.execute(
+        cursor = db_conn.cursor()
+        cursor.execute(
             """
             UPDATE job_queue
-            SET status = ?, started_at = ?, attempts = 2
-            WHERE id = ?
+            SET status = %s, started_at = %s, attempts = 2
+            WHERE id = %s
             """,
             (JobStatus.RUNNING.value, old_time, job.id),
         )
@@ -463,8 +470,9 @@ class TestMarkRunningLocalNode:
 
         # Simulate stuck for 3 hours
         old_time = (datetime.now() - timedelta(hours=3)).isoformat()
-        db_conn.execute(
-            "UPDATE job_queue SET started_at = ? WHERE id = ?",
+        cursor = db_conn.cursor()
+        cursor.execute(
+            "UPDATE job_queue SET started_at = %s WHERE id = %s",
             (old_time, job.id),
         )
         db_conn.commit()
@@ -494,12 +502,13 @@ class TestReclaimUsesStartedAt:
         # This simulates a job that was reclaimed recently but actually started long ago
         old_started = (datetime.now() - timedelta(hours=3)).isoformat()
         recent_claimed = datetime.now().isoformat()
-        db_conn.execute(
+        cursor = db_conn.cursor()
+        cursor.execute(
             """
             UPDATE job_queue
-            SET status = ?, started_at = ?, claimed_at = ?,
+            SET status = %s, started_at = %s, claimed_at = %s,
                 assigned_node_id = 'node-1', attempts = 1
-            WHERE id = ?
+            WHERE id = %s
             """,
             (JobStatus.RUNNING.value, old_started, recent_claimed, job.id),
         )
@@ -522,12 +531,13 @@ class TestReclaimUsesStartedAt:
 
         # started_at is recent (1 hour ago), within timeout
         recent_started = (datetime.now() - timedelta(hours=1)).isoformat()
-        db_conn.execute(
+        cursor = db_conn.cursor()
+        cursor.execute(
             """
             UPDATE job_queue
-            SET status = ?, started_at = ?, claimed_at = ?,
+            SET status = %s, started_at = %s, claimed_at = %s,
                 assigned_node_id = 'node-1', attempts = 1
-            WHERE id = ?
+            WHERE id = %s
             """,
             (JobStatus.RUNNING.value, recent_started, recent_started, job.id),
         )
@@ -605,8 +615,9 @@ class TestAtomicJobClaim:
             job_type=JobType.TRANSCRIBE,
             priority=5,
         )
-        db_conn.execute(
-            "UPDATE job_queue SET assigned_node_id = 'remote-node' WHERE id = ?",
+        cursor = db_conn.cursor()
+        cursor.execute(
+            "UPDATE job_queue SET assigned_node_id = 'remote-node' WHERE id = %s",
             (remote_job.id,),
         )
         db_conn.commit()
@@ -630,8 +641,9 @@ class TestAtomicJobClaim:
         assert claimed.attempts == 1
 
         # Reset job to queued for another test
-        job_repo.conn.execute(
-            "UPDATE job_queue SET status = ?, attempts = 0 WHERE id = ?",
+        cursor = job_repo.conn.cursor()
+        cursor.execute(
+            "UPDATE job_queue SET status = %s, attempts = 0 WHERE id = %s",
             (JobStatus.QUEUED.value, sample_job.id),
         )
         job_repo.conn.commit()

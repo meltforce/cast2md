@@ -1,180 +1,102 @@
-"""Database migrations for schema changes."""
+"""PostgreSQL database migrations for schema changes."""
 
 import logging
-import sqlite3
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
-MIGRATIONS = [
-    {
-        "version": 1,
-        "description": "Add extended metadata columns to feed and episode tables",
-        "sql": [
-            "ALTER TABLE feed ADD COLUMN author TEXT",
-            "ALTER TABLE feed ADD COLUMN link TEXT",
-            "ALTER TABLE feed ADD COLUMN categories TEXT",
-            "ALTER TABLE feed ADD COLUMN custom_title TEXT",
-            "ALTER TABLE episode ADD COLUMN link TEXT",
-            "ALTER TABLE episode ADD COLUMN author TEXT",
-        ],
-    },
-    {
-        "version": 2,
-        "description": "Add distributed transcription support to job_queue",
-        "sql": [
-            "ALTER TABLE job_queue ADD COLUMN assigned_node_id TEXT",
-            "ALTER TABLE job_queue ADD COLUMN claimed_at TEXT",
-        ],
-    },
-    {
-        "version": 3,
-        "description": "Add progress tracking to job_queue",
-        "sql": [
-            "ALTER TABLE job_queue ADD COLUMN progress_percent INTEGER",
-        ],
-    },
-    {
-        "version": 4,
-        "description": "Add transcript_model tracking to episode",
-        "sql": [
-            "ALTER TABLE episode ADD COLUMN transcript_model TEXT",
-        ],
-    },
-    {
-        "version": 5,
-        "description": "Add transcript_source and transcript_type for external transcript support",
-        "sql": [
-            "ALTER TABLE episode ADD COLUMN transcript_source TEXT",
-            "ALTER TABLE episode ADD COLUMN transcript_type TEXT",
-            # Backfill existing completed episodes with transcript_source = 'whisper'
-            "UPDATE episode SET transcript_source = 'whisper' WHERE transcript_model IS NOT NULL AND transcript_source IS NULL",
-        ],
-    },
-    {
-        "version": 6,
-        "description": "Add iTunes ID and Pocket Casts UUID to feed table",
-        "sql": [
-            "ALTER TABLE feed ADD COLUMN itunes_id TEXT",
-            "ALTER TABLE feed ADD COLUMN pocketcasts_uuid TEXT",
-        ],
-    },
-    {
-        "version": 7,
-        "description": "Add segment_embeddings table for semantic search",
-        "sql": [
-            """
-            CREATE TABLE IF NOT EXISTS segment_embeddings (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                episode_id INTEGER NOT NULL REFERENCES episode(id) ON DELETE CASCADE,
-                segment_start REAL NOT NULL,
-                segment_end REAL NOT NULL,
-                text_hash TEXT NOT NULL,
-                embedding BLOB NOT NULL,
-                model_name TEXT NOT NULL,
-                created_at TEXT NOT NULL DEFAULT (datetime('now')),
-                UNIQUE(episode_id, segment_start, segment_end)
-            )
-            """,
-            "CREATE INDEX IF NOT EXISTS idx_segment_embeddings_episode ON segment_embeddings(episode_id)",
-        ],
-    },
-    {
-        "version": 8,
-        "description": "Migrate to vec0 virtual table for fast indexed vector search",
-        "sql": [
-            # Drop old table - will be recreated as vec0
-            "DROP TABLE IF EXISTS segment_embeddings",
-        ],
-        # Note: vec0 table creation handled specially in run_migrations
-        # because it requires sqlite-vec extension
-        # vec0 only supports vector columns and auxiliary (+) columns with types
-        # episode_id/feed_id are auxiliary for post-KNN filtering
-        "vec0_table": """
-            CREATE VIRTUAL TABLE IF NOT EXISTS segment_vec USING vec0(
-                embedding float[384],
-                +episode_id INTEGER,
-                +feed_id INTEGER,
-                +segment_start FLOAT,
-                +segment_end FLOAT,
-                +text_hash TEXT,
-                +model_name TEXT
-            )
-        """,
-    },
-    {
-        "version": 9,
-        "description": "Add pocketcasts_transcript_url to episode for upfront transcript discovery",
-        "sql": [
-            "ALTER TABLE episode ADD COLUMN pocketcasts_transcript_url TEXT",
-        ],
-    },
-    {
-        "version": 10,
-        "description": "Add transcript discovery tracking columns for 403 retry handling",
-        "sql": [
-            "ALTER TABLE episode ADD COLUMN transcript_checked_at TEXT",
-            "ALTER TABLE episode ADD COLUMN next_transcript_retry_at TEXT",
-            "ALTER TABLE episode ADD COLUMN transcript_failure_reason TEXT",
-        ],
-    },
+# Database migrations - these run after initial schema creation
+MIGRATIONS: list[dict] = [
+    # Initial schema is version 10
+    # Future migrations go here as the schema evolves
 ]
 
 
-def get_schema_version(conn: sqlite3.Connection) -> int:
+def get_schema_version(conn: Any) -> int:
     """Get the current schema version from the database.
 
     Returns 0 if no migrations have been run.
     """
-    # Check if schema_version table exists
-    cursor = conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='schema_version'"
-    )
-    if not cursor.fetchone():
+    cursor = conn.cursor()
+    try:
+        cursor.execute(
+            "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'schema_version')"
+        )
+        exists = cursor.fetchone()[0]
+        if not exists:
+            return 0
+
+        cursor.execute("SELECT version FROM schema_version ORDER BY version DESC LIMIT 1")
+        row = cursor.fetchone()
+        return row[0] if row else 0
+    except Exception:
         return 0
 
-    cursor = conn.execute("SELECT version FROM schema_version ORDER BY version DESC LIMIT 1")
-    row = cursor.fetchone()
-    return row[0] if row else 0
 
-
-def set_schema_version(conn: sqlite3.Connection, version: int) -> None:
+def set_schema_version(conn: Any, version: int) -> None:
     """Set the schema version after a successful migration."""
-    conn.execute(
-        """
-        INSERT INTO schema_version (version, applied_at)
-        VALUES (?, datetime('now'))
-        """,
+    cursor = conn.cursor()
+    cursor.execute(
+        "INSERT INTO schema_version (version, applied_at) VALUES (%s, NOW())",
         (version,),
     )
 
 
-def ensure_schema_version_table(conn: sqlite3.Connection) -> None:
-    """Create the schema_version table if it doesn't exist."""
-    conn.execute(
+def column_exists(conn: Any, table: str, column: str) -> bool:
+    """Check if a column exists in a table."""
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT EXISTS (
+            SELECT 1 FROM information_schema.columns
+            WHERE table_name = %s AND column_name = %s
+        )
+        """,
+        (table, column),
+    )
+    return cursor.fetchone()[0]
+
+
+def table_exists(conn: Any, table: str) -> bool:
+    """Check if a table exists."""
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        SELECT EXISTS (
+            SELECT FROM information_schema.tables
+            WHERE table_name = %s
+        )
+        """,
+        (table,),
+    )
+    return cursor.fetchone()[0]
+
+
+def run_migrations(conn: Any) -> int:
+    """Run all pending database migrations.
+
+    Returns the number of migrations applied.
+    """
+    # Ensure schema_version table exists
+    cursor = conn.cursor()
+    cursor.execute(
         """
         CREATE TABLE IF NOT EXISTS schema_version (
             version INTEGER PRIMARY KEY,
-            applied_at TEXT NOT NULL DEFAULT (datetime('now'))
+            applied_at TIMESTAMP NOT NULL DEFAULT NOW()
         )
         """
     )
     conn.commit()
 
-
-def column_exists(conn: sqlite3.Connection, table: str, column: str) -> bool:
-    """Check if a column exists in a table."""
-    cursor = conn.execute(f"PRAGMA table_info({table})")
-    columns = [row[1] for row in cursor.fetchall()]
-    return column in columns
-
-
-def run_migrations(conn: sqlite3.Connection) -> int:
-    """Run all pending migrations.
-
-    Returns the number of migrations applied.
-    """
-    ensure_schema_version_table(conn)
     current_version = get_schema_version(conn)
+
+    # If this is a fresh install, set version to 10
+    if current_version == 0:
+        set_schema_version(conn, 10)
+        conn.commit()
+        logger.info("Initialized database schema at version 10")
+        return 0
 
     migrations_applied = 0
 
@@ -185,45 +107,17 @@ def run_migrations(conn: sqlite3.Connection) -> int:
 
         logger.info(f"Applying migration {version}: {migration['description']}")
 
-        for sql in migration["sql"]:
-            try:
-                # Check if this is an ALTER TABLE ADD COLUMN and skip if column exists
-                if "ALTER TABLE" in sql and "ADD COLUMN" in sql:
-                    parts = sql.split()
-                    table_idx = parts.index("TABLE") + 1
-                    column_idx = parts.index("COLUMN") + 1
-                    table = parts[table_idx]
-                    column = parts[column_idx]
+        try:
+            for sql in migration["sql"]:
+                cursor.execute(sql)
 
-                    if column_exists(conn, table, column):
-                        logger.debug(f"Column {column} already exists in {table}, skipping")
-                        continue
-
-                conn.execute(sql)
-            except sqlite3.OperationalError as e:
-                # Handle case where column already exists
-                if "duplicate column name" in str(e).lower():
-                    logger.debug(f"Column already exists, skipping: {e}")
-                    continue
-                raise
-
-        # Handle vec0 virtual table creation (requires sqlite-vec extension)
-        if "vec0_table" in migration:
-            try:
-                conn.execute(migration["vec0_table"])
-                logger.info("Created vec0 virtual table for vector search")
-            except sqlite3.OperationalError as e:
-                if "no such module: vec0" in str(e).lower():
-                    logger.warning(
-                        "sqlite-vec extension not available, vec0 table not created. "
-                        "Semantic search will be unavailable."
-                    )
-                else:
-                    raise
-
-        set_schema_version(conn, version)
-        conn.commit()
-        migrations_applied += 1
-        logger.info(f"Migration {version} applied successfully")
+            set_schema_version(conn, version)
+            conn.commit()
+            migrations_applied += 1
+            logger.info(f"Migration {version} applied successfully")
+        except Exception as e:
+            conn.rollback()
+            logger.error(f"Migration {version} failed: {e}")
+            raise
 
     return migrations_applied

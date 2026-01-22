@@ -22,9 +22,6 @@ class Settings(BaseSettings):
         extra="ignore",  # Ignore DATABASE_URL and other unrecognized env vars
     )
 
-    # Database
-    database_path: Path = Path("./data/cast2md.db")
-
     # Storage paths
     storage_path: Path = Path("./data/podcasts")
     temp_download_path: Path = Path("./data/temp")
@@ -37,7 +34,7 @@ class Settings(BaseSettings):
 
     # Download settings
     max_concurrent_downloads: int = 2
-    max_transcript_download_workers: int = 2  # Parallel workers for fetching external transcripts (SQLite limit)
+    max_transcript_download_workers: int = 2  # Parallel workers for fetching external transcripts
     max_retry_attempts: int = 3
     request_timeout: int = 30
 
@@ -65,7 +62,6 @@ class Settings(BaseSettings):
 
     def ensure_directories(self) -> None:
         """Create required directories if they don't exist."""
-        self.database_path.parent.mkdir(parents=True, exist_ok=True)
         self.storage_path.mkdir(parents=True, exist_ok=True)
         self.temp_download_path.mkdir(parents=True, exist_ok=True)
 

@@ -1,18 +1,15 @@
-"""SQL utilities for database-agnostic query building."""
+"""SQL utilities for PostgreSQL query building."""
 
 from typing import Any
 
-from cast2md.db.config import get_db_config
-
 
 def ph() -> str:
-    """Get the parameter placeholder for the current database.
+    """Get the parameter placeholder for PostgreSQL.
 
     Returns:
-        '?' for SQLite, '%s' for PostgreSQL.
+        '%s' for PostgreSQL.
     """
-    config = get_db_config()
-    return "%s" if config.is_postgresql else "?"
+    return "%s"
 
 
 def phs(n: int) -> str:
@@ -22,10 +19,9 @@ def phs(n: int) -> str:
         n: Number of placeholders needed.
 
     Returns:
-        Comma-separated placeholders (e.g., '?, ?, ?' or '%s, %s, %s').
+        Comma-separated placeholders (e.g., '%s, %s, %s').
     """
-    placeholder = ph()
-    return ", ".join([placeholder] * n)
+    return ", ".join(["%s"] * n)
 
 
 def now_sql() -> str:
@@ -34,34 +30,26 @@ def now_sql() -> str:
     Returns:
         SQL expression for current timestamp.
     """
-    config = get_db_config()
-    if config.is_postgresql:
-        return "NOW()"
-    return "datetime('now')"
+    return "NOW()"
 
 
-def bool_val(val: bool) -> Any:
+def bool_val(val: bool) -> bool:
     """Convert boolean to database-appropriate value.
 
     Args:
         val: Boolean value.
 
     Returns:
-        Boolean for PostgreSQL, 1/0 for SQLite.
+        Boolean (PostgreSQL handles booleans natively).
     """
-    config = get_db_config()
-    if config.is_postgresql:
-        return val
-    return 1 if val else 0
+    return val
 
 
 def returning_clause() -> str:
     """Get RETURNING clause syntax.
 
-    Both SQLite (3.35+) and PostgreSQL support RETURNING.
-
     Returns:
-        'RETURNING *' for both databases.
+        'RETURNING *' for PostgreSQL.
     """
     return "RETURNING *"
 
@@ -72,7 +60,7 @@ def upsert_sql(
     conflict_column: str,
     update_columns: list[str] | None = None,
 ) -> str:
-    """Generate UPSERT SQL for the current database.
+    """Generate UPSERT SQL for PostgreSQL.
 
     Args:
         table: Table name.
@@ -89,30 +77,17 @@ def upsert_sql(
     placeholders = phs(len(columns))
     insert_cols = ", ".join(columns)
 
-    config = get_db_config()
-    if config.is_postgresql:
-        # PostgreSQL: ON CONFLICT ... DO UPDATE
-        update_sets = ", ".join(f"{c} = EXCLUDED.{c}" for c in update_columns)
-        return f"""
-            INSERT INTO {table} ({insert_cols})
-            VALUES ({placeholders})
-            ON CONFLICT ({conflict_column}) DO UPDATE SET {update_sets}
-        """
-    else:
-        # SQLite: ON CONFLICT ... DO UPDATE (same syntax)
-        update_sets = ", ".join(f"{c} = excluded.{c}" for c in update_columns)
-        return f"""
-            INSERT INTO {table} ({insert_cols})
-            VALUES ({placeholders})
-            ON CONFLICT({conflict_column}) DO UPDATE SET {update_sets}
-        """
+    # PostgreSQL: ON CONFLICT ... DO UPDATE
+    update_sets = ", ".join(f"{c} = EXCLUDED.{c}" for c in update_columns)
+    return f"""
+        INSERT INTO {table} ({insert_cols})
+        VALUES ({placeholders})
+        ON CONFLICT ({conflict_column}) DO UPDATE SET {update_sets}
+    """
 
 
 def execute(conn: Any, sql: str, params: tuple | list = ()) -> Any:
-    """Execute SQL with automatic placeholder conversion.
-
-    For SQLite, converts %s placeholders to ?.
-    For PostgreSQL, uses %s as-is and creates a cursor.
+    """Execute SQL with PostgreSQL cursor.
 
     Args:
         conn: Database connection.
@@ -122,16 +97,9 @@ def execute(conn: Any, sql: str, params: tuple | list = ()) -> Any:
     Returns:
         Cursor with results.
     """
-    config = get_db_config()
-    if config.is_sqlite:
-        # Convert %s to ? for SQLite
-        sql = sql.replace("%s", "?")
-        return conn.execute(sql, params)
-    else:
-        # PostgreSQL needs a cursor
-        cursor = conn.cursor()
-        cursor.execute(sql, params)
-        return cursor
+    cursor = conn.cursor()
+    cursor.execute(sql, params)
+    return cursor
 
 
 def executemany(conn: Any, sql: str, params_list: list) -> Any:
@@ -145,18 +113,13 @@ def executemany(conn: Any, sql: str, params_list: list) -> Any:
     Returns:
         Cursor with results.
     """
-    config = get_db_config()
-    if config.is_sqlite:
-        sql = sql.replace("%s", "?")
-        return conn.executemany(sql, params_list)
-    else:
-        cursor = conn.cursor()
-        cursor.executemany(sql, params_list)
-        return cursor
+    cursor = conn.cursor()
+    cursor.executemany(sql, params_list)
+    return cursor
 
 
 def adapt_params(params: tuple | list) -> tuple | list:
-    """Adapt parameters for the current database.
+    """Adapt parameters for the database.
 
     Converts types as needed for database compatibility.
 
@@ -171,7 +134,7 @@ def adapt_params(params: tuple | list) -> tuple | list:
 
 
 class Query:
-    """Builder for database-agnostic SQL queries.
+    """Builder for SQL queries.
 
     Example:
         q = Query("SELECT * FROM episodes WHERE status = %s", (status,))

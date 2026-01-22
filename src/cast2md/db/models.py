@@ -10,7 +10,7 @@ from typing import Optional
 def parse_datetime(value) -> Optional[datetime]:
     """Parse a datetime value from database.
 
-    Handles both ISO format strings (SQLite) and native datetime objects (PostgreSQL).
+    Handles both ISO format strings and native datetime objects.
 
     Args:
         value: A datetime object, ISO format string, or None.

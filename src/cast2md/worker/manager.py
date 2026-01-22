@@ -690,11 +690,11 @@ class WorkerManager:
         Called after a transcript is created (transcription or download).
         Low priority since embeddings are not required for basic functionality.
         """
-        from cast2md.db.connection import is_sqlite_vec_available
+        from cast2md.db.connection import is_pgvector_available
         from cast2md.search.embeddings import is_embeddings_available
 
         # Check if embedding infrastructure is available
-        if not is_embeddings_available() or not is_sqlite_vec_available():
+        if not is_embeddings_available() or not is_pgvector_available():
             return
 
         job_repo = JobRepository(conn)

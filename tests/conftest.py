@@ -1,11 +1,10 @@
 """Pytest fixtures for cast2md tests."""
 
-import sqlite3
 from datetime import datetime
 
 import pytest
 
-from cast2md.db.migrations import run_migrations
+from cast2md.db.connection import get_connection, _return_pg_connection, init_db
 from cast2md.db.models import JobType
 from cast2md.db.repository import (
     EpisodeRepository,
@@ -13,24 +12,34 @@ from cast2md.db.repository import (
     JobRepository,
 )
 from cast2md.search.repository import TranscriptSearchRepository
-from cast2md.db.schema import get_schema
 
 
 @pytest.fixture
 def db_conn():
-    """Create an in-memory SQLite database with schema."""
-    conn = sqlite3.connect(":memory:")
-    conn.execute("PRAGMA foreign_keys = ON")
+    """Get a PostgreSQL connection with clean test data.
 
-    # Create schema
-    conn.executescript(get_schema())
+    Cleans up test data before each test to ensure isolation.
+    Uses DELETE with cascading to clean dependent tables.
+    """
+    # Ensure schema exists (idempotent)
+    init_db()
 
-    # Run migrations to add additional columns
-    run_migrations(conn)
+    conn = get_connection()
+
+    # Clean up test data before each test
+    # Delete in order that respects foreign keys (or rely on CASCADE)
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM job_queue")
+    cursor.execute("DELETE FROM transcript_segments")
+    cursor.execute("DELETE FROM segment_embeddings")
+    cursor.execute("DELETE FROM episode_search")
+    cursor.execute("DELETE FROM episode")
+    cursor.execute("DELETE FROM feed")
+    conn.commit()
 
     yield conn
 
-    conn.close()
+    _return_pg_connection(conn)
 
 
 @pytest.fixture
