@@ -112,7 +112,7 @@
                 <button class="outline" style="padding: 0.25rem 0.5rem; font-size: 0.875rem; margin: 0;" onclick="queueByDate({{ feed.id }})">Queue</button>
             </div>
             {% if pending_count > 0 %}
-            <button class="outline secondary" style="padding: 0.25rem 0.5rem; font-size: 0.875rem; margin: 0;" onclick="queueAllTranscripts({{ feed.id }})">Get All Transcripts</button>
+            <button class="outline" style="padding: 0.25rem 0.5rem; font-size: 0.875rem; margin: 0;" onclick="queueAllDownloads({{ feed.id }})">Download & Transcribe All</button>
             {% endif %}
         </div>
 
@@ -160,6 +160,9 @@
         <button type="submit" style="padding: 0.5rem 1rem; margin: 0;">Search</button>
         {% if query or status_filter %}
         <a href="?per_page={{ per_page }}" role="button" class="outline secondary" style="padding: 0.5rem 1rem; margin: 0;">Clear Filters</a>
+        {% endif %}
+        {% if pending_count > 0 %}
+        <button type="button" class="secondary" style="padding: 0.5rem 1rem; margin: 0;" onclick="queueAllTranscripts({{ feed.id }})">Get All Transcripts ({{ pending_count }})</button>
         {% endif %}
     </form>
     {% if query or status_filter %}
@@ -698,6 +701,37 @@ async function queueAllTranscripts(feedId) {
 
     try {
         const response = await fetch(`/api/queue/batch/feed/${feedId}/transcript-download`, {method: 'POST'});
+        const data = await response.json();
+
+        if (response.ok) {
+            // Update all pending rows to show queued status
+            document.querySelectorAll('.status-badge.status-pending').forEach(badge => {
+                const row = badge.closest('tr');
+                const btn = row.querySelector('.actions button');
+                badge.className = 'status-badge status-downloading';
+                badge.textContent = 'queued';
+                if (btn) {
+                    btn.disabled = true;
+                    btn.textContent = '...';
+                }
+            });
+            // Start polling for updates
+            startStatusPolling();
+        } else {
+            showError(data.detail);
+        }
+    } catch (error) {
+        showError(error.message);
+    }
+}
+
+async function queueAllDownloads(feedId) {
+    if (!confirm('Download audio and transcribe all pending episodes?\n\nThis will download audio files and use Whisper for transcription.')) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/queue/batch/feed/${feedId}/process`, {method: 'POST'});
         const data = await response.json();
 
         if (response.ok) {
