@@ -111,8 +111,8 @@
                 <input type="date" id="dateTo" style="padding: 0.25rem 0.5rem; margin: 0;">
                 <button class="outline" style="padding: 0.25rem 0.5rem; font-size: 0.875rem; margin: 0;" onclick="queueByDate({{ feed.id }})">Queue</button>
             </div>
-            {% if pending_count > 0 %}
-            <button class="outline" style="padding: 0.25rem 0.5rem; font-size: 0.875rem; margin: 0;" onclick="queueAllDownloads({{ feed.id }})">Download & Transcribe All</button>
+            {% if needs_transcription_count > 0 %}
+            <button class="outline" style="padding: 0.25rem 0.5rem; font-size: 0.875rem; margin: 0;" onclick="queueAllDownloads({{ feed.id }})">Download & Transcribe All ({{ needs_transcription_count }})</button>
             {% endif %}
         </div>
 

@@ -454,7 +454,7 @@ class BatchQueueResponse(BaseModel):
 
 @router.post("/batch/feed/{feed_id}/process", response_model=BatchQueueResponse)
 def batch_queue_feed(feed_id: int, request: BatchQueueRequest | None = None):
-    """Queue all pending episodes from a feed for processing."""
+    """Queue all episodes needing transcription from a feed for processing."""
     from cast2md.db.models import EpisodeStatus
 
     priority = request.priority if request else 10
@@ -463,15 +463,17 @@ def batch_queue_feed(feed_id: int, request: BatchQueueRequest | None = None):
         episode_repo = EpisodeRepository(conn)
         job_repo = JobRepository(conn)
 
-        # Get all episodes for this feed and filter for pending
-        # TODO: Add get_by_feed_and_status() for more efficient querying
+        # Get all episodes for this feed and filter for those needing transcription
         episodes = episode_repo.get_by_feed(feed_id, limit=10000)
-        pending = [e for e in episodes if e.status == EpisodeStatus.PENDING]
+        needs_transcription = [
+            e for e in episodes
+            if e.status in (EpisodeStatus.PENDING, EpisodeStatus.TRANSCRIPT_UNAVAILABLE)
+        ]
 
         queued = 0
         skipped = 0
 
-        for episode in pending:
+        for episode in needs_transcription:
             # Skip if already has pending job
             if job_repo.has_pending_job(episode.id, JobType.DOWNLOAD):
                 skipped += 1
