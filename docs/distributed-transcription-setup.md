@@ -68,19 +68,25 @@ Perform these steps on each machine you want to use as a transcriber node.
 The easiest way to set up a node is with the guided install script:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/linus/cast2md/main/scripts/cast2md-node.sh | bash
+curl -fsSL https://raw.githubusercontent.com/meltforce/cast2md/main/scripts/cast2md-node.sh | bash
 ```
 
 This script:
 - Checks prerequisites (Python 3.11+, Homebrew, ffmpeg)
 - Handles GitHub authentication (for private repo access)
 - Clones the repo to `~/.cast2md/cast2md`
-- Creates a virtual environment with minimal dependencies (~80-120 MB vs ~600 MB full install)
+- Creates a virtual environment with minimal dependencies (~280 MB vs ~600 MB full install)
 - Detects Apple Silicon and installs MLX backend automatically
 - Prompts for server URL and node name
 - Optionally sets up as a startup service via launchd
 
 **Updating:** Run the same command again. The script detects existing installations and updates in place.
+
+**For private repos:** Export your GitHub token first:
+```bash
+export GITHUB_TOKEN=ghp_your_token_here
+curl -fsSL https://raw.githubusercontent.com/meltforce/cast2md/main/scripts/cast2md-node.sh | bash
+```
 
 ### Manual Install
 
@@ -93,15 +99,20 @@ If you prefer manual installation:
 git clone https://github.com/meltforce/cast2md.git
 cd cast2md
 
-# Install with minimal node dependencies (faster, smaller)
-pip install --no-deps -e . && pip install -e ".[node,node-mlx]"  # Apple Silicon
-# or
-pip install --no-deps -e . && pip install -e ".[node]"           # Intel/CPU
+# Create virtual environment (use Homebrew Python if system Python < 3.11)
+/opt/homebrew/bin/python3 -m venv .venv
+source .venv/bin/activate
 
-# Or full install (includes server dependencies)
-pip install -e ".[mlx]"    # For Apple Silicon
-# or
-pip install -e .           # CPU only
+# Install cast2md without dependencies
+pip install --no-deps -e .
+
+# Install node dependencies directly
+pip install httpx pydantic-settings python-dotenv click fastapi \
+  'uvicorn[standard]' jinja2 feedparser python-multipart
+
+# Install transcription backend (choose one)
+pip install mlx-whisper      # Apple Silicon
+pip install faster-whisper   # Intel/NVIDIA
 ```
 
 ### Step 2: Configure Whisper Settings (Optional)
