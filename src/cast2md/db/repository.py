@@ -1,10 +1,10 @@
 """Repository classes for database operations."""
 
-import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Optional
+from typing import Any, Optional
 
+from cast2md.db.config import get_db_config
 from cast2md.db.models import (
     Episode,
     EpisodeStatus,
@@ -15,12 +15,16 @@ from cast2md.db.models import (
     NodeStatus,
     TranscriberNode,
 )
+from cast2md.db.sql import execute, now_sql, ph, phs
+
+# Type alias for database connection (sqlite3 or psycopg2)
+Connection = Any
 
 
 class FeedRepository:
     """Repository for Feed CRUD operations."""
 
-    def __init__(self, conn: sqlite3.Connection):
+    def __init__(self, conn: Connection):
         self.conn = conn
 
     def create(
@@ -36,17 +40,33 @@ class FeedRepository:
     ) -> Feed:
         """Create a new feed."""
         now = datetime.now().isoformat()
-        cursor = self.conn.execute(
-            """
-            INSERT INTO feed (url, title, description, image_url, author, link, categories,
-                              itunes_id, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (url, title, description, image_url, author, link, categories, itunes_id, now, now),
-        )
-        self.conn.commit()
+        config = get_db_config()
 
-        return self.get_by_id(cursor.lastrowid)
+        if config.is_postgresql:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO feed (url, title, description, image_url, author, link, categories,
+                                  itunes_id, created_at, updated_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
+                """,
+                (url, title, description, image_url, author, link, categories, itunes_id, now, now),
+            )
+            feed_id = cursor.fetchone()[0]
+        else:
+            cursor = self.conn.execute(
+                """
+                INSERT INTO feed (url, title, description, image_url, author, link, categories,
+                                  itunes_id, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (url, title, description, image_url, author, link, categories, itunes_id, now, now),
+            )
+            feed_id = cursor.lastrowid
+
+        self.conn.commit()
+        return self.get_by_id(feed_id)
 
     # Columns in the order expected by Feed.from_row
     FEED_COLUMNS = """id, url, title, description, image_url, author, link,
@@ -55,8 +75,9 @@ class FeedRepository:
 
     def get_by_id(self, feed_id: int) -> Optional[Feed]:
         """Get feed by ID."""
-        cursor = self.conn.execute(
-            f"SELECT {self.FEED_COLUMNS} FROM feed WHERE id = ?",
+        cursor = execute(
+            self.conn,
+            f"SELECT {self.FEED_COLUMNS} FROM feed WHERE id = %s",
             (feed_id,),
         )
         row = cursor.fetchone()
@@ -64,8 +85,9 @@ class FeedRepository:
 
     def get_by_url(self, url: str) -> Optional[Feed]:
         """Get feed by URL."""
-        cursor = self.conn.execute(
-            f"SELECT {self.FEED_COLUMNS} FROM feed WHERE url = ?",
+        cursor = execute(
+            self.conn,
+            f"SELECT {self.FEED_COLUMNS} FROM feed WHERE url = %s",
             (url,),
         )
         row = cursor.fetchone()
@@ -73,21 +95,22 @@ class FeedRepository:
 
     def get_all(self) -> list[Feed]:
         """Get all feeds."""
-        cursor = self.conn.execute(f"SELECT {self.FEED_COLUMNS} FROM feed ORDER BY title")
+        cursor = execute(self.conn, f"SELECT {self.FEED_COLUMNS} FROM feed ORDER BY title")
         return [Feed.from_row(row) for row in cursor.fetchall()]
 
     def update_last_polled(self, feed_id: int) -> None:
         """Update the last_polled timestamp."""
         now = datetime.now().isoformat()
-        self.conn.execute(
-            "UPDATE feed SET last_polled = ?, updated_at = ? WHERE id = ?",
+        execute(
+            self.conn,
+            "UPDATE feed SET last_polled = %s, updated_at = %s WHERE id = %s",
             (now, now, feed_id),
         )
         self.conn.commit()
 
     def delete(self, feed_id: int) -> bool:
         """Delete a feed and its episodes."""
-        cursor = self.conn.execute("DELETE FROM feed WHERE id = ?", (feed_id,))
+        cursor = execute(self.conn, "DELETE FROM feed WHERE id = %s", (feed_id,))
         self.conn.commit()
         return cursor.rowcount > 0
 
@@ -104,11 +127,12 @@ class FeedRepository:
         now = datetime.now().isoformat()
         # Allow setting to NULL by using empty string or None
         title_value = custom_title if custom_title else None
-        self.conn.execute(
+        execute(
+            self.conn,
             """
             UPDATE feed
-            SET custom_title = ?, updated_at = ?
-            WHERE id = ?
+            SET custom_title = %s, updated_at = %s
+            WHERE id = %s
             """,
             (title_value, now, feed_id),
         )
@@ -131,11 +155,12 @@ class FeedRepository:
             categories: JSON string of categories.
         """
         now = datetime.now().isoformat()
-        self.conn.execute(
+        execute(
+            self.conn,
             """
             UPDATE feed
-            SET author = ?, link = ?, categories = ?, updated_at = ?
-            WHERE id = ?
+            SET author = %s, link = %s, categories = %s, updated_at = %s
+            WHERE id = %s
             """,
             (author, link, categories, now, feed_id),
         )
@@ -149,11 +174,12 @@ class FeedRepository:
             pocketcasts_uuid: Pocket Casts show UUID.
         """
         now = datetime.now().isoformat()
-        self.conn.execute(
+        execute(
+            self.conn,
             """
             UPDATE feed
-            SET pocketcasts_uuid = ?, updated_at = ?
-            WHERE id = ?
+            SET pocketcasts_uuid = %s, updated_at = %s
+            WHERE id = %s
             """,
             (pocketcasts_uuid, now, feed_id),
         )
@@ -171,7 +197,7 @@ class EpisodeRepository:
                          transcript_failure_reason, link, author,
                          error_message, created_at, updated_at"""
 
-    def __init__(self, conn: sqlite3.Connection):
+    def __init__(self, conn: Connection):
         self.conn = conn
 
     def create(
@@ -191,40 +217,71 @@ class EpisodeRepository:
         """Create a new episode."""
         now = datetime.now().isoformat()
         published_str = published_at.isoformat() if published_at else None
+        config = get_db_config()
 
-        cursor = self.conn.execute(
-            """
-            INSERT INTO episode (
-                feed_id, guid, title, description, audio_url,
-                duration_seconds, published_at, status, transcript_url,
-                transcript_type, link, author, created_at, updated_at
+        if config.is_postgresql:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO episode (
+                    feed_id, guid, title, description, audio_url,
+                    duration_seconds, published_at, status, transcript_url,
+                    transcript_type, link, author, created_at, updated_at
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
+                """,
+                (
+                    feed_id, guid, title, description, audio_url,
+                    duration_seconds, published_str, EpisodeStatus.PENDING.value,
+                    transcript_url, transcript_type, link, author, now, now,
+                ),
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                feed_id, guid, title, description, audio_url,
-                duration_seconds, published_str, EpisodeStatus.PENDING.value,
-                transcript_url, transcript_type, link, author, now, now,
-            ),
-        )
-        episode_id = cursor.lastrowid
+            episode_id = cursor.fetchone()[0]
 
-        # Auto-index in FTS for search
-        self.conn.execute(
-            """
-            INSERT INTO episode_fts (title, description, episode_id, feed_id)
-            VALUES (?, ?, ?, ?)
-            """,
-            (title, description or "", episode_id, feed_id),
-        )
+            # Index in PostgreSQL FTS table
+            cursor.execute(
+                """
+                INSERT INTO episode_search (episode_id, feed_id, title_search, description_search)
+                VALUES (%s, %s, to_tsvector('english', %s), to_tsvector('english', %s))
+                """,
+                (episode_id, feed_id, title, description or ""),
+            )
+        else:
+            cursor = self.conn.execute(
+                """
+                INSERT INTO episode (
+                    feed_id, guid, title, description, audio_url,
+                    duration_seconds, published_at, status, transcript_url,
+                    transcript_type, link, author, created_at, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    feed_id, guid, title, description, audio_url,
+                    duration_seconds, published_str, EpisodeStatus.PENDING.value,
+                    transcript_url, transcript_type, link, author, now, now,
+                ),
+            )
+            episode_id = cursor.lastrowid
+
+            # Auto-index in FTS for search (SQLite)
+            self.conn.execute(
+                """
+                INSERT INTO episode_fts (title, description, episode_id, feed_id)
+                VALUES (?, ?, ?, ?)
+                """,
+                (title, description or "", episode_id, feed_id),
+            )
+
         self.conn.commit()
-
         return self.get_by_id(episode_id)
 
     def get_by_id(self, episode_id: int) -> Optional[Episode]:
         """Get episode by ID."""
-        cursor = self.conn.execute(
-            f"SELECT {self.EPISODE_COLUMNS} FROM episode WHERE id = ?",
+        cursor = execute(
+            self.conn,
+            f"SELECT {self.EPISODE_COLUMNS} FROM episode WHERE id = %s",
             (episode_id,),
         )
         row = cursor.fetchone()
@@ -232,8 +289,9 @@ class EpisodeRepository:
 
     def get_by_guid(self, feed_id: int, guid: str) -> Optional[Episode]:
         """Get episode by feed ID and GUID."""
-        cursor = self.conn.execute(
-            f"SELECT {self.EPISODE_COLUMNS} FROM episode WHERE feed_id = ? AND guid = ?",
+        cursor = execute(
+            self.conn,
+            f"SELECT {self.EPISODE_COLUMNS} FROM episode WHERE feed_id = %s AND guid = %s",
             (feed_id, guid),
         )
         row = cursor.fetchone()
@@ -241,12 +299,13 @@ class EpisodeRepository:
 
     def get_by_feed(self, feed_id: int, limit: int = 50) -> list[Episode]:
         """Get episodes for a feed, ordered by published date descending."""
-        cursor = self.conn.execute(
+        cursor = execute(
+            self.conn,
             f"""
             SELECT {self.EPISODE_COLUMNS} FROM episode
-            WHERE feed_id = ?
+            WHERE feed_id = %s
             ORDER BY published_at DESC
-            LIMIT ?
+            LIMIT %s
             """,
             (feed_id, limit),
         )
@@ -256,12 +315,13 @@ class EpisodeRepository:
         self, feed_id: int, limit: int = 25, offset: int = 0
     ) -> list[Episode]:
         """Get episodes with proper SQL OFFSET pagination."""
-        cursor = self.conn.execute(
+        cursor = execute(
+            self.conn,
             f"""
             SELECT {self.EPISODE_COLUMNS} FROM episode
-            WHERE feed_id = ?
+            WHERE feed_id = %s
             ORDER BY published_at DESC
-            LIMIT ? OFFSET ?
+            LIMIT %s OFFSET %s
             """,
             (feed_id, limit, offset),
         )
@@ -269,12 +329,13 @@ class EpisodeRepository:
 
     def get_by_status(self, status: EpisodeStatus, limit: int = 100) -> list[Episode]:
         """Get episodes by status."""
-        cursor = self.conn.execute(
+        cursor = execute(
+            self.conn,
             f"""
             SELECT {self.EPISODE_COLUMNS} FROM episode
-            WHERE status = ?
+            WHERE status = %s
             ORDER BY created_at ASC
-            LIMIT ?
+            LIMIT %s
             """,
             (status.value, limit),
         )
@@ -288,11 +349,12 @@ class EpisodeRepository:
     ) -> None:
         """Update episode status."""
         now = datetime.now().isoformat()
-        self.conn.execute(
+        execute(
+            self.conn,
             """
             UPDATE episode
-            SET status = ?, error_message = ?, updated_at = ?
-            WHERE id = ?
+            SET status = %s, error_message = %s, updated_at = %s
+            WHERE id = %s
             """,
             (status.value, error_message, now, episode_id),
         )
@@ -306,11 +368,12 @@ class EpisodeRepository:
             audio_path: Path to audio file, or None to clear.
         """
         now = datetime.now().isoformat()
-        self.conn.execute(
+        execute(
+            self.conn,
             """
             UPDATE episode
-            SET audio_path = ?, updated_at = ?
-            WHERE id = ?
+            SET audio_path = %s, updated_at = %s
+            WHERE id = %s
             """,
             (audio_path, now, episode_id),
         )
@@ -322,11 +385,12 @@ class EpisodeRepository:
         Used when refreshing expired/signed URLs from the feed.
         """
         now = datetime.now().isoformat()
-        self.conn.execute(
+        execute(
+            self.conn,
             """
             UPDATE episode
-            SET audio_url = ?, updated_at = ?
-            WHERE id = ?
+            SET audio_url = %s, updated_at = %s
+            WHERE id = %s
             """,
             (audio_url, now, episode_id),
         )
@@ -335,11 +399,12 @@ class EpisodeRepository:
     def update_transcript_path(self, episode_id: int, transcript_path: str) -> None:
         """Update episode transcript path."""
         now = datetime.now().isoformat()
-        self.conn.execute(
+        execute(
+            self.conn,
             """
             UPDATE episode
-            SET transcript_path = ?, updated_at = ?
-            WHERE id = ?
+            SET transcript_path = %s, updated_at = %s
+            WHERE id = %s
             """,
             (transcript_path, now, episode_id),
         )
@@ -353,12 +418,13 @@ class EpisodeRepository:
         Sets transcript_source to 'whisper' for Whisper-transcribed episodes.
         """
         now = datetime.now().isoformat()
-        self.conn.execute(
+        execute(
+            self.conn,
             """
             UPDATE episode
-            SET transcript_path = ?, transcript_model = ?, transcript_source = 'whisper',
-                updated_at = ?
-            WHERE id = ?
+            SET transcript_path = %s, transcript_model = %s, transcript_source = 'whisper',
+                updated_at = %s
+            WHERE id = %s
             """,
             (transcript_path, transcript_model, now, episode_id),
         )
@@ -375,12 +441,13 @@ class EpisodeRepository:
             source: Source identifier (e.g., 'podcast2.0:vtt', 'podcast2.0:srt').
         """
         now = datetime.now().isoformat()
-        self.conn.execute(
+        execute(
+            self.conn,
             """
             UPDATE episode
-            SET transcript_path = ?, transcript_source = ?, transcript_model = NULL,
-                updated_at = ?
-            WHERE id = ?
+            SET transcript_path = %s, transcript_source = %s, transcript_model = NULL,
+                updated_at = %s
+            WHERE id = %s
             """,
             (transcript_path, source, now, episode_id),
         )
@@ -396,11 +463,12 @@ class EpisodeRepository:
             pocketcasts_transcript_url: URL to the Pocket Casts transcript.
         """
         now = datetime.now().isoformat()
-        self.conn.execute(
+        execute(
+            self.conn,
             """
             UPDATE episode
-            SET pocketcasts_transcript_url = ?, updated_at = ?
-            WHERE id = ?
+            SET pocketcasts_transcript_url = %s, updated_at = %s
+            WHERE id = %s
             """,
             (pocketcasts_transcript_url, now, episode_id),
         )
@@ -429,12 +497,13 @@ class EpisodeRepository:
         now = datetime.now().isoformat()
         checked_str = checked_at.isoformat() if checked_at else None
         retry_str = next_retry_at.isoformat() if next_retry_at else None
-        self.conn.execute(
+        execute(
+            self.conn,
             """
             UPDATE episode
-            SET status = ?, transcript_checked_at = ?, next_transcript_retry_at = ?,
-                transcript_failure_reason = ?, updated_at = ?
-            WHERE id = ?
+            SET status = %s, transcript_checked_at = %s, next_transcript_retry_at = %s,
+                transcript_failure_reason = %s, updated_at = %s
+            WHERE id = %s
             """,
             (status.value, checked_str, retry_str, failure_reason, now, episode_id),
         )
@@ -451,12 +520,13 @@ class EpisodeRepository:
             List of episodes ready for retry.
         """
         now = datetime.now().isoformat()
-        cursor = self.conn.execute(
+        cursor = execute(
+            self.conn,
             f"""
             SELECT {self.EPISODE_COLUMNS} FROM episode
-            WHERE status = ?
+            WHERE status = %s
               AND next_transcript_retry_at IS NOT NULL
-              AND next_transcript_retry_at <= ?
+              AND next_transcript_retry_at <= %s
             ORDER BY next_transcript_retry_at ASC
             """,
             (EpisodeStatus.TRANSCRIPT_PENDING.value, now),
@@ -469,10 +539,11 @@ class EpisodeRepository:
         Returns:
             Dict mapping status values to counts.
         """
-        cursor = self.conn.execute(
+        cursor = execute(
+            self.conn,
             """
             SELECT status, COUNT(*) FROM episode
-            WHERE feed_id = ?
+            WHERE feed_id = %s
             GROUP BY status
             """,
             (feed_id,),
@@ -491,12 +562,13 @@ class EpisodeRepository:
         Returns:
             List of episodes that can be re-transcribed.
         """
-        cursor = self.conn.execute(
+        cursor = execute(
+            self.conn,
             f"""
             SELECT {self.EPISODE_COLUMNS} FROM episode
-            WHERE feed_id = ?
-              AND status = ?
-              AND (transcript_model IS NULL OR transcript_model != ?)
+            WHERE feed_id = %s
+              AND status = %s
+              AND (transcript_model IS NULL OR transcript_model != %s)
             ORDER BY published_at DESC
             """,
             (feed_id, EpisodeStatus.COMPLETED.value, current_model),
@@ -513,12 +585,13 @@ class EpisodeRepository:
         Returns:
             Count of episodes that can be re-transcribed.
         """
-        cursor = self.conn.execute(
+        cursor = execute(
+            self.conn,
             """
             SELECT COUNT(*) FROM episode
-            WHERE feed_id = ?
-              AND status = ?
-              AND (transcript_model IS NULL OR transcript_model != ?)
+            WHERE feed_id = %s
+              AND status = %s
+              AND (transcript_model IS NULL OR transcript_model != %s)
             """,
             (feed_id, EpisodeStatus.COMPLETED.value, current_model),
         )
@@ -543,12 +616,13 @@ class EpisodeRepository:
         now = datetime.now().isoformat()
 
         # Update audio_path
-        cursor = self.conn.execute(
+        cursor = execute(
+            self.conn,
             """
             UPDATE episode
-            SET audio_path = REPLACE(audio_path, ?, ?),
-                updated_at = ?
-            WHERE feed_id = ? AND audio_path IS NOT NULL AND audio_path LIKE ?
+            SET audio_path = REPLACE(audio_path, %s, %s),
+                updated_at = %s
+            WHERE feed_id = %s AND audio_path IS NOT NULL AND audio_path LIKE %s
             """,
             (
                 f"/{old_dir_name}/",
@@ -561,12 +635,13 @@ class EpisodeRepository:
         audio_updated = cursor.rowcount
 
         # Update transcript_path
-        cursor = self.conn.execute(
+        cursor = execute(
+            self.conn,
             """
             UPDATE episode
-            SET transcript_path = REPLACE(transcript_path, ?, ?),
-                updated_at = ?
-            WHERE feed_id = ? AND transcript_path IS NOT NULL AND transcript_path LIKE ?
+            SET transcript_path = REPLACE(transcript_path, %s, %s),
+                updated_at = %s
+            WHERE feed_id = %s AND transcript_path IS NOT NULL AND transcript_path LIKE %s
             """,
             (
                 f"/{old_dir_name}/",
@@ -582,16 +657,18 @@ class EpisodeRepository:
 
     def exists(self, feed_id: int, guid: str) -> bool:
         """Check if episode already exists."""
-        cursor = self.conn.execute(
-            "SELECT 1 FROM episode WHERE feed_id = ? AND guid = ?",
+        cursor = execute(
+            self.conn,
+            "SELECT 1 FROM episode WHERE feed_id = %s AND guid = %s",
             (feed_id, guid),
         )
         return cursor.fetchone() is not None
 
     def count_by_feed(self, feed_id: int) -> int:
         """Count total episodes for a feed."""
-        cursor = self.conn.execute(
-            "SELECT COUNT(*) FROM episode WHERE feed_id = ?",
+        cursor = execute(
+            self.conn,
+            "SELECT COUNT(*) FROM episode WHERE feed_id = %s",
             (feed_id,),
         )
         return cursor.fetchone()[0]
@@ -606,16 +683,18 @@ class EpisodeRepository:
             - whisper_only: Episodes with neither (need Whisper transcription)
         """
         # Count episodes with Podcast 2.0 transcript URLs
-        cursor = self.conn.execute(
-            "SELECT COUNT(*) FROM episode WHERE feed_id = ? AND transcript_url IS NOT NULL",
+        cursor = execute(
+            self.conn,
+            "SELECT COUNT(*) FROM episode WHERE feed_id = %s AND transcript_url IS NOT NULL",
             (feed_id,),
         )
         podcast20_count = cursor.fetchone()[0]
 
         # Count episodes with Pocket Casts transcripts (but no Podcast 2.0)
-        cursor = self.conn.execute(
+        cursor = execute(
+            self.conn,
             """SELECT COUNT(*) FROM episode
-               WHERE feed_id = ?
+               WHERE feed_id = %s
                  AND transcript_url IS NULL
                  AND pocketcasts_transcript_url IS NOT NULL""",
             (feed_id,),
@@ -623,9 +702,10 @@ class EpisodeRepository:
         pocketcasts_count = cursor.fetchone()[0]
 
         # Count episodes with neither
-        cursor = self.conn.execute(
+        cursor = execute(
+            self.conn,
             """SELECT COUNT(*) FROM episode
-               WHERE feed_id = ?
+               WHERE feed_id = %s
                  AND transcript_url IS NULL
                  AND pocketcasts_transcript_url IS NULL""",
             (feed_id,),
@@ -648,10 +728,12 @@ class EpisodeRepository:
     ) -> tuple[list[Episode], int]:
         """Search episodes by title/description with optional status filter.
 
-        Uses FTS5 full-text search when query is provided for word-boundary matching.
+        Uses full-text search when query is provided for word-boundary matching.
 
         Returns: (episodes, total_count)
         """
+        config = get_db_config()
+
         # Use FTS search when query is provided (word-boundary matching)
         if query:
             episode_ids, fts_total = self.search_episodes_fts(
@@ -663,57 +745,91 @@ class EpisodeRepository:
 
             # Fetch full episode data for matching IDs
             # Preserve FTS ranking order
-            placeholders = ",".join("?" for _ in episode_ids)
-            id_order = ",".join(str(eid) for eid in episode_ids)
+            if config.is_postgresql:
+                placeholders = ",".join("%s" for _ in episode_ids)
+                id_order = " ".join(f"WHEN %s THEN {i}" for i in range(len(episode_ids)))
 
-            # Build query with optional status filter
-            if status:
-                cursor = self.conn.execute(
-                    f"""
-                    SELECT {self.EPISODE_COLUMNS} FROM episode
-                    WHERE id IN ({placeholders}) AND status = ?
-                    ORDER BY CASE id {' '.join(f'WHEN {eid} THEN {i}' for i, eid in enumerate(episode_ids))} END
-                    """,
-                    (*episode_ids, status.value),
-                )
-                # Recount with status filter
-                count_cursor = self.conn.execute(
-                    f"""
-                    SELECT COUNT(*) FROM episode
-                    WHERE id IN (
-                        SELECT episode_id FROM episode_fts
-                        WHERE episode_fts MATCH ? AND feed_id = ?
-                    ) AND status = ?
-                    """,
-                    (" ".join(f"{w}*" for w in query.split() if w), feed_id, status.value),
-                )
-                total = count_cursor.fetchone()[0]
+                if status:
+                    cursor = self.conn.cursor()
+                    cursor.execute(
+                        f"""
+                        SELECT {self.EPISODE_COLUMNS} FROM episode
+                        WHERE id IN ({placeholders}) AND status = %s
+                        ORDER BY CASE id {id_order} END
+                        """,
+                        (*episode_ids, status.value, *episode_ids),
+                    )
+                    # Recount with status filter - simplified for PostgreSQL
+                    cursor.execute(
+                        f"""
+                        SELECT COUNT(*) FROM episode
+                        WHERE id IN ({placeholders}) AND status = %s
+                        """,
+                        (*episode_ids, status.value),
+                    )
+                    total = cursor.fetchone()[0]
+                else:
+                    cursor = self.conn.cursor()
+                    cursor.execute(
+                        f"""
+                        SELECT {self.EPISODE_COLUMNS} FROM episode
+                        WHERE id IN ({placeholders})
+                        ORDER BY CASE id {id_order} END
+                        """,
+                        (*episode_ids, *episode_ids),
+                    )
+                    total = fts_total
             else:
-                cursor = self.conn.execute(
-                    f"""
-                    SELECT {self.EPISODE_COLUMNS} FROM episode
-                    WHERE id IN ({placeholders})
-                    ORDER BY CASE id {' '.join(f'WHEN {eid} THEN {i}' for i, eid in enumerate(episode_ids))} END
-                    """,
-                    episode_ids,
-                )
-                total = fts_total
+                placeholders = ",".join("?" for _ in episode_ids)
+
+                if status:
+                    cursor = self.conn.execute(
+                        f"""
+                        SELECT {self.EPISODE_COLUMNS} FROM episode
+                        WHERE id IN ({placeholders}) AND status = ?
+                        ORDER BY CASE id {' '.join(f'WHEN {eid} THEN {i}' for i, eid in enumerate(episode_ids))} END
+                        """,
+                        (*episode_ids, status.value),
+                    )
+                    # Recount with status filter
+                    count_cursor = self.conn.execute(
+                        f"""
+                        SELECT COUNT(*) FROM episode
+                        WHERE id IN (
+                            SELECT episode_id FROM episode_fts
+                            WHERE episode_fts MATCH ? AND feed_id = ?
+                        ) AND status = ?
+                        """,
+                        (" ".join(f"{w}*" for w in query.split() if w), feed_id, status.value),
+                    )
+                    total = count_cursor.fetchone()[0]
+                else:
+                    cursor = self.conn.execute(
+                        f"""
+                        SELECT {self.EPISODE_COLUMNS} FROM episode
+                        WHERE id IN ({placeholders})
+                        ORDER BY CASE id {' '.join(f'WHEN {eid} THEN {i}' for i, eid in enumerate(episode_ids))} END
+                        """,
+                        episode_ids,
+                    )
+                    total = fts_total
 
             episodes = [Episode.from_row(row) for row in cursor.fetchall()]
             return episodes, total
 
         # No query - use simple SQL filtering
-        conditions = ["feed_id = ?"]
+        conditions = ["feed_id = %s"]
         params: list = [feed_id]
 
         if status:
-            conditions.append("status = ?")
+            conditions.append("status = %s")
             params.append(status.value)
 
         where_clause = " AND ".join(conditions)
 
         # Get total count
-        count_cursor = self.conn.execute(
+        count_cursor = execute(
+            self.conn,
             f"SELECT COUNT(*) FROM episode WHERE {where_clause}",
             params,
         )
@@ -721,12 +837,13 @@ class EpisodeRepository:
 
         # Get paginated results
         params.extend([limit, offset])
-        cursor = self.conn.execute(
+        cursor = execute(
+            self.conn,
             f"""
             SELECT {self.EPISODE_COLUMNS} FROM episode
             WHERE {where_clause}
             ORDER BY published_at DESC
-            LIMIT ? OFFSET ?
+            LIMIT %s OFFSET %s
             """,
             params,
         )
@@ -736,19 +853,26 @@ class EpisodeRepository:
 
     def count_by_status(self) -> dict[str, int]:
         """Count episodes by status."""
-        cursor = self.conn.execute(
+        cursor = execute(
+            self.conn,
             """
             SELECT status, COUNT(*) FROM episode
             GROUP BY status
-            """
+            """,
         )
         return dict(cursor.fetchall())
 
     def delete(self, episode_id: int) -> bool:
         """Delete an episode."""
+        config = get_db_config()
+
         # Also remove from FTS index
-        self.conn.execute("DELETE FROM episode_fts WHERE episode_id = ?", (episode_id,))
-        cursor = self.conn.execute("DELETE FROM episode WHERE id = ?", (episode_id,))
+        if config.is_postgresql:
+            execute(self.conn, "DELETE FROM episode_search WHERE episode_id = %s", (episode_id,))
+        else:
+            execute(self.conn, "DELETE FROM episode_fts WHERE episode_id = %s", (episode_id,))
+
+        cursor = execute(self.conn, "DELETE FROM episode WHERE id = %s", (episode_id,))
         self.conn.commit()
         return cursor.rowcount > 0
 
@@ -762,16 +886,32 @@ class EpisodeRepository:
         feed_id: int,
     ) -> None:
         """Add or update an episode in the FTS index."""
-        # Delete existing entry if any
-        self.conn.execute("DELETE FROM episode_fts WHERE episode_id = ?", (episode_id,))
-        # Insert new entry
-        self.conn.execute(
-            """
-            INSERT INTO episode_fts (title, description, episode_id, feed_id)
-            VALUES (?, ?, ?, ?)
-            """,
-            (title, description or "", episode_id, feed_id),
-        )
+        config = get_db_config()
+
+        if config.is_postgresql:
+            # Delete existing entry if any
+            execute(self.conn, "DELETE FROM episode_search WHERE episode_id = %s", (episode_id,))
+            # Insert new entry
+            execute(
+                self.conn,
+                """
+                INSERT INTO episode_search (episode_id, feed_id, title_search, description_search)
+                VALUES (%s, %s, to_tsvector('english', %s), to_tsvector('english', %s))
+                """,
+                (episode_id, feed_id, title, description or ""),
+            )
+        else:
+            # Delete existing entry if any
+            execute(self.conn, "DELETE FROM episode_fts WHERE episode_id = %s", (episode_id,))
+            # Insert new entry
+            execute(
+                self.conn,
+                """
+                INSERT INTO episode_fts (title, description, episode_id, feed_id)
+                VALUES (%s, %s, %s, %s)
+                """,
+                (title, description or "", episode_id, feed_id),
+            )
         self.conn.commit()
 
     def reindex_all_episodes(self) -> int:
@@ -780,24 +920,44 @@ class EpisodeRepository:
         Returns:
             Number of episodes indexed.
         """
-        # Clear existing FTS data
-        self.conn.execute("DELETE FROM episode_fts")
+        config = get_db_config()
 
-        # Index all episodes
-        cursor = self.conn.execute(
-            "SELECT id, feed_id, title, description FROM episode"
-        )
-        count = 0
-        for row in cursor.fetchall():
-            episode_id, feed_id, title, description = row
-            self.conn.execute(
-                """
-                INSERT INTO episode_fts (title, description, episode_id, feed_id)
-                VALUES (?, ?, ?, ?)
-                """,
-                (title, description or "", episode_id, feed_id),
-            )
-            count += 1
+        if config.is_postgresql:
+            # Clear existing FTS data
+            execute(self.conn, "DELETE FROM episode_search")
+
+            # Index all episodes
+            cursor = execute(self.conn, "SELECT id, feed_id, title, description FROM episode")
+            count = 0
+            for row in cursor.fetchall():
+                episode_id, feed_id, title, description = row
+                execute(
+                    self.conn,
+                    """
+                    INSERT INTO episode_search (episode_id, feed_id, title_search, description_search)
+                    VALUES (%s, %s, to_tsvector('english', %s), to_tsvector('english', %s))
+                    """,
+                    (episode_id, feed_id, title, description or ""),
+                )
+                count += 1
+        else:
+            # Clear existing FTS data
+            execute(self.conn, "DELETE FROM episode_fts")
+
+            # Index all episodes
+            cursor = execute(self.conn, "SELECT id, feed_id, title, description FROM episode")
+            count = 0
+            for row in cursor.fetchall():
+                episode_id, feed_id, title, description = row
+                execute(
+                    self.conn,
+                    """
+                    INSERT INTO episode_fts (title, description, episode_id, feed_id)
+                    VALUES (%s, %s, %s, %s)
+                    """,
+                    (title, description or "", episode_id, feed_id),
+                )
+                count += 1
 
         self.conn.commit()
         return count
@@ -809,10 +969,10 @@ class EpisodeRepository:
         limit: int = 25,
         offset: int = 0,
     ) -> tuple[list[int], int]:
-        """Search episodes using FTS5 full-text search.
+        """Search episodes using full-text search.
 
         Args:
-            query: Search query (will be converted to FTS5 syntax).
+            query: Search query.
             feed_id: Optional feed ID to filter results.
             limit: Maximum results per page.
             offset: Pagination offset.
@@ -820,51 +980,113 @@ class EpisodeRepository:
         Returns:
             (list of episode IDs, total count)
         """
-        # Use exact word matching for episode title/description search
-        # (no prefix matching - "ai" should not match "air" or "airline")
+        config = get_db_config()
         fts_query = " ".join(word for word in query.split() if word)
 
-        if feed_id is not None:
-            # Count total matches for this feed
-            count_cursor = self.conn.execute(
-                """
-                SELECT COUNT(*) FROM episode_fts
-                WHERE episode_fts MATCH ? AND feed_id = ?
-                """,
-                (fts_query, feed_id),
-            )
-            total = count_cursor.fetchone()[0]
+        if config.is_postgresql:
+            # PostgreSQL tsvector search
+            ts_query = " & ".join(word for word in fts_query.split() if word)
 
-            # Get paginated episode IDs
-            cursor = self.conn.execute(
-                """
-                SELECT episode_id FROM episode_fts
-                WHERE episode_fts MATCH ? AND feed_id = ?
-                ORDER BY rank
-                LIMIT ? OFFSET ?
-                """,
-                (fts_query, feed_id, limit, offset),
-            )
+            if feed_id is not None:
+                count_cursor = execute(
+                    self.conn,
+                    """
+                    SELECT COUNT(*) FROM episode_search
+                    WHERE (title_search @@ plainto_tsquery('english', %s)
+                           OR description_search @@ plainto_tsquery('english', %s))
+                      AND feed_id = %s
+                    """,
+                    (fts_query, fts_query, feed_id),
+                )
+                total = count_cursor.fetchone()[0]
+
+                cursor = execute(
+                    self.conn,
+                    """
+                    SELECT episode_id,
+                           ts_rank(title_search, plainto_tsquery('english', %s)) +
+                           ts_rank(description_search, plainto_tsquery('english', %s)) as rank
+                    FROM episode_search
+                    WHERE (title_search @@ plainto_tsquery('english', %s)
+                           OR description_search @@ plainto_tsquery('english', %s))
+                      AND feed_id = %s
+                    ORDER BY rank DESC
+                    LIMIT %s OFFSET %s
+                    """,
+                    (fts_query, fts_query, fts_query, fts_query, feed_id, limit, offset),
+                )
+            else:
+                count_cursor = execute(
+                    self.conn,
+                    """
+                    SELECT COUNT(*) FROM episode_search
+                    WHERE title_search @@ plainto_tsquery('english', %s)
+                       OR description_search @@ plainto_tsquery('english', %s)
+                    """,
+                    (fts_query, fts_query),
+                )
+                total = count_cursor.fetchone()[0]
+
+                cursor = execute(
+                    self.conn,
+                    """
+                    SELECT episode_id,
+                           ts_rank(title_search, plainto_tsquery('english', %s)) +
+                           ts_rank(description_search, plainto_tsquery('english', %s)) as rank
+                    FROM episode_search
+                    WHERE title_search @@ plainto_tsquery('english', %s)
+                       OR description_search @@ plainto_tsquery('english', %s)
+                    ORDER BY rank DESC
+                    LIMIT %s OFFSET %s
+                    """,
+                    (fts_query, fts_query, fts_query, fts_query, limit, offset),
+                )
+
+            episode_ids = [row[0] for row in cursor.fetchall()]
         else:
-            # Count total matches across all feeds
-            count_cursor = self.conn.execute(
-                "SELECT COUNT(*) FROM episode_fts WHERE episode_fts MATCH ?",
-                (fts_query,),
-            )
-            total = count_cursor.fetchone()[0]
+            # SQLite FTS5 search
+            if feed_id is not None:
+                count_cursor = execute(
+                    self.conn,
+                    """
+                    SELECT COUNT(*) FROM episode_fts
+                    WHERE episode_fts MATCH %s AND feed_id = %s
+                    """,
+                    (fts_query, feed_id),
+                )
+                total = count_cursor.fetchone()[0]
 
-            # Get paginated episode IDs
-            cursor = self.conn.execute(
-                """
-                SELECT episode_id FROM episode_fts
-                WHERE episode_fts MATCH ?
-                ORDER BY rank
-                LIMIT ? OFFSET ?
-                """,
-                (fts_query, limit, offset),
-            )
+                cursor = execute(
+                    self.conn,
+                    """
+                    SELECT episode_id FROM episode_fts
+                    WHERE episode_fts MATCH %s AND feed_id = %s
+                    ORDER BY rank
+                    LIMIT %s OFFSET %s
+                    """,
+                    (fts_query, feed_id, limit, offset),
+                )
+            else:
+                count_cursor = execute(
+                    self.conn,
+                    "SELECT COUNT(*) FROM episode_fts WHERE episode_fts MATCH %s",
+                    (fts_query,),
+                )
+                total = count_cursor.fetchone()[0]
 
-        episode_ids = [row[0] for row in cursor.fetchall()]
+                cursor = execute(
+                    self.conn,
+                    """
+                    SELECT episode_id FROM episode_fts
+                    WHERE episode_fts MATCH %s
+                    ORDER BY rank
+                    LIMIT %s OFFSET %s
+                    """,
+                    (fts_query, limit, offset),
+                )
+
+            episode_ids = [row[0] for row in cursor.fetchall()]
+
         return episode_ids, total
 
     def get_recent_episodes(
@@ -884,14 +1106,15 @@ class EpisodeRepository:
         cutoff = (datetime.now() - timedelta(days=days)).isoformat()
         # Prefix episode columns with table alias
         ep_cols = ", ".join(f"e.{c.strip()}" for c in self.EPISODE_COLUMNS.split(","))
-        cursor = self.conn.execute(
+        cursor = execute(
+            self.conn,
             f"""
             SELECT {ep_cols}, COALESCE(f.custom_title, f.title) as feed_title
             FROM episode e
             JOIN feed f ON e.feed_id = f.id
-            WHERE e.published_at >= ?
+            WHERE e.published_at >= %s
             ORDER BY e.published_at DESC
-            LIMIT ?
+            LIMIT %s
             """,
             (cutoff, limit),
         )
@@ -910,10 +1133,10 @@ class EpisodeRepository:
         limit: int = 25,
         offset: int = 0,
     ) -> tuple[list[Episode], int]:
-        """Search episodes using FTS5 and return full Episode objects.
+        """Search episodes using full-text search and return full Episode objects.
 
         Args:
-            query: Search query (will be converted to FTS5 syntax).
+            query: Search query.
             feed_id: Optional feed ID to filter results.
             limit: Maximum results per page.
             offset: Pagination offset.
@@ -921,6 +1144,8 @@ class EpisodeRepository:
         Returns:
             (list of Episode objects, total count)
         """
+        config = get_db_config()
+
         episode_ids, total = self.search_episodes_fts(
             query=query,
             feed_id=feed_id,
@@ -932,17 +1157,31 @@ class EpisodeRepository:
             return [], total
 
         # Fetch full Episode objects, preserving FTS ranking order
-        placeholders = ",".join("?" for _ in episode_ids)
-        id_order = " ".join(f"WHEN {eid} THEN {i}" for i, eid in enumerate(episode_ids))
+        if config.is_postgresql:
+            placeholders = ",".join("%s" for _ in episode_ids)
+            id_order = " ".join(f"WHEN %s THEN {i}" for i in range(len(episode_ids)))
 
-        cursor = self.conn.execute(
-            f"""
-            SELECT {self.EPISODE_COLUMNS} FROM episode
-            WHERE id IN ({placeholders})
-            ORDER BY CASE id {id_order} END
-            """,
-            episode_ids,
-        )
+            cursor = self.conn.cursor()
+            cursor.execute(
+                f"""
+                SELECT {self.EPISODE_COLUMNS} FROM episode
+                WHERE id IN ({placeholders})
+                ORDER BY CASE id {id_order} END
+                """,
+                (*episode_ids, *episode_ids),
+            )
+        else:
+            placeholders = ",".join("?" for _ in episode_ids)
+            id_order = " ".join(f"WHEN {eid} THEN {i}" for i, eid in enumerate(episode_ids))
+
+            cursor = self.conn.execute(
+                f"""
+                SELECT {self.EPISODE_COLUMNS} FROM episode
+                WHERE id IN ({placeholders})
+                ORDER BY CASE id {id_order} END
+                """,
+                episode_ids,
+            )
 
         episodes = [Episode.from_row(row) for row in cursor.fetchall()]
         return episodes, total
@@ -951,7 +1190,7 @@ class EpisodeRepository:
 class JobRepository:
     """Repository for Job queue operations."""
 
-    def __init__(self, conn: sqlite3.Connection):
+    def __init__(self, conn: Connection):
         self.conn = conn
 
     def create(
@@ -963,28 +1202,49 @@ class JobRepository:
     ) -> Job:
         """Create a new job in the queue."""
         now = datetime.now().isoformat()
+        config = get_db_config()
 
-        cursor = self.conn.execute(
-            """
-            INSERT INTO job_queue (
-                episode_id, job_type, priority, status, attempts,
-                max_attempts, scheduled_at, created_at
+        if config.is_postgresql:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                """
+                INSERT INTO job_queue (
+                    episode_id, job_type, priority, status, attempts,
+                    max_attempts, scheduled_at, created_at
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
+                """,
+                (
+                    episode_id, job_type.value, priority, JobStatus.QUEUED.value,
+                    0, max_attempts, now, now,
+                ),
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                episode_id, job_type.value, priority, JobStatus.QUEUED.value,
-                0, max_attempts, now, now,
-            ),
-        )
-        self.conn.commit()
+            job_id = cursor.fetchone()[0]
+        else:
+            cursor = self.conn.execute(
+                """
+                INSERT INTO job_queue (
+                    episode_id, job_type, priority, status, attempts,
+                    max_attempts, scheduled_at, created_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    episode_id, job_type.value, priority, JobStatus.QUEUED.value,
+                    0, max_attempts, now, now,
+                ),
+            )
+            job_id = cursor.lastrowid
 
-        return self.get_by_id(cursor.lastrowid)
+        self.conn.commit()
+        return self.get_by_id(job_id)
 
     def get_by_id(self, job_id: int) -> Optional[Job]:
         """Get job by ID."""
-        cursor = self.conn.execute(
-            "SELECT * FROM job_queue WHERE id = ?",
+        cursor = execute(
+            self.conn,
+            "SELECT * FROM job_queue WHERE id = %s",
             (job_id,),
         )
         row = cursor.fetchone()
@@ -1001,25 +1261,27 @@ class JobRepository:
         """
         now = datetime.now().isoformat()
         if local_only:
-            cursor = self.conn.execute(
+            cursor = execute(
+                self.conn,
                 """
                 SELECT * FROM job_queue
-                WHERE job_type = ?
-                  AND status = ?
+                WHERE job_type = %s
+                  AND status = %s
                   AND assigned_node_id IS NULL
-                  AND (next_retry_at IS NULL OR next_retry_at <= ?)
+                  AND (next_retry_at IS NULL OR next_retry_at <= %s)
                 ORDER BY priority ASC, scheduled_at ASC
                 LIMIT 1
                 """,
                 (job_type.value, JobStatus.QUEUED.value, now),
             )
         else:
-            cursor = self.conn.execute(
+            cursor = execute(
+                self.conn,
                 """
                 SELECT * FROM job_queue
-                WHERE job_type = ?
-                  AND status = ?
-                  AND (next_retry_at IS NULL OR next_retry_at <= ?)
+                WHERE job_type = %s
+                  AND status = %s
+                  AND (next_retry_at IS NULL OR next_retry_at <= %s)
                 ORDER BY priority ASC, scheduled_at ASC
                 LIMIT 1
                 """,
@@ -1045,43 +1307,80 @@ class JobRepository:
             The claimed Job with status set to RUNNING, or None if no jobs available.
         """
         now = datetime.now().isoformat()
+        config = get_db_config()
 
-        if local_only:
-            subquery = """
-                SELECT id FROM job_queue
-                WHERE job_type = ?
-                  AND status = ?
-                  AND assigned_node_id IS NULL
-                  AND (next_retry_at IS NULL OR next_retry_at <= ?)
-                ORDER BY priority ASC, scheduled_at ASC
-                LIMIT 1
-            """
-            params = (job_type.value, JobStatus.QUEUED.value, now)
+        if config.is_postgresql:
+            if local_only:
+                subquery = """
+                    SELECT id FROM job_queue
+                    WHERE job_type = %s
+                      AND status = %s
+                      AND assigned_node_id IS NULL
+                      AND (next_retry_at IS NULL OR next_retry_at <= %s)
+                    ORDER BY priority ASC, scheduled_at ASC
+                    LIMIT 1
+                """
+            else:
+                subquery = """
+                    SELECT id FROM job_queue
+                    WHERE job_type = %s
+                      AND status = %s
+                      AND (next_retry_at IS NULL OR next_retry_at <= %s)
+                    ORDER BY priority ASC, scheduled_at ASC
+                    LIMIT 1
+                """
+
+            cursor = self.conn.cursor()
+            cursor.execute(
+                f"""
+                UPDATE job_queue
+                SET status = %s,
+                    started_at = %s,
+                    attempts = attempts + 1,
+                    progress_percent = 0,
+                    assigned_node_id = %s,
+                    claimed_at = %s
+                WHERE id = ({subquery})
+                RETURNING *
+                """,
+                (JobStatus.RUNNING.value, now, node_id, now, job_type.value, JobStatus.QUEUED.value, now),
+            )
         else:
-            subquery = """
-                SELECT id FROM job_queue
-                WHERE job_type = ?
-                  AND status = ?
-                  AND (next_retry_at IS NULL OR next_retry_at <= ?)
-                ORDER BY priority ASC, scheduled_at ASC
-                LIMIT 1
-            """
-            params = (job_type.value, JobStatus.QUEUED.value, now)
+            if local_only:
+                subquery = """
+                    SELECT id FROM job_queue
+                    WHERE job_type = ?
+                      AND status = ?
+                      AND assigned_node_id IS NULL
+                      AND (next_retry_at IS NULL OR next_retry_at <= ?)
+                    ORDER BY priority ASC, scheduled_at ASC
+                    LIMIT 1
+                """
+            else:
+                subquery = """
+                    SELECT id FROM job_queue
+                    WHERE job_type = ?
+                      AND status = ?
+                      AND (next_retry_at IS NULL OR next_retry_at <= ?)
+                    ORDER BY priority ASC, scheduled_at ASC
+                    LIMIT 1
+                """
 
-        cursor = self.conn.execute(
-            f"""
-            UPDATE job_queue
-            SET status = ?,
-                started_at = ?,
-                attempts = attempts + 1,
-                progress_percent = 0,
-                assigned_node_id = ?,
-                claimed_at = ?
-            WHERE id = ({subquery})
-            RETURNING *
-            """,
-            (JobStatus.RUNNING.value, now, node_id, now, *params),
-        )
+            cursor = self.conn.execute(
+                f"""
+                UPDATE job_queue
+                SET status = ?,
+                    started_at = ?,
+                    attempts = attempts + 1,
+                    progress_percent = 0,
+                    assigned_node_id = ?,
+                    claimed_at = ?
+                WHERE id = ({subquery})
+                RETURNING *
+                """,
+                (JobStatus.RUNNING.value, now, node_id, now, job_type.value, JobStatus.QUEUED.value, now),
+            )
+
         row = cursor.fetchone()
         self.conn.commit()
         return Job.from_row(row) if row else None
@@ -1092,13 +1391,14 @@ class JobRepository:
         Used by distributed transcription nodes to claim work.
         """
         now = datetime.now().isoformat()
-        cursor = self.conn.execute(
+        cursor = execute(
+            self.conn,
             """
             SELECT * FROM job_queue
-            WHERE job_type = ?
-              AND status = ?
+            WHERE job_type = %s
+              AND status = %s
               AND assigned_node_id IS NULL
-              AND (next_retry_at IS NULL OR next_retry_at <= ?)
+              AND (next_retry_at IS NULL OR next_retry_at <= %s)
             ORDER BY priority ASC, scheduled_at ASC
             LIMIT 1
             """,
@@ -1110,12 +1410,13 @@ class JobRepository:
     def claim_job(self, job_id: int, node_id: str) -> None:
         """Claim a job for a specific node."""
         now = datetime.now().isoformat()
-        self.conn.execute(
+        execute(
+            self.conn,
             """
             UPDATE job_queue
-            SET assigned_node_id = ?, claimed_at = ?, status = ?, started_at = ?,
+            SET assigned_node_id = %s, claimed_at = %s, status = %s, started_at = %s,
                 attempts = attempts + 1, progress_percent = 0
-            WHERE id = ?
+            WHERE id = %s
             """,
             (node_id, now, JobStatus.RUNNING.value, now, job_id),
         )
@@ -1123,11 +1424,12 @@ class JobRepository:
 
     def unclaim_job(self, job_id: int) -> None:
         """Remove node assignment from a job (for retries or failed nodes)."""
-        self.conn.execute(
+        execute(
+            self.conn,
             """
             UPDATE job_queue
             SET assigned_node_id = NULL, claimed_at = NULL
-            WHERE id = ?
+            WHERE id = %s
             """,
             (job_id,),
         )
@@ -1135,10 +1437,11 @@ class JobRepository:
 
     def get_jobs_by_node(self, node_id: str) -> list[Job]:
         """Get all jobs assigned to a specific node."""
-        cursor = self.conn.execute(
+        cursor = execute(
+            self.conn,
             """
             SELECT * FROM job_queue
-            WHERE assigned_node_id = ?
+            WHERE assigned_node_id = %s
             ORDER BY claimed_at DESC
             """,
             (node_id,),
@@ -1160,14 +1463,15 @@ class JobRepository:
 
         # First, fail jobs that have exceeded max attempts
         # Use started_at (not claimed_at) so reclaim cycles don't reset the timeout
-        cursor = self.conn.execute(
+        cursor = execute(
+            self.conn,
             """
             UPDATE job_queue
-            SET status = ?, error_message = 'Max attempts exceeded (job timed out repeatedly)',
-                completed_at = ?, assigned_node_id = NULL, claimed_at = NULL
-            WHERE status = ?
+            SET status = %s, error_message = 'Max attempts exceeded (job timed out repeatedly)',
+                completed_at = %s, assigned_node_id = NULL, claimed_at = NULL
+            WHERE status = %s
               AND assigned_node_id IS NOT NULL
-              AND started_at < ?
+              AND started_at < %s
               AND attempts >= max_attempts
             """,
             (JobStatus.FAILED.value, now, JobStatus.RUNNING.value, threshold),
@@ -1175,13 +1479,14 @@ class JobRepository:
         jobs_failed = cursor.rowcount
 
         # Then, requeue jobs that still have retries remaining
-        cursor = self.conn.execute(
+        cursor = execute(
+            self.conn,
             """
             UPDATE job_queue
-            SET status = ?, assigned_node_id = NULL, claimed_at = NULL, started_at = NULL
-            WHERE status = ?
+            SET status = %s, assigned_node_id = NULL, claimed_at = NULL, started_at = NULL
+            WHERE status = %s
               AND assigned_node_id IS NOT NULL
-              AND started_at < ?
+              AND started_at < %s
               AND attempts < max_attempts
             """,
             (JobStatus.QUEUED.value, JobStatus.RUNNING.value, threshold),
@@ -1193,10 +1498,11 @@ class JobRepository:
 
     def get_running_jobs(self, job_type: JobType) -> list[Job]:
         """Get all running jobs of given type."""
-        cursor = self.conn.execute(
+        cursor = execute(
+            self.conn,
             """
             SELECT * FROM job_queue
-            WHERE job_type = ? AND status = ?
+            WHERE job_type = %s AND status = %s
             ORDER BY started_at ASC
             """,
             (job_type.value, JobStatus.RUNNING.value),
@@ -1207,24 +1513,26 @@ class JobRepository:
         """Get queued jobs ready to run (excludes jobs waiting for retry)."""
         now = datetime.now().isoformat()
         if job_type:
-            cursor = self.conn.execute(
+            cursor = execute(
+                self.conn,
                 """
                 SELECT * FROM job_queue
-                WHERE job_type = ? AND status = ?
-                  AND (next_retry_at IS NULL OR next_retry_at <= ?)
+                WHERE job_type = %s AND status = %s
+                  AND (next_retry_at IS NULL OR next_retry_at <= %s)
                 ORDER BY priority ASC, scheduled_at ASC
-                LIMIT ?
+                LIMIT %s
                 """,
                 (job_type.value, JobStatus.QUEUED.value, now, limit),
             )
         else:
-            cursor = self.conn.execute(
+            cursor = execute(
+                self.conn,
                 """
                 SELECT * FROM job_queue
-                WHERE status = ?
-                  AND (next_retry_at IS NULL OR next_retry_at <= ?)
+                WHERE status = %s
+                  AND (next_retry_at IS NULL OR next_retry_at <= %s)
                 ORDER BY priority ASC, scheduled_at ASC
-                LIMIT ?
+                LIMIT %s
                 """,
                 (JobStatus.QUEUED.value, now, limit),
             )
@@ -1232,10 +1540,11 @@ class JobRepository:
 
     def get_by_episode(self, episode_id: int) -> list[Job]:
         """Get all jobs for an episode."""
-        cursor = self.conn.execute(
+        cursor = execute(
+            self.conn,
             """
             SELECT * FROM job_queue
-            WHERE episode_id = ?
+            WHERE episode_id = %s
             ORDER BY created_at DESC
             """,
             (episode_id,),
@@ -1244,10 +1553,11 @@ class JobRepository:
 
     def has_pending_job(self, episode_id: int, job_type: JobType) -> bool:
         """Check if episode has a pending or running job of given type."""
-        cursor = self.conn.execute(
+        cursor = execute(
+            self.conn,
             """
             SELECT 1 FROM job_queue
-            WHERE episode_id = ? AND job_type = ? AND status IN (?, ?)
+            WHERE episode_id = %s AND job_type = %s AND status IN (%s, %s)
             """,
             (episode_id, job_type.value, JobStatus.QUEUED.value, JobStatus.RUNNING.value),
         )
@@ -1261,12 +1571,13 @@ class JobRepository:
             node_id: The node ID processing this job (default: "local" for local workers).
         """
         now = datetime.now().isoformat()
-        self.conn.execute(
+        execute(
+            self.conn,
             """
             UPDATE job_queue
-            SET status = ?, started_at = ?, attempts = attempts + 1,
-                progress_percent = 0, assigned_node_id = ?, claimed_at = ?
-            WHERE id = ?
+            SET status = %s, started_at = %s, attempts = attempts + 1,
+                progress_percent = 0, assigned_node_id = %s, claimed_at = %s
+            WHERE id = %s
             """,
             (JobStatus.RUNNING.value, now, node_id, now, job_id),
         )
@@ -1275,11 +1586,12 @@ class JobRepository:
     def mark_completed(self, job_id: int) -> None:
         """Mark a job as completed."""
         now = datetime.now().isoformat()
-        self.conn.execute(
+        execute(
+            self.conn,
             """
             UPDATE job_queue
-            SET status = ?, completed_at = ?, progress_percent = 100
-            WHERE id = ?
+            SET status = %s, completed_at = %s, progress_percent = 100
+            WHERE id = %s
             """,
             (JobStatus.COMPLETED.value, now, job_id),
         )
@@ -1294,11 +1606,12 @@ class JobRepository:
         """
         # Clamp to valid range
         progress_percent = max(0, min(100, progress_percent))
-        self.conn.execute(
+        execute(
+            self.conn,
             """
             UPDATE job_queue
-            SET progress_percent = ?
-            WHERE id = ?
+            SET progress_percent = %s
+            WHERE id = %s
             """,
             (progress_percent, job_id),
         )
@@ -1316,13 +1629,15 @@ class JobRepository:
         """
         from cast2md.db.models import EpisodeStatus
 
+        config = get_db_config()
         now = datetime.now().isoformat()
 
         # Find all running jobs with their attempt counts
-        cursor = self.conn.execute(
+        cursor = execute(
+            self.conn,
             """
             SELECT id, episode_id, job_type, attempts, max_attempts FROM job_queue
-            WHERE status = ?
+            WHERE status = %s
             """,
             (JobStatus.RUNNING.value,),
         )
@@ -1343,12 +1658,16 @@ class JobRepository:
         # Fail jobs that have exceeded max attempts
         if jobs_to_fail:
             job_ids = [j[0] for j in jobs_to_fail]
-            placeholders = ",".join("?" for _ in job_ids)
-            self.conn.execute(
+            if config.is_postgresql:
+                placeholders = ",".join("%s" for _ in job_ids)
+            else:
+                placeholders = ",".join("?" for _ in job_ids)
+            execute(
+                self.conn,
                 f"""
                 UPDATE job_queue
-                SET status = ?, error_message = 'Max attempts exceeded (orphaned on restart)',
-                    completed_at = ?, assigned_node_id = NULL, claimed_at = NULL,
+                SET status = %s, error_message = 'Max attempts exceeded (orphaned on restart)',
+                    completed_at = %s, assigned_node_id = NULL, claimed_at = NULL,
                     progress_percent = NULL
                 WHERE id IN ({placeholders})
                 """,
@@ -1357,19 +1676,24 @@ class JobRepository:
 
             # Set episode status to failed
             for job_id, episode_id, job_type in jobs_to_fail:
-                self.conn.execute(
-                    "UPDATE episode SET status = ?, error_message = ? WHERE id = ?",
+                execute(
+                    self.conn,
+                    "UPDATE episode SET status = %s, error_message = %s WHERE id = %s",
                     (EpisodeStatus.FAILED.value, "Max attempts exceeded", episode_id),
                 )
 
         # Requeue jobs that still have retries
         if jobs_to_requeue:
             job_ids = [j[0] for j in jobs_to_requeue]
-            placeholders = ",".join("?" for _ in job_ids)
-            self.conn.execute(
+            if config.is_postgresql:
+                placeholders = ",".join("%s" for _ in job_ids)
+            else:
+                placeholders = ",".join("?" for _ in job_ids)
+            execute(
+                self.conn,
                 f"""
                 UPDATE job_queue
-                SET status = ?, started_at = NULL, assigned_node_id = NULL,
+                SET status = %s, started_at = NULL, assigned_node_id = NULL,
                     claimed_at = NULL, progress_percent = NULL
                 WHERE id IN ({placeholders})
                 """,
@@ -1379,13 +1703,15 @@ class JobRepository:
             # Reset episode statuses
             for job_id, episode_id, job_type in jobs_to_requeue:
                 if job_type == JobType.DOWNLOAD.value:
-                    self.conn.execute(
-                        "UPDATE episode SET status = ? WHERE id = ?",
+                    execute(
+                        self.conn,
+                        "UPDATE episode SET status = %s WHERE id = %s",
                         (EpisodeStatus.PENDING.value, episode_id),
                     )
                 elif job_type == JobType.TRANSCRIBE.value:
-                    self.conn.execute(
-                        "UPDATE episode SET status = ? WHERE id = ?",
+                    execute(
+                        self.conn,
+                        "UPDATE episode SET status = %s WHERE id = %s",
                         (EpisodeStatus.DOWNLOADED.value, episode_id),
                     )
                 elif job_type == JobType.TRANSCRIPT_DOWNLOAD.value:
@@ -1410,21 +1736,23 @@ class JobRepository:
             backoff_minutes = 5 ** job.attempts
             next_retry = now + timedelta(minutes=backoff_minutes)
 
-            self.conn.execute(
+            execute(
+                self.conn,
                 """
                 UPDATE job_queue
-                SET status = ?, error_message = ?, next_retry_at = ?
-                WHERE id = ?
+                SET status = %s, error_message = %s, next_retry_at = %s
+                WHERE id = %s
                 """,
                 (JobStatus.QUEUED.value, error_message, next_retry.isoformat(), job_id),
             )
         else:
             # Max attempts reached, mark as failed
-            self.conn.execute(
+            execute(
+                self.conn,
                 """
                 UPDATE job_queue
-                SET status = ?, error_message = ?, completed_at = ?
-                WHERE id = ?
+                SET status = %s, error_message = %s, completed_at = %s
+                WHERE id = %s
                 """,
                 (JobStatus.FAILED.value, error_message, now.isoformat(), job_id),
             )
@@ -1433,35 +1761,38 @@ class JobRepository:
     def count_by_status(self, job_type: JobType | None = None) -> dict[str, int]:
         """Count jobs by status."""
         if job_type:
-            cursor = self.conn.execute(
+            cursor = execute(
+                self.conn,
                 """
                 SELECT status, COUNT(*) FROM job_queue
-                WHERE job_type = ?
+                WHERE job_type = %s
                 GROUP BY status
                 """,
                 (job_type.value,),
             )
         else:
-            cursor = self.conn.execute(
+            cursor = execute(
+                self.conn,
                 """
                 SELECT status, COUNT(*) FROM job_queue
                 GROUP BY status
-                """
+                """,
             )
         return dict(cursor.fetchall())
 
     def delete(self, job_id: int) -> bool:
         """Delete a job."""
-        cursor = self.conn.execute("DELETE FROM job_queue WHERE id = ?", (job_id,))
+        cursor = execute(self.conn, "DELETE FROM job_queue WHERE id = %s", (job_id,))
         self.conn.commit()
         return cursor.rowcount > 0
 
     def cancel_queued(self, job_id: int) -> bool:
         """Cancel a queued job (only if not running)."""
-        cursor = self.conn.execute(
+        cursor = execute(
+            self.conn,
             """
             DELETE FROM job_queue
-            WHERE id = ? AND status = ?
+            WHERE id = %s AND status = %s
             """,
             (job_id, JobStatus.QUEUED.value),
         )
@@ -1472,10 +1803,11 @@ class JobRepository:
         """Delete completed/failed jobs older than N days."""
         cutoff = (datetime.now() - timedelta(days=older_than_days)).isoformat()
 
-        cursor = self.conn.execute(
+        cursor = execute(
+            self.conn,
             """
             DELETE FROM job_queue
-            WHERE status IN (?, ?) AND completed_at < ?
+            WHERE status IN (%s, %s) AND completed_at < %s
             """,
             (JobStatus.COMPLETED.value, JobStatus.FAILED.value, cutoff),
         )
@@ -1492,11 +1824,12 @@ class JobRepository:
             List of stuck jobs.
         """
         threshold = (datetime.now() - timedelta(hours=threshold_hours)).isoformat()
-        cursor = self.conn.execute(
+        cursor = execute(
+            self.conn,
             """
             SELECT * FROM job_queue
-            WHERE status = ?
-            AND started_at < ?
+            WHERE status = %s
+            AND started_at < %s
             ORDER BY started_at ASC
             """,
             (JobStatus.RUNNING.value, threshold),
@@ -1514,12 +1847,13 @@ class JobRepository:
         Returns:
             True if job was reset, False if not found or not in running state.
         """
-        cursor = self.conn.execute(
+        cursor = execute(
+            self.conn,
             """
             UPDATE job_queue
-            SET status = ?, started_at = NULL, error_message = NULL,
+            SET status = %s, started_at = NULL, error_message = NULL,
                 assigned_node_id = NULL, claimed_at = NULL, progress_percent = 0
-            WHERE id = ? AND status = ?
+            WHERE id = %s AND status = %s
             """,
             (JobStatus.QUEUED.value, job_id, JobStatus.RUNNING.value),
         )
@@ -1550,11 +1884,11 @@ class JobRepository:
         params = []
 
         if status:
-            conditions.append("status = ?")
+            conditions.append("status = %s")
             params.append(status.value)
 
         if job_type:
-            conditions.append("job_type = ?")
+            conditions.append("job_type = %s")
             params.append(job_type.value)
 
         where_clause = ""
@@ -1562,7 +1896,8 @@ class JobRepository:
             where_clause = "WHERE " + " AND ".join(conditions)
 
         params.append(limit)
-        cursor = self.conn.execute(
+        cursor = execute(
+            self.conn,
             f"""
             SELECT * FROM job_queue
             {where_clause}
@@ -1575,7 +1910,7 @@ class JobRepository:
                 END,
                 priority ASC,
                 scheduled_at ASC
-            LIMIT ?
+            LIMIT %s
             """,
             params,
         )
@@ -1590,12 +1925,13 @@ class JobRepository:
         Returns:
             List of failed jobs.
         """
-        cursor = self.conn.execute(
+        cursor = execute(
+            self.conn,
             """
             SELECT * FROM job_queue
-            WHERE status = ?
+            WHERE status = %s
             ORDER BY completed_at DESC
-            LIMIT ?
+            LIMIT %s
             """,
             (JobStatus.FAILED.value, limit),
         )
@@ -1610,12 +1946,13 @@ class JobRepository:
         Returns:
             True if job was reset, False if not found or not failed.
         """
-        cursor = self.conn.execute(
+        cursor = execute(
+            self.conn,
             """
             UPDATE job_queue
-            SET status = ?, attempts = 0, error_message = NULL,
+            SET status = %s, attempts = 0, error_message = NULL,
                 next_retry_at = NULL, completed_at = NULL
-            WHERE id = ? AND status = ?
+            WHERE id = %s AND status = %s
             """,
             (JobStatus.QUEUED.value, job_id, JobStatus.FAILED.value),
         )
@@ -1635,23 +1972,25 @@ class JobRepository:
         now = datetime.now().isoformat()
 
         # First, fail jobs that have exceeded max attempts
-        cursor = self.conn.execute(
+        cursor = execute(
+            self.conn,
             """
             UPDATE job_queue
-            SET status = ?, error_message = 'Max attempts exceeded (job stuck repeatedly)',
-                completed_at = ?
-            WHERE status = ? AND started_at < ? AND attempts >= max_attempts
+            SET status = %s, error_message = 'Max attempts exceeded (job stuck repeatedly)',
+                completed_at = %s
+            WHERE status = %s AND started_at < %s AND attempts >= max_attempts
             """,
             (JobStatus.FAILED.value, now, JobStatus.RUNNING.value, threshold),
         )
         jobs_failed = cursor.rowcount
 
         # Then, requeue jobs that still have retries remaining
-        cursor = self.conn.execute(
+        cursor = execute(
+            self.conn,
             """
             UPDATE job_queue
-            SET status = ?, started_at = NULL, error_message = NULL
-            WHERE status = ? AND started_at < ? AND attempts < max_attempts
+            SET status = %s, started_at = NULL, error_message = NULL
+            WHERE status = %s AND started_at < %s AND attempts < max_attempts
             """,
             (JobStatus.QUEUED.value, JobStatus.RUNNING.value, threshold),
         )
@@ -1666,12 +2005,13 @@ class JobRepository:
         Returns:
             Number of jobs reset.
         """
-        cursor = self.conn.execute(
+        cursor = execute(
+            self.conn,
             """
             UPDATE job_queue
-            SET status = ?, attempts = 0, error_message = NULL,
+            SET status = %s, attempts = 0, error_message = NULL,
                 next_retry_at = NULL, completed_at = NULL
-            WHERE status = ?
+            WHERE status = %s
             """,
             (JobStatus.QUEUED.value, JobStatus.FAILED.value),
         )
@@ -1688,10 +2028,11 @@ class JobRepository:
             Number of stuck jobs.
         """
         threshold = (datetime.now() - timedelta(hours=threshold_hours)).isoformat()
-        cursor = self.conn.execute(
+        cursor = execute(
+            self.conn,
             """
             SELECT COUNT(*) FROM job_queue
-            WHERE status = ? AND started_at < ?
+            WHERE status = %s AND started_at < %s
             """,
             (JobStatus.RUNNING.value, threshold),
         )
@@ -1701,13 +2042,14 @@ class JobRepository:
 class SettingsRepository:
     """Repository for runtime settings overrides."""
 
-    def __init__(self, conn: sqlite3.Connection):
+    def __init__(self, conn: Connection):
         self.conn = conn
 
     def get(self, key: str) -> Optional[str]:
         """Get a setting value by key."""
-        cursor = self.conn.execute(
-            "SELECT value FROM settings WHERE key = ?",
+        cursor = execute(
+            self.conn,
+            "SELECT value FROM settings WHERE key = %s",
             (key,),
         )
         row = cursor.fetchone()
@@ -1715,39 +2057,65 @@ class SettingsRepository:
 
     def get_all(self) -> dict[str, str]:
         """Get all settings as a dictionary."""
-        cursor = self.conn.execute("SELECT key, value FROM settings")
+        cursor = execute(self.conn, "SELECT key, value FROM settings")
         return dict(cursor.fetchall())
 
     def set(self, key: str, value: str) -> None:
         """Set a setting value (insert or update)."""
         now = datetime.now().isoformat()
-        self.conn.execute(
-            """
-            INSERT INTO settings (key, value, updated_at)
-            VALUES (?, ?, ?)
-            ON CONFLICT(key) DO UPDATE SET value = ?, updated_at = ?
-            """,
-            (key, value, now, value, now),
-        )
+        config = get_db_config()
+        if config.is_postgresql:
+            execute(
+                self.conn,
+                """
+                INSERT INTO settings (key, value, updated_at)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at
+                """,
+                (key, value, now),
+            )
+        else:
+            execute(
+                self.conn,
+                """
+                INSERT INTO settings (key, value, updated_at)
+                VALUES (%s, %s, %s)
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+                """,
+                (key, value, now),
+            )
         self.conn.commit()
 
     def delete(self, key: str) -> bool:
         """Delete a setting (revert to default)."""
-        cursor = self.conn.execute("DELETE FROM settings WHERE key = ?", (key,))
+        cursor = execute(self.conn, "DELETE FROM settings WHERE key = %s", (key,))
         self.conn.commit()
         return cursor.rowcount > 0
 
     def set_many(self, settings: dict[str, str]) -> None:
         """Set multiple settings at once."""
         now = datetime.now().isoformat()
+        config = get_db_config()
         for key, value in settings.items():
-            self.conn.execute(
-                """
-                INSERT INTO settings (key, value, updated_at)
-                VALUES (?, ?, ?)
-                ON CONFLICT(key) DO UPDATE SET value = ?, updated_at = ?
-                """,
-                (key, value, now, value, now),
+            if config.is_postgresql:
+                execute(
+                    self.conn,
+                    """
+                    INSERT INTO settings (key, value, updated_at)
+                    VALUES (%s, %s, %s)
+                    ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at
+                    """,
+                    (key, value, now),
+                )
+            else:
+                execute(
+                    self.conn,
+                    """
+                    INSERT INTO settings (key, value, updated_at)
+                    VALUES (%s, %s, %s)
+                    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+                    """,
+                    (key, value, now),
             )
         self.conn.commit()
 
@@ -1779,25 +2147,36 @@ class WhisperModel:
 class WhisperModelRepository:
     """Repository for whisper model configurations."""
 
-    def __init__(self, conn: sqlite3.Connection):
+    def __init__(self, conn: Connection):
         self.conn = conn
 
     def get_all(self, enabled_only: bool = True) -> list[WhisperModel]:
         """Get all models."""
+        config = get_db_config()
         if enabled_only:
-            cursor = self.conn.execute(
-                "SELECT id, backend, hf_repo, description, size_mb, is_enabled FROM whisper_models WHERE is_enabled = 1 ORDER BY id"
-            )
+            # PostgreSQL uses TRUE, SQLite uses 1
+            if config.is_postgresql:
+                cursor = execute(
+                    self.conn,
+                    "SELECT id, backend, hf_repo, description, size_mb, is_enabled FROM whisper_models WHERE is_enabled = TRUE ORDER BY id"
+                )
+            else:
+                cursor = execute(
+                    self.conn,
+                    "SELECT id, backend, hf_repo, description, size_mb, is_enabled FROM whisper_models WHERE is_enabled = 1 ORDER BY id"
+                )
         else:
-            cursor = self.conn.execute(
+            cursor = execute(
+                self.conn,
                 "SELECT id, backend, hf_repo, description, size_mb, is_enabled FROM whisper_models ORDER BY id"
             )
         return [WhisperModel.from_row(row) for row in cursor.fetchall()]
 
     def get_by_id(self, model_id: str) -> Optional[WhisperModel]:
         """Get a model by ID."""
-        cursor = self.conn.execute(
-            "SELECT id, backend, hf_repo, description, size_mb, is_enabled FROM whisper_models WHERE id = ?",
+        cursor = execute(
+            self.conn,
+            "SELECT id, backend, hf_repo, description, size_mb, is_enabled FROM whisper_models WHERE id = %s",
             (model_id,),
         )
         row = cursor.fetchone()
@@ -1814,27 +2193,44 @@ class WhisperModelRepository:
     ) -> None:
         """Insert or update a model."""
         now = datetime.now().isoformat()
-        self.conn.execute(
-            """
-            INSERT INTO whisper_models (id, backend, hf_repo, description, size_mb, is_enabled, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(id) DO UPDATE SET
-                backend = ?, hf_repo = ?, description = ?, size_mb = ?, is_enabled = ?
-            """,
-            (model_id, backend, hf_repo, description, size_mb, int(is_enabled), now,
-             backend, hf_repo, description, size_mb, int(is_enabled)),
-        )
+        config = get_db_config()
+        if config.is_postgresql:
+            execute(
+                self.conn,
+                """
+                INSERT INTO whisper_models (id, backend, hf_repo, description, size_mb, is_enabled, created_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (id) DO UPDATE SET
+                    backend = EXCLUDED.backend, hf_repo = EXCLUDED.hf_repo,
+                    description = EXCLUDED.description, size_mb = EXCLUDED.size_mb,
+                    is_enabled = EXCLUDED.is_enabled
+                """,
+                (model_id, backend, hf_repo, description, size_mb, is_enabled, now),
+            )
+        else:
+            execute(
+                self.conn,
+                """
+                INSERT INTO whisper_models (id, backend, hf_repo, description, size_mb, is_enabled, created_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT(id) DO UPDATE SET
+                    backend = excluded.backend, hf_repo = excluded.hf_repo,
+                    description = excluded.description, size_mb = excluded.size_mb,
+                    is_enabled = excluded.is_enabled
+                """,
+                (model_id, backend, hf_repo, description, size_mb, int(is_enabled), now),
+            )
         self.conn.commit()
 
     def delete(self, model_id: str) -> bool:
         """Delete a model."""
-        cursor = self.conn.execute("DELETE FROM whisper_models WHERE id = ?", (model_id,))
+        cursor = execute(self.conn, "DELETE FROM whisper_models WHERE id = %s", (model_id,))
         self.conn.commit()
         return cursor.rowcount > 0
 
     def seed_defaults(self) -> int:
         """Seed the default models if table is empty."""
-        cursor = self.conn.execute("SELECT COUNT(*) FROM whisper_models")
+        cursor = execute(self.conn, "SELECT COUNT(*) FROM whisper_models")
         if cursor.fetchone()[0] > 0:
             return 0
 
@@ -1853,14 +2249,26 @@ class WhisperModelRepository:
         ]
 
         now = datetime.now().isoformat()
+        config = get_db_config()
         for model_id, backend, hf_repo, description, size_mb in default_models:
-            self.conn.execute(
-                """
-                INSERT INTO whisper_models (id, backend, hf_repo, description, size_mb, is_enabled, created_at)
-                VALUES (?, ?, ?, ?, ?, 1, ?)
-                """,
-                (model_id, backend, hf_repo, description, size_mb, now),
-            )
+            if config.is_postgresql:
+                execute(
+                    self.conn,
+                    """
+                    INSERT INTO whisper_models (id, backend, hf_repo, description, size_mb, is_enabled, created_at)
+                    VALUES (%s, %s, %s, %s, %s, TRUE, %s)
+                    """,
+                    (model_id, backend, hf_repo, description, size_mb, now),
+                )
+            else:
+                execute(
+                    self.conn,
+                    """
+                    INSERT INTO whisper_models (id, backend, hf_repo, description, size_mb, is_enabled, created_at)
+                    VALUES (%s, %s, %s, %s, %s, 1, %s)
+                    """,
+                    (model_id, backend, hf_repo, description, size_mb, now),
+                )
         self.conn.commit()
         return len(default_models)
 
@@ -1872,7 +2280,7 @@ class TranscriberNodeRepository:
                       status, last_heartbeat, current_job_id, priority,
                       created_at, updated_at"""
 
-    def __init__(self, conn: sqlite3.Connection):
+    def __init__(self, conn: Connection):
         self.conn = conn
 
     def create(
@@ -1887,13 +2295,14 @@ class TranscriberNodeRepository:
     ) -> TranscriberNode:
         """Create a new transcriber node."""
         now = datetime.now().isoformat()
-        self.conn.execute(
+        execute(
+            self.conn,
             """
             INSERT INTO transcriber_node (
                 id, name, url, api_key, whisper_model, whisper_backend,
                 status, priority, created_at, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """,
             (node_id, name, url, api_key, whisper_model, whisper_backend,
              NodeStatus.OFFLINE.value, priority, now, now),
@@ -1903,8 +2312,9 @@ class TranscriberNodeRepository:
 
     def get_by_id(self, node_id: str) -> Optional[TranscriberNode]:
         """Get node by ID."""
-        cursor = self.conn.execute(
-            f"SELECT {self.NODE_COLUMNS} FROM transcriber_node WHERE id = ?",
+        cursor = execute(
+            self.conn,
+            f"SELECT {self.NODE_COLUMNS} FROM transcriber_node WHERE id = %s",
             (node_id,),
         )
         row = cursor.fetchone()
@@ -1912,8 +2322,9 @@ class TranscriberNodeRepository:
 
     def get_by_api_key(self, api_key: str) -> Optional[TranscriberNode]:
         """Get node by API key."""
-        cursor = self.conn.execute(
-            f"SELECT {self.NODE_COLUMNS} FROM transcriber_node WHERE api_key = ?",
+        cursor = execute(
+            self.conn,
+            f"SELECT {self.NODE_COLUMNS} FROM transcriber_node WHERE api_key = %s",
             (api_key,),
         )
         row = cursor.fetchone()
@@ -1921,17 +2332,19 @@ class TranscriberNodeRepository:
 
     def get_all(self) -> list[TranscriberNode]:
         """Get all nodes."""
-        cursor = self.conn.execute(
+        cursor = execute(
+            self.conn,
             f"SELECT {self.NODE_COLUMNS} FROM transcriber_node ORDER BY priority, name"
         )
         return [TranscriberNode.from_row(row) for row in cursor.fetchall()]
 
     def get_online(self) -> list[TranscriberNode]:
         """Get all online nodes."""
-        cursor = self.conn.execute(
+        cursor = execute(
+            self.conn,
             f"""
             SELECT {self.NODE_COLUMNS} FROM transcriber_node
-            WHERE status IN (?, ?)
+            WHERE status IN (%s, %s)
             ORDER BY priority, name
             """,
             (NodeStatus.ONLINE.value, NodeStatus.BUSY.value),
@@ -1946,11 +2359,12 @@ class TranscriberNodeRepository:
     ) -> None:
         """Update node status."""
         now = datetime.now().isoformat()
-        self.conn.execute(
+        execute(
+            self.conn,
             """
             UPDATE transcriber_node
-            SET status = ?, current_job_id = ?, updated_at = ?
-            WHERE id = ?
+            SET status = %s, current_job_id = %s, updated_at = %s
+            WHERE id = %s
             """,
             (status.value, current_job_id, now, node_id),
         )
@@ -1965,11 +2379,12 @@ class TranscriberNodeRepository:
         """
         ts = (timestamp or datetime.now()).isoformat()
         now = datetime.now().isoformat()
-        self.conn.execute(
+        execute(
+            self.conn,
             """
             UPDATE transcriber_node
-            SET last_heartbeat = ?, updated_at = ?
-            WHERE id = ?
+            SET last_heartbeat = %s, updated_at = %s
+            WHERE id = %s
             """,
             (ts, now, node_id),
         )
@@ -1983,11 +2398,12 @@ class TranscriberNodeRepository:
     ) -> None:
         """Update node whisper info."""
         now = datetime.now().isoformat()
-        self.conn.execute(
+        execute(
+            self.conn,
             """
             UPDATE transcriber_node
-            SET whisper_model = ?, whisper_backend = ?, updated_at = ?
-            WHERE id = ?
+            SET whisper_model = %s, whisper_backend = %s, updated_at = %s
+            WHERE id = %s
             """,
             (whisper_model, whisper_backend, now, node_id),
         )
@@ -1995,8 +2411,9 @@ class TranscriberNodeRepository:
 
     def delete(self, node_id: str) -> bool:
         """Delete a node."""
-        cursor = self.conn.execute(
-            "DELETE FROM transcriber_node WHERE id = ?",
+        cursor = execute(
+            self.conn,
+            "DELETE FROM transcriber_node WHERE id = %s",
             (node_id,),
         )
         self.conn.commit()
@@ -2012,11 +2429,12 @@ class TranscriberNodeRepository:
             List of stale nodes.
         """
         threshold = (datetime.now() - timedelta(seconds=timeout_seconds)).isoformat()
-        cursor = self.conn.execute(
+        cursor = execute(
+            self.conn,
             f"""
             SELECT {self.NODE_COLUMNS} FROM transcriber_node
-            WHERE status != ?
-            AND (last_heartbeat IS NULL OR last_heartbeat < ?)
+            WHERE status != %s
+            AND (last_heartbeat IS NULL OR last_heartbeat < %s)
             """,
             (NodeStatus.OFFLINE.value, threshold),
         )
@@ -2025,11 +2443,12 @@ class TranscriberNodeRepository:
     def mark_offline(self, node_id: str) -> None:
         """Mark a node as offline and clear its current job."""
         now = datetime.now().isoformat()
-        self.conn.execute(
+        execute(
+            self.conn,
             """
             UPDATE transcriber_node
-            SET status = ?, current_job_id = NULL, updated_at = ?
-            WHERE id = ?
+            SET status = %s, current_job_id = NULL, updated_at = %s
+            WHERE id = %s
             """,
             (NodeStatus.OFFLINE.value, now, node_id),
         )
@@ -2037,7 +2456,8 @@ class TranscriberNodeRepository:
 
     def count_by_status(self) -> dict[str, int]:
         """Count nodes by status."""
-        cursor = self.conn.execute(
+        cursor = execute(
+            self.conn,
             """
             SELECT status, COUNT(*) FROM transcriber_node
             GROUP BY status

@@ -7,6 +7,26 @@ from enum import Enum
 from typing import Optional
 
 
+def parse_datetime(value) -> Optional[datetime]:
+    """Parse a datetime value from database.
+
+    Handles both ISO format strings (SQLite) and native datetime objects (PostgreSQL).
+
+    Args:
+        value: A datetime object, ISO format string, or None.
+
+    Returns:
+        Parsed datetime or None.
+    """
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, str):
+        return datetime.fromisoformat(value)
+    return None
+
+
 class EpisodeStatus(str, Enum):
     """Episode processing status."""
 
@@ -93,11 +113,11 @@ class Feed:
             link=row[6],
             categories=row[7],
             custom_title=row[8],
-            last_polled=datetime.fromisoformat(row[9]) if row[9] else None,
+            last_polled=parse_datetime(row[9]),
             itunes_id=row[10] if len(row) > 10 else None,
             pocketcasts_uuid=row[11] if len(row) > 11 else None,
-            created_at=datetime.fromisoformat(row[12]) if len(row) > 12 else datetime.now(),
-            updated_at=datetime.fromisoformat(row[13]) if len(row) > 13 else datetime.now(),
+            created_at=parse_datetime(row[12]) or datetime.now(),
+            updated_at=parse_datetime(row[13]) or datetime.now(),
         )
 
 
@@ -141,7 +161,7 @@ class Episode:
             description=row[4],
             audio_url=row[5],
             duration_seconds=row[6],
-            published_at=datetime.fromisoformat(row[7]) if row[7] else None,
+            published_at=parse_datetime(row[7]),
             status=EpisodeStatus(row[8]),
             audio_path=row[9],
             transcript_path=row[10],
@@ -150,14 +170,14 @@ class Episode:
             transcript_source=row[13] if len(row) > 13 else None,
             transcript_type=row[14] if len(row) > 14 else None,
             pocketcasts_transcript_url=row[15] if len(row) > 15 else None,
-            transcript_checked_at=datetime.fromisoformat(row[16]) if len(row) > 16 and row[16] else None,
-            next_transcript_retry_at=datetime.fromisoformat(row[17]) if len(row) > 17 and row[17] else None,
+            transcript_checked_at=parse_datetime(row[16]) if len(row) > 16 else None,
+            next_transcript_retry_at=parse_datetime(row[17]) if len(row) > 17 else None,
             transcript_failure_reason=row[18] if len(row) > 18 else None,
             link=row[19] if len(row) > 19 else None,
             author=row[20] if len(row) > 20 else None,
             error_message=row[21] if len(row) > 21 else None,
-            created_at=datetime.fromisoformat(row[22]) if len(row) > 22 else datetime.now(),
-            updated_at=datetime.fromisoformat(row[23]) if len(row) > 23 else datetime.now(),
+            created_at=parse_datetime(row[22]) or datetime.now(),
+            updated_at=parse_datetime(row[23]) or datetime.now(),
         )
 
 
@@ -193,14 +213,14 @@ class Job:
             status=JobStatus(row[4]),
             attempts=row[5],
             max_attempts=row[6],
-            scheduled_at=datetime.fromisoformat(row[7]) if row[7] else datetime.now(),
-            started_at=datetime.fromisoformat(row[8]) if row[8] else None,
-            completed_at=datetime.fromisoformat(row[9]) if row[9] else None,
-            next_retry_at=datetime.fromisoformat(row[10]) if row[10] else None,
+            scheduled_at=parse_datetime(row[7]) or datetime.now(),
+            started_at=parse_datetime(row[8]),
+            completed_at=parse_datetime(row[9]),
+            next_retry_at=parse_datetime(row[10]),
             error_message=row[11],
-            created_at=datetime.fromisoformat(row[12]),
+            created_at=parse_datetime(row[12]) or datetime.now(),
             assigned_node_id=row[13] if len(row) > 13 else None,
-            claimed_at=datetime.fromisoformat(row[14]) if len(row) > 14 and row[14] else None,
+            claimed_at=parse_datetime(row[14]) if len(row) > 14 else None,
             progress_percent=row[15] if len(row) > 15 else None,
         )
 
@@ -233,9 +253,9 @@ class TranscriberNode:
             whisper_model=row[4],
             whisper_backend=row[5],
             status=NodeStatus(row[6]) if row[6] else NodeStatus.OFFLINE,
-            last_heartbeat=datetime.fromisoformat(row[7]) if row[7] else None,
+            last_heartbeat=parse_datetime(row[7]),
             current_job_id=row[8],
             priority=row[9] if row[9] is not None else 10,
-            created_at=datetime.fromisoformat(row[10]),
-            updated_at=datetime.fromisoformat(row[11]),
+            created_at=parse_datetime(row[10]) or datetime.now(),
+            updated_at=parse_datetime(row[11]) or datetime.now(),
         )

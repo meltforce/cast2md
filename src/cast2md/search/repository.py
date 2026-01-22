@@ -1,14 +1,18 @@
 """Repository for transcript full-text search operations."""
 
 import logging
-import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
+from cast2md.db.config import get_db_config
+from cast2md.db.sql import execute
 from cast2md.search.parser import parse_transcript_file
 
 logger = logging.getLogger(__name__)
+
+# Type alias for database connection
+Connection = Any
 
 
 @dataclass
@@ -85,13 +89,14 @@ class HybridSearchResponse:
 
 
 class TranscriptSearchRepository:
-    """Repository for transcript FTS5 search operations."""
+    """Repository for transcript full-text search operations."""
 
-    def __init__(self, conn: sqlite3.Connection):
+    def __init__(self, conn: Connection):
         self.conn = conn
+        self.config = get_db_config()
 
     def index_episode(self, episode_id: int, transcript_path: str) -> int:
-        """Index a transcript into FTS5.
+        """Index a transcript into full-text search.
 
         Args:
             episode_id: Episode ID to index.
@@ -105,23 +110,34 @@ class TranscriptSearchRepository:
             return 0
 
         # Remove existing segments for this episode
-        self.conn.execute(
-            "DELETE FROM transcript_fts WHERE episode_id = ?",
-            (episode_id,),
-        )
+        if self.config.is_postgresql:
+            execute(self.conn, "DELETE FROM transcript_segments WHERE episode_id = %s", (episode_id,))
+        else:
+            execute(self.conn, "DELETE FROM transcript_fts WHERE episode_id = %s", (episode_id,))
 
         # Parse transcript
         segments = parse_transcript_file(path)
 
         # Insert segments
         for segment in segments:
-            self.conn.execute(
-                """
-                INSERT INTO transcript_fts (text, episode_id, segment_start, segment_end)
-                VALUES (?, ?, ?, ?)
-                """,
-                (segment.text, episode_id, segment.start, segment.end),
-            )
+            if self.config.is_postgresql:
+                execute(
+                    self.conn,
+                    """
+                    INSERT INTO transcript_segments (episode_id, segment_start, segment_end, text)
+                    VALUES (%s, %s, %s, %s)
+                    """,
+                    (episode_id, segment.start, segment.end, segment.text),
+                )
+            else:
+                execute(
+                    self.conn,
+                    """
+                    INSERT INTO transcript_fts (text, episode_id, segment_start, segment_end)
+                    VALUES (%s, %s, %s, %s)
+                    """,
+                    (segment.text, episode_id, segment.start, segment.end),
+                )
 
         self.conn.commit()
         return len(segments)
@@ -135,10 +151,10 @@ class TranscriptSearchRepository:
         Returns:
             Number of segments removed.
         """
-        cursor = self.conn.execute(
-            "DELETE FROM transcript_fts WHERE episode_id = ?",
-            (episode_id,),
-        )
+        if self.config.is_postgresql:
+            cursor = execute(self.conn, "DELETE FROM transcript_segments WHERE episode_id = %s", (episode_id,))
+        else:
+            cursor = execute(self.conn, "DELETE FROM transcript_fts WHERE episode_id = %s", (episode_id,))
         self.conn.commit()
         return cursor.rowcount
 
@@ -149,10 +165,10 @@ class TranscriptSearchRepository:
         limit: int = 20,
         offset: int = 0,
     ) -> SearchResponse:
-        """Search transcripts using FTS5.
+        """Search transcripts using full-text search.
 
         Args:
-            query: Search query (supports FTS5 syntax: phrases, AND, OR, NOT).
+            query: Search query.
             feed_id: Optional feed ID to filter results.
             limit: Maximum results to return.
             offset: Offset for pagination.
@@ -160,11 +176,111 @@ class TranscriptSearchRepository:
         Returns:
             SearchResponse with results and total count.
         """
-        # Build the query - escape special FTS5 characters for safety
-        # Users can still use AND, OR, NOT, quotes for phrases
         safe_query = query.strip()
         if not safe_query:
             return SearchResponse(query=query, total=0, results=[])
+
+        try:
+            if self.config.is_postgresql:
+                return self._search_postgres(safe_query, feed_id, limit, offset)
+            else:
+                return self._search_sqlite(safe_query, feed_id, limit, offset)
+        except Exception as e:
+            logger.warning(f"Search failed: {e}")
+            return SearchResponse(query=query, total=0, results=[])
+
+    def _search_postgres(
+        self, query: str, feed_id: Optional[int], limit: int, offset: int
+    ) -> SearchResponse:
+        """PostgreSQL tsvector search."""
+        # Build the query
+        if feed_id is not None:
+            count_sql = """
+                SELECT COUNT(DISTINCT t.episode_id)
+                FROM transcript_segments t
+                JOIN episode e ON t.episode_id = e.id
+                WHERE t.text_search @@ plainto_tsquery('english', %s)
+                  AND e.feed_id = %s
+            """
+            count_params = (query, feed_id)
+
+            results_sql = """
+                SELECT
+                    t.episode_id,
+                    e.title as episode_title,
+                    e.feed_id,
+                    COALESCE(f.custom_title, f.title) as feed_title,
+                    e.published_at,
+                    t.segment_start,
+                    t.segment_end,
+                    ts_headline('english', t.text, plainto_tsquery('english', %s),
+                               'StartSel=<mark>, StopSel=</mark>, MaxFragments=1, MaxWords=32') as snippet,
+                    ts_rank(t.text_search, plainto_tsquery('english', %s)) as rank
+                FROM transcript_segments t
+                JOIN episode e ON t.episode_id = e.id
+                JOIN feed f ON e.feed_id = f.id
+                WHERE t.text_search @@ plainto_tsquery('english', %s)
+                  AND e.feed_id = %s
+                ORDER BY rank DESC
+                LIMIT %s OFFSET %s
+            """
+            results_params = (query, query, query, feed_id, limit, offset)
+        else:
+            count_sql = """
+                SELECT COUNT(DISTINCT t.episode_id)
+                FROM transcript_segments t
+                WHERE t.text_search @@ plainto_tsquery('english', %s)
+            """
+            count_params = (query,)
+
+            results_sql = """
+                SELECT
+                    t.episode_id,
+                    e.title as episode_title,
+                    e.feed_id,
+                    COALESCE(f.custom_title, f.title) as feed_title,
+                    e.published_at,
+                    t.segment_start,
+                    t.segment_end,
+                    ts_headline('english', t.text, plainto_tsquery('english', %s),
+                               'StartSel=<mark>, StopSel=</mark>, MaxFragments=1, MaxWords=32') as snippet,
+                    ts_rank(t.text_search, plainto_tsquery('english', %s)) as rank
+                FROM transcript_segments t
+                JOIN episode e ON t.episode_id = e.id
+                JOIN feed f ON e.feed_id = f.id
+                WHERE t.text_search @@ plainto_tsquery('english', %s)
+                ORDER BY rank DESC
+                LIMIT %s OFFSET %s
+            """
+            results_params = (query, query, query, limit, offset)
+
+        cursor = self.conn.cursor()
+        cursor.execute(count_sql, count_params)
+        total = cursor.fetchone()[0]
+
+        cursor.execute(results_sql, results_params)
+        results = [
+            SearchResult(
+                episode_id=row[0],
+                episode_title=row[1],
+                feed_id=row[2],
+                feed_title=row[3],
+                published_at=row[4],
+                segment_start=row[5],
+                segment_end=row[6],
+                snippet=row[7],
+                rank=row[8],
+            )
+            for row in cursor.fetchall()
+        ]
+
+        return SearchResponse(query=query, total=total, results=results)
+
+    def _search_sqlite(
+        self, query: str, feed_id: Optional[int], limit: int, offset: int
+    ) -> SearchResponse:
+        """SQLite FTS5 search."""
+        import sqlite3
 
         # Base query with joins to get episode and feed info
         base_sql = """
@@ -173,7 +289,7 @@ class TranscriptSearchRepository:
             JOIN feed f ON e.feed_id = f.id
             WHERE t.text MATCH ?
         """
-        params: list = [safe_query]
+        params: list = [query]
 
         # Add feed filter if specified
         if feed_id is not None:
@@ -186,11 +302,9 @@ class TranscriptSearchRepository:
             count_cursor = self.conn.execute(count_sql, params)
             total = count_cursor.fetchone()[0]
         except sqlite3.OperationalError:
-            # Invalid FTS5 query syntax
             return SearchResponse(query=query, total=0, results=[])
 
         # Get results with snippets and ranking
-        # Note: snippet() and bm25() require the actual table name, not alias
         results_sql = f"""
             SELECT
                 t.episode_id,
@@ -225,7 +339,6 @@ class TranscriptSearchRepository:
                 for row in cursor.fetchall()
             ]
         except sqlite3.OperationalError:
-            # Invalid FTS5 query syntax
             return SearchResponse(query=query, total=0, results=[])
 
         return SearchResponse(query=query, total=total, results=results)
@@ -595,32 +708,106 @@ class TranscriptSearchRepository:
 
     def _vector_search(
         self,
-        query_embedding: bytes,
+        query_embedding,
         feed_id: int | None = None,
         limit: int = 50,
     ) -> list[tuple]:
-        """Perform vector similarity search using vec0 indexed KNN.
+        """Perform vector similarity search.
 
         Args:
-            query_embedding: Query embedding as bytes.
+            query_embedding: Query embedding (bytes for SQLite, list for PostgreSQL).
             feed_id: Optional feed ID to filter results.
             limit: Maximum results to return.
 
         Returns:
             List of tuples with segment info and distance.
         """
+        if self.config.is_postgresql:
+            return self._vector_search_postgres(query_embedding, feed_id, limit)
+        else:
+            return self._vector_search_sqlite(query_embedding, feed_id, limit)
+
+    def _vector_search_postgres(
+        self, query_embedding: list, feed_id: int | None, limit: int
+    ) -> list[tuple]:
+        """PostgreSQL pgvector search using cosine similarity."""
+        import struct
+
+        # Convert bytes to list if needed
+        if isinstance(query_embedding, bytes):
+            count = len(query_embedding) // 4
+            query_embedding = list(struct.unpack(f"{count}f", query_embedding))
+
+        cursor = self.conn.cursor()
+
+        if feed_id is not None:
+            cursor.execute(
+                """
+                SELECT
+                    se.episode_id,
+                    e.title as episode_title,
+                    se.feed_id,
+                    COALESCE(f.custom_title, f.title) as feed_title,
+                    e.published_at,
+                    se.segment_start,
+                    se.segment_end,
+                    ts.text,
+                    se.embedding <=> %s as distance
+                FROM segment_embeddings se
+                JOIN episode e ON se.episode_id = e.id
+                JOIN feed f ON se.feed_id = f.id
+                LEFT JOIN transcript_segments ts ON
+                    ts.episode_id = se.episode_id AND
+                    ts.segment_start = se.segment_start AND
+                    ts.segment_end = se.segment_end
+                WHERE se.feed_id = %s
+                ORDER BY se.embedding <=> %s
+                LIMIT %s
+                """,
+                (query_embedding, feed_id, query_embedding, limit),
+            )
+        else:
+            cursor.execute(
+                """
+                SELECT
+                    se.episode_id,
+                    e.title as episode_title,
+                    se.feed_id,
+                    COALESCE(f.custom_title, f.title) as feed_title,
+                    e.published_at,
+                    se.segment_start,
+                    se.segment_end,
+                    ts.text,
+                    se.embedding <=> %s as distance
+                FROM segment_embeddings se
+                JOIN episode e ON se.episode_id = e.id
+                JOIN feed f ON se.feed_id = f.id
+                LEFT JOIN transcript_segments ts ON
+                    ts.episode_id = se.episode_id AND
+                    ts.segment_start = se.segment_start AND
+                    ts.segment_end = se.segment_end
+                ORDER BY se.embedding <=> %s
+                LIMIT %s
+                """,
+                (query_embedding, query_embedding, limit),
+            )
+
+        return cursor.fetchall()
+
+    def _vector_search_sqlite(
+        self, query_embedding: bytes, feed_id: int | None, limit: int
+    ) -> list[tuple]:
+        """SQLite sqlite-vec KNN search."""
+        import sqlite3
+
         from cast2md.db.connection import is_sqlite_vec_available
 
         if not is_sqlite_vec_available():
             return []
 
-        # vec0 KNN search - uses indexed search for O(log n) performance
-        # The MATCH syntax triggers the indexed KNN search
-        # We fetch more results than needed if filtering by feed_id
         fetch_limit = limit * 3 if feed_id is not None else limit
 
         try:
-            # First, get KNN results from vec0 using indexed search
             knn_sql = """
                 SELECT
                     rowid,
@@ -636,7 +823,6 @@ class TranscriptSearchRepository:
             cursor = self.conn.execute(knn_sql, (query_embedding, fetch_limit))
             knn_results = cursor.fetchall()
 
-            # Filter by feed_id if specified
             if feed_id is not None:
                 knn_results = [r for r in knn_results if r[2] == feed_id][:limit]
             else:
@@ -645,12 +831,10 @@ class TranscriptSearchRepository:
             if not knn_results:
                 return []
 
-            # Get episode/feed metadata and text for the matched segments
             results = []
             for row in knn_results:
                 _, ep_id, f_id, seg_start, seg_end, distance = row
 
-                # Get episode and feed info
                 meta_sql = """
                     SELECT
                         e.title as episode_title,
@@ -665,7 +849,6 @@ class TranscriptSearchRepository:
                 if not meta_row:
                     continue
 
-                # Get text from FTS table
                 text_sql = """
                     SELECT text FROM transcript_fts
                     WHERE episode_id = ? AND segment_start = ? AND segment_end = ?
@@ -676,10 +859,10 @@ class TranscriptSearchRepository:
 
                 results.append((
                     ep_id,
-                    meta_row[0],  # episode_title
+                    meta_row[0],
                     f_id,
-                    meta_row[1],  # feed_title
-                    meta_row[2],  # published_at
+                    meta_row[1],
+                    meta_row[2],
                     seg_start,
                     seg_end,
                     text,
@@ -702,7 +885,7 @@ class TranscriptSearchRepository:
     ) -> HybridSearchResponse:
         """Perform hybrid search combining keyword and semantic search.
 
-        Uses Reciprocal Rank Fusion (RRF) to combine results from FTS5
+        Uses Reciprocal Rank Fusion (RRF) to combine results from
         keyword search and vector similarity search.
 
         Args:
@@ -717,7 +900,7 @@ class TranscriptSearchRepository:
         """
         import time
 
-        from cast2md.db.connection import is_sqlite_vec_available
+        from cast2md.db.connection import is_pgvector_available, is_sqlite_vec_available
         from cast2md.search.embeddings import generate_embedding, is_embeddings_available
 
         safe_query = query.strip()
@@ -732,7 +915,7 @@ class TranscriptSearchRepository:
         # Dictionary to collect results: key = (episode_id, segment_start, segment_end)
         results_map: dict[tuple, dict] = {}
 
-        # Keyword search (FTS5)
+        # Keyword search (FTS)
         if mode in ("hybrid", "keyword"):
             t_keyword_start = time.perf_counter()
             try:
@@ -766,12 +949,17 @@ class TranscriptSearchRepository:
                             "rrf_score": rrf_score,
                             "match_type": "keyword",
                         }
-            except sqlite3.OperationalError:
-                # Invalid FTS5 query, continue with semantic only if in hybrid mode
-                pass
+            except Exception as e:
+                logger.warning(f"Keyword search failed: {e}")
 
         # Semantic search (vector similarity)
-        if mode in ("hybrid", "semantic") and is_embeddings_available() and is_sqlite_vec_available():
+        # Use pgvector for PostgreSQL, sqlite-vec for SQLite
+        vector_available = (
+            (self.config.is_postgresql and is_pgvector_available()) or
+            (self.config.is_sqlite and is_sqlite_vec_available())
+        )
+
+        if mode in ("hybrid", "semantic") and is_embeddings_available() and vector_available:
             try:
                 t_embed_start = time.perf_counter()
                 query_embedding = generate_embedding(safe_query)
