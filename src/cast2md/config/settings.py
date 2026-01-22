@@ -19,6 +19,7 @@ class Settings(BaseSettings):
         env_file=tuple(_env_files),
         env_file_encoding="utf-8",
         case_sensitive=False,
+        extra="ignore",  # Ignore DATABASE_URL and other unrecognized env vars
     )
 
     # Database
