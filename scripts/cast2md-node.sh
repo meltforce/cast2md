@@ -115,7 +115,10 @@ check_github_auth() {
     echo "  This repo is private. Create a token at:"
     echo "  https://github.com/settings/tokens (repo scope)"
     echo ""
-    read -sp "  GitHub token: " GITHUB_TOKEN
+    printf "  GitHub token: "
+    stty -echo
+    read GITHUB_TOKEN < /dev/tty
+    stty echo
     echo ""
 
     # Validate token
@@ -194,8 +197,10 @@ register_node() {
         return
     fi
 
-    read -p "  Server URL: " SERVER_URL
-    read -p "  Node name: " NODE_NAME
+    printf "  Server URL: "
+    read SERVER_URL < /dev/tty
+    printf "  Node name: "
+    read NODE_NAME < /dev/tty
 
     cast2md node register --server "$SERVER_URL" --name "$NODE_NAME"
 
@@ -207,7 +212,8 @@ register_node() {
 setup_service() {
     print_step "7/7" "Install as startup service?"
 
-    read -p "  Install as startup service? [Y/n] " INSTALL_SERVICE
+    printf "  Install as startup service? [Y/n] "
+    read INSTALL_SERVICE < /dev/tty
 
     if [ "$INSTALL_SERVICE" != "n" ] && [ "$INSTALL_SERVICE" != "N" ]; then
         # Create launchd plist
