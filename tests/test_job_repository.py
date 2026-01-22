@@ -540,3 +540,107 @@ class TestReclaimUsesStartedAt:
 
         job = job_repo.get_by_id(job.id)
         assert job.status == JobStatus.RUNNING
+
+
+class TestAtomicJobClaim:
+    """Tests for claim_next_job atomic job claiming."""
+
+    def test_claim_next_job_basic(self, job_repo, sample_job):
+        """Test basic atomic job claim."""
+        claimed = job_repo.claim_next_job(JobType.DOWNLOAD, node_id="local")
+
+        assert claimed is not None
+        assert claimed.id == sample_job.id
+        assert claimed.status == JobStatus.RUNNING
+        assert claimed.attempts == 1
+        assert claimed.assigned_node_id == "local"
+        assert claimed.claimed_at is not None
+        assert claimed.started_at is not None
+
+    def test_claim_next_job_no_jobs(self, job_repo, sample_job):
+        """Test claim returns None when no matching jobs."""
+        # Claim the only job
+        job_repo.claim_next_job(JobType.DOWNLOAD, node_id="local")
+
+        # No more jobs to claim
+        claimed = job_repo.claim_next_job(JobType.DOWNLOAD, node_id="local")
+        assert claimed is None
+
+    def test_claim_next_job_wrong_type(self, job_repo, sample_job):
+        """Test claim returns None for wrong job type."""
+        claimed = job_repo.claim_next_job(JobType.TRANSCRIBE, node_id="local")
+        assert claimed is None
+
+        # Original job should still be queued
+        job = job_repo.get_by_id(sample_job.id)
+        assert job.status == JobStatus.QUEUED
+
+    def test_claim_next_job_respects_priority(self, job_repo, sample_episode):
+        """Test that claim_next_job respects priority ordering."""
+        # Create jobs with different priorities (lower = higher priority)
+        low_priority = job_repo.create(
+            episode_id=sample_episode.id,
+            job_type=JobType.DOWNLOAD,
+            priority=20,
+        )
+        high_priority = job_repo.create(
+            episode_id=sample_episode.id,
+            job_type=JobType.DOWNLOAD,
+            priority=5,
+        )
+
+        # Should claim the high priority job first
+        claimed = job_repo.claim_next_job(JobType.DOWNLOAD, node_id="local")
+        assert claimed.id == high_priority.id
+
+        # Then the low priority job
+        claimed = job_repo.claim_next_job(JobType.DOWNLOAD, node_id="local")
+        assert claimed.id == low_priority.id
+
+    def test_claim_next_job_local_only(self, db_conn, job_repo, sample_episode):
+        """Test local_only flag only claims unassigned jobs."""
+        # Create job assigned to a remote node
+        remote_job = job_repo.create(
+            episode_id=sample_episode.id,
+            job_type=JobType.TRANSCRIBE,
+            priority=5,
+        )
+        db_conn.execute(
+            "UPDATE job_queue SET assigned_node_id = 'remote-node' WHERE id = ?",
+            (remote_job.id,),
+        )
+        db_conn.commit()
+
+        # Create unassigned job
+        local_job = job_repo.create(
+            episode_id=sample_episode.id,
+            job_type=JobType.TRANSCRIBE,
+            priority=10,
+        )
+
+        # With local_only=True, should skip the remote job
+        claimed = job_repo.claim_next_job(
+            JobType.TRANSCRIBE, node_id="local", local_only=True
+        )
+        assert claimed.id == local_job.id
+
+    def test_claim_next_job_increments_attempts(self, job_repo, sample_job):
+        """Test that claim_next_job increments attempt counter."""
+        claimed = job_repo.claim_next_job(JobType.DOWNLOAD, node_id="local")
+        assert claimed.attempts == 1
+
+        # Reset job to queued for another test
+        job_repo.conn.execute(
+            "UPDATE job_queue SET status = ?, attempts = 0 WHERE id = ?",
+            (JobStatus.QUEUED.value, sample_job.id),
+        )
+        job_repo.conn.commit()
+
+        claimed = job_repo.claim_next_job(JobType.DOWNLOAD, node_id="local")
+        assert claimed.attempts == 1
+
+    def test_claim_next_job_custom_node_id(self, job_repo, sample_job):
+        """Test claiming job with custom node ID."""
+        claimed = job_repo.claim_next_job(JobType.DOWNLOAD, node_id="worker-42")
+
+        assert claimed.assigned_node_id == "worker-42"

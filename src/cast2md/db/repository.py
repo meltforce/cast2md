@@ -1028,6 +1028,64 @@ class JobRepository:
         row = cursor.fetchone()
         return Job.from_row(row) if row else None
 
+    def claim_next_job(
+        self, job_type: JobType, node_id: str = "local", local_only: bool = False
+    ) -> Optional[Job]:
+        """Atomically claim the next queued job using UPDATE...RETURNING.
+
+        This prevents race conditions where multiple workers claim the same job.
+        Uses a single atomic UPDATE statement with a subquery to select the job.
+
+        Args:
+            job_type: Type of job to claim.
+            node_id: The node ID claiming this job.
+            local_only: If True, only claim jobs not assigned to a node.
+
+        Returns:
+            The claimed Job with status set to RUNNING, or None if no jobs available.
+        """
+        now = datetime.now().isoformat()
+
+        if local_only:
+            subquery = """
+                SELECT id FROM job_queue
+                WHERE job_type = ?
+                  AND status = ?
+                  AND assigned_node_id IS NULL
+                  AND (next_retry_at IS NULL OR next_retry_at <= ?)
+                ORDER BY priority ASC, scheduled_at ASC
+                LIMIT 1
+            """
+            params = (job_type.value, JobStatus.QUEUED.value, now)
+        else:
+            subquery = """
+                SELECT id FROM job_queue
+                WHERE job_type = ?
+                  AND status = ?
+                  AND (next_retry_at IS NULL OR next_retry_at <= ?)
+                ORDER BY priority ASC, scheduled_at ASC
+                LIMIT 1
+            """
+            params = (job_type.value, JobStatus.QUEUED.value, now)
+
+        cursor = self.conn.execute(
+            f"""
+            UPDATE job_queue
+            SET status = ?,
+                started_at = ?,
+                attempts = attempts + 1,
+                progress_percent = 0,
+                assigned_node_id = ?,
+                claimed_at = ?
+            WHERE id = ({subquery})
+            RETURNING *
+            """,
+            (JobStatus.RUNNING.value, now, node_id, now, *params),
+        )
+        row = cursor.fetchone()
+        self.conn.commit()
+        return Job.from_row(row) if row else None
+
     def get_next_unclaimed_job(self, job_type: JobType) -> Optional[Job]:
         """Get the next queued job that hasn't been claimed by any node.
 
