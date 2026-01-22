@@ -64,6 +64,7 @@ venv.bak/
 
 # Project specific
 data/
+docs/internal/
 *.db
 *.db-journal
 *.db-wal
