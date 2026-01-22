@@ -163,6 +163,60 @@ Action buttons are conditional:
 
 ---
 
+## Episode States for Transcript Discovery
+
+When external transcripts are not immediately available, episodes track their transcript discovery status:
+
+### Status Flow
+
+```
+pending → [TRANSCRIPT_DOWNLOAD job] → completed (transcript found)
+                                    → transcript_pending (403, will retry)
+                                    → transcript_unavailable (no transcript after retries)
+                                    → pending (no external URL, needs audio download)
+```
+
+### States
+
+| Status | Description | UI Badge Color | Action Button |
+|--------|-------------|----------------|---------------|
+| `pending` | Never checked or no external URL | Gray | "Get Transcript" or "Download Audio" |
+| `queued` | Job is processing | Blue | Disabled "..." |
+| `transcript_pending` | Got 403, will retry in 24h | Yellow | "Download Audio" |
+| `transcript_unavailable` | No transcript after retries | Gray | "Download Audio" |
+| `completed` | Has transcript | Green | "View" |
+
+### 403 Handling (Pocket Casts)
+
+Pocket Casts sometimes returns transcript URLs before the files exist on S3. The system handles this with age-based retry logic:
+
+1. **New episodes (< 7 days old)**:
+   - Status: `transcript_pending`
+   - Retry: Every 24 hours
+   - Rationale: Transcript may be generated soon
+
+2. **Old episodes (>= 7 days old)**:
+   - Status: `transcript_unavailable`
+   - No retry: Transcript won't appear
+   - User can manually download audio for Whisper
+
+### Scheduler
+
+The `retry_pending_transcripts()` job runs hourly to:
+1. Find episodes with `transcript_pending` status and `next_transcript_retry_at <= now`
+2. Re-queue `TRANSCRIPT_DOWNLOAD` jobs for eligible episodes
+3. Transition episodes >= 7 days old to `transcript_unavailable`
+
+### Database Fields
+
+| Field | Description |
+|-------|-------------|
+| `transcript_checked_at` | When last transcript download was attempted |
+| `next_transcript_retry_at` | When to retry (for `transcript_pending`) |
+| `transcript_failure_reason` | Error type: `forbidden`, `not_found`, `request_error` |
+
+---
+
 ## Known Limitations
 
 1. **Pocket Casts search matching** - Relies on author name matching which may fail for some podcasts (e.g., Huberman Lab shows "Scicomm Media" as author)
@@ -170,3 +224,5 @@ Action buttons are conditional:
 2. **Rate limiting** - Pocket Casts API calls are rate-limited to 500ms between requests
 
 3. **Episode matching** - Title normalization may not handle all edge cases (special characters, truncation)
+
+4. **Database concurrency** - With many concurrent transcript download workers, SQLite may experience lock contention. Default is 4 workers; reduce if you see "database is locked" errors.
