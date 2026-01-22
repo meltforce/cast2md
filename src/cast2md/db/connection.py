@@ -128,30 +128,8 @@ def get_db() -> Generator[sqlite3.Connection, None, None]:
         conn.close()
 
 
-@contextmanager
-def get_db_write() -> Generator[sqlite3.Connection, None, None]:
-    """Context manager for write-heavy database operations.
-
-    Uses BEGIN IMMEDIATE to acquire write lock upfront, preventing deadlocks
-    from lock upgrades. Combined with the 30s busy_timeout, this handles
-    contention gracefully.
-
-    Yields:
-        Database connection with immediate write lock.
-    """
-    conn = get_connection()
-    try:
-        # BEGIN IMMEDIATE acquires write lock at transaction start
-        # This prevents deadlocks from lock upgrades (where multiple
-        # transactions hold read locks and all try to upgrade to write)
-        conn.execute("BEGIN IMMEDIATE")
-        yield conn
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+# Alias for backwards compatibility - get_db handles writes correctly with WAL mode
+get_db_write = get_db
 
 
 def init_db(db_path: Path | None = None) -> None:
