@@ -17,6 +17,18 @@ ssh root@cast2md "cd /opt/cast2md && git pull && systemctl restart cast2md"
 - **Server**: Runs on cast2md via systemd (`systemctl restart cast2md`)
 - **Node workers**: Remote transcription nodes connect to the server
 - **Local workers**: Download workers and one local transcription worker run on the server
+- **Database**: PostgreSQL with pgvector (production), SQLite supported for development
+
+## Database Selection
+
+**Important lesson learned:** If you encounter SQLite "database is locked" errors, migrate to PostgreSQL immediately. Don't spend time trying to optimize SQLite concurrency (WAL mode, busy timeouts, reducing workers) - it's a fundamental limitation.
+
+Signs you need PostgreSQL:
+- "database is locked" errors in logs
+- Workers showing erratic counts (e.g., 3/10 running when 10 configured)
+- Jobs getting stuck or timing out due to lock contention
+
+PostgreSQL migration takes ~2 hours and eliminates all lock issues. With PostgreSQL, 10 workers can process ~10 transcripts/second with zero lock errors. See `docs/database-implementation.md` for details.
 
 ## Development
 
