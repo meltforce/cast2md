@@ -8,12 +8,20 @@ TIMESTAMP=$(date +"%Y-%m-%d %H:%M:%S")
 LOG_PREFIX="[Kopia Backup - $HOSTNAME]"
 LOG_FILE="/var/log/cast2md-backup.log"
 
-BACKUP_DIR="/mnt/nas/cast2md/backups"
 CAST2MD_DIR="/opt/cast2md"
+DB_DUMP="/tmp/cast2md-backup.sql"
 
 log() {
     echo "$LOG_PREFIX $TIMESTAMP - $1" | tee -a "$LOG_FILE"
 }
+
+cleanup() {
+    if [[ -f "$DB_DUMP" ]]; then
+        rm -f "$DB_DUMP"
+        log "Cleaned up temporary dump file"
+    fi
+}
+trap cleanup EXIT
 
 log "Starting cast2md backup"
 
@@ -25,29 +33,44 @@ fi
 
 BACKUP_FAILED=0
 
-# 1. Create fresh database dump
+# 1. Create fresh database dump (local disk for speed)
 log "Creating database dump"
 cd "$CAST2MD_DIR"
 source .venv/bin/activate
 
-if cast2md backup -o "$BACKUP_DIR/latest.sql" 2>&1 | tee -a "$LOG_FILE"; then
+if cast2md backup -o "$DB_DUMP" 2>&1 | tee -a "$LOG_FILE"; then
     log "SUCCESS: Database dump completed"
 else
     log "ERROR: Database dump failed"
     BACKUP_FAILED=1
 fi
 
-# 2. Kopia snapshot (DB + transcripts only)
-log "Creating Kopia snapshot of /mnt/nas/cast2md"
+# 2. Kopia snapshot - transcripts from NAS
+log "Creating Kopia snapshot of /mnt/nas/cast2md (transcripts)"
 
 if kopia snapshot create /mnt/nas/cast2md \
-    --description="cast2md backup from $HOSTNAME" \
-    --tags="host:$HOSTNAME,app:cast2md,timestamp:$(date +%s)" \
+    --description="cast2md transcripts from $HOSTNAME" \
+    --tags="host:$HOSTNAME,app:cast2md,type:transcripts,timestamp:$(date +%s)" \
     2>&1 | tee -a "$LOG_FILE"; then
-    log "SUCCESS: Kopia snapshot completed"
+    log "SUCCESS: Transcripts snapshot completed"
 else
-    log "ERROR: Kopia snapshot failed"
+    log "ERROR: Transcripts snapshot failed"
     BACKUP_FAILED=1
+fi
+
+# 3. Kopia snapshot - database dump
+if [[ -f "$DB_DUMP" ]]; then
+    log "Creating Kopia snapshot of database dump"
+
+    if kopia snapshot create "$DB_DUMP" \
+        --description="cast2md database from $HOSTNAME" \
+        --tags="host:$HOSTNAME,app:cast2md,type:database,timestamp:$(date +%s)" \
+        2>&1 | tee -a "$LOG_FILE"; then
+        log "SUCCESS: Database snapshot completed"
+    else
+        log "ERROR: Database snapshot failed"
+        BACKUP_FAILED=1
+    fi
 fi
 
 # Weekly maintenance on Sundays
