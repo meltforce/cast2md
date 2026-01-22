@@ -7,7 +7,7 @@ from typing import Optional
 
 from cast2md.config.settings import get_settings
 from cast2md.db.connection import get_db, get_db_write
-from cast2md.db.models import EpisodeStatus, JobStatus, JobType
+from cast2md.db.models import EpisodeStatus, Job, JobStatus, JobType
 from cast2md.db.repository import EpisodeRepository, FeedRepository, JobRepository
 from cast2md.download.downloader import download_episode
 from cast2md.notifications.ntfy import (
@@ -194,7 +194,7 @@ class WorkerManager:
         """Worker thread for processing download jobs."""
         while not self._stop_event.is_set():
             try:
-                job = self._get_next_job(JobType.DOWNLOAD)
+                job = self._claim_next_job(JobType.DOWNLOAD)
                 if job is None:
                     # No jobs, wait before checking again
                     self._stop_event.wait(timeout=5.0)
@@ -210,7 +210,7 @@ class WorkerManager:
         """Worker thread for processing transcription jobs (sequential)."""
         while not self._stop_event.is_set():
             try:
-                job = self._get_next_job(JobType.TRANSCRIBE)
+                job = self._claim_next_job(JobType.TRANSCRIBE)
                 if job is None:
                     # No jobs, wait before checking again
                     self._stop_event.wait(timeout=5.0)
@@ -231,7 +231,7 @@ class WorkerManager:
                     # Timeout - check stop event and continue waiting
                     continue
 
-                job = self._get_next_job(JobType.TRANSCRIPT_DOWNLOAD)
+                job = self._claim_next_job(JobType.TRANSCRIPT_DOWNLOAD)
                 if job is None:
                     # No jobs, wait before checking again
                     self._stop_event.wait(timeout=5.0)
@@ -247,7 +247,7 @@ class WorkerManager:
         """Worker thread for processing embedding jobs (low priority background task)."""
         while not self._stop_event.is_set():
             try:
-                job = self._get_next_job(JobType.EMBED)
+                job = self._claim_next_job(JobType.EMBED)
                 if job is None:
                     # No jobs, wait longer since embeddings are low priority
                     self._stop_event.wait(timeout=10.0)
@@ -259,31 +259,32 @@ class WorkerManager:
                 logger.error(f"Embedding worker error: {e}")
                 time.sleep(5.0)
 
-    def _get_next_job(self, job_type: JobType):
-        """Get the next available job from the queue.
+    def _claim_next_job(self, job_type: JobType) -> Optional[Job]:
+        """Atomically claim the next available job from the queue.
+
+        Uses UPDATE...RETURNING to prevent race conditions where multiple
+        workers could claim the same job.
 
         For transcription jobs when distributed transcription is enabled,
-        only returns jobs not assigned to remote nodes.
+        only claims jobs not assigned to remote nodes.
         """
-        with get_db() as conn:
+        with get_db_write() as conn:
             repo = JobRepository(conn)
             # For transcription jobs with distributed enabled, only get unassigned jobs
             local_only = (
                 job_type == JobType.TRANSCRIBE and _is_distributed_enabled()
             )
-            return repo.get_next_job(job_type, local_only=local_only)
+            return repo.claim_next_job(job_type, node_id="local", local_only=local_only)
 
     def _process_download_job(self, job_id: int, episode_id: int):
         """Process a download job."""
         logger.info(f"Processing download job {job_id} for episode {episode_id}")
 
+        # Job is already marked as running by _claim_next_job
         with get_db_write() as conn:
             job_repo = JobRepository(conn)
             episode_repo = EpisodeRepository(conn)
             feed_repo = FeedRepository(conn)
-
-            # Mark job as running
-            job_repo.mark_running(job_id)
 
             episode = episode_repo.get_by_id(episode_id)
             if not episode:
@@ -320,13 +321,11 @@ class WorkerManager:
         """Process a transcription job."""
         logger.info(f"Processing transcription job {job_id} for episode {episode_id}")
 
+        # Job is already marked as running by _claim_next_job
         with get_db_write() as conn:
             job_repo = JobRepository(conn)
             episode_repo = EpisodeRepository(conn)
             feed_repo = FeedRepository(conn)
-
-            # Mark job as running
-            job_repo.mark_running(job_id)
 
             episode = episode_repo.get_by_id(episode_id)
             if not episode:
@@ -399,14 +398,11 @@ class WorkerManager:
 
         logger.info(f"Processing transcript download job {job_id} for episode {episode_id}")
 
-        # Use get_db_write for job status updates to handle contention
+        # Job is already marked as running by _claim_next_job
         with get_db_write() as conn:
             job_repo = JobRepository(conn)
             episode_repo = EpisodeRepository(conn)
             feed_repo = FeedRepository(conn)
-
-            # Mark job as running
-            job_repo.mark_running(job_id)
 
             episode = episode_repo.get_by_id(episode_id)
             if not episode:
@@ -563,12 +559,10 @@ class WorkerManager:
         """
         logger.info(f"Processing embedding job {job_id} for episode {episode_id}")
 
+        # Job is already marked as running by _claim_next_job
         with get_db_write() as conn:
             job_repo = JobRepository(conn)
             episode_repo = EpisodeRepository(conn)
-
-            # Mark job as running
-            job_repo.mark_running(job_id)
 
             episode = episode_repo.get_by_id(episode_id)
             if not episode:
