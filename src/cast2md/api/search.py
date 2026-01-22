@@ -338,7 +338,6 @@ class SemanticSearchStats(BaseModel):
     total_embeddings: int
     embedded_episodes: int
     embeddings_available: bool
-    sqlite_vec_available: bool
 
 
 @router.get("/semantic", response_model=SemanticSearchResponse)
@@ -399,7 +398,6 @@ def semantic_search(
 @router.get("/semantic/stats", response_model=SemanticSearchStats)
 def get_semantic_stats():
     """Get statistics about the semantic search index."""
-    from cast2md.db.connection import is_sqlite_vec_available
     from cast2md.search.embeddings import is_embeddings_available
 
     with get_db() as conn:
@@ -411,5 +409,4 @@ def get_semantic_stats():
         total_embeddings=total_embeddings,
         embedded_episodes=embedded_episodes,
         embeddings_available=is_embeddings_available(),
-        sqlite_vec_available=is_sqlite_vec_available(),
     )

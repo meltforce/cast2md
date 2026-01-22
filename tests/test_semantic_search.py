@@ -89,8 +89,9 @@ class TestHybridSearchKeywordOnly:
     ):
         """Test hybrid_search in keyword mode returns results."""
         # Index the transcript
-        db_conn.execute(
-            "UPDATE episode SET transcript_path = ?, status = 'completed' WHERE id = ?",
+        cursor = db_conn.cursor()
+        cursor.execute(
+            "UPDATE episode SET transcript_path = %s, status = 'completed' WHERE id = %s",
             (str(transcript_file), sample_episode.id),
         )
         db_conn.commit()
@@ -108,8 +109,9 @@ class TestHybridSearchKeywordOnly:
         self, db_conn, sample_episode, search_repo, transcript_file
     ):
         """Test hybrid_search in keyword mode with no matches."""
-        db_conn.execute(
-            "UPDATE episode SET transcript_path = ?, status = 'completed' WHERE id = ?",
+        cursor = db_conn.cursor()
+        cursor.execute(
+            "UPDATE episode SET transcript_path = %s, status = 'completed' WHERE id = %s",
             (str(transcript_file), sample_episode.id),
         )
         db_conn.commit()
@@ -131,8 +133,9 @@ class TestHybridSearchKeywordOnly:
         self, db_conn, sample_episode, sample_feed, search_repo, transcript_file
     ):
         """Test hybrid_search with feed filter."""
-        db_conn.execute(
-            "UPDATE episode SET transcript_path = ?, status = 'completed' WHERE id = ?",
+        cursor = db_conn.cursor()
+        cursor.execute(
+            "UPDATE episode SET transcript_path = %s, status = 'completed' WHERE id = %s",
             (str(transcript_file), sample_episode.id),
         )
         db_conn.commit()
@@ -156,8 +159,9 @@ class TestHybridSearchResultStructure:
         self, db_conn, sample_episode, search_repo, transcript_file
     ):
         """Test that search results have all required fields."""
-        db_conn.execute(
-            "UPDATE episode SET transcript_path = ?, status = 'completed' WHERE id = ?",
+        cursor = db_conn.cursor()
+        cursor.execute(
+            "UPDATE episode SET transcript_path = %s, status = 'completed' WHERE id = %s",
             (str(transcript_file), sample_episode.id),
         )
         db_conn.commit()
@@ -183,8 +187,9 @@ class TestHybridSearchResultStructure:
         self, db_conn, sample_episode, search_repo, transcript_file
     ):
         """Test that RRF scores are positive."""
-        db_conn.execute(
-            "UPDATE episode SET transcript_path = ?, status = 'completed' WHERE id = ?",
+        cursor = db_conn.cursor()
+        cursor.execute(
+            "UPDATE episode SET transcript_path = %s, status = 'completed' WHERE id = %s",
             (str(transcript_file), sample_episode.id),
         )
         db_conn.commit()
@@ -215,8 +220,9 @@ class TestHybridSearchModes:
 
     def test_mode_hybrid(self, db_conn, sample_episode, search_repo, transcript_file):
         """Test hybrid mode is accepted."""
-        db_conn.execute(
-            "UPDATE episode SET transcript_path = ?, status = 'completed' WHERE id = ?",
+        cursor = db_conn.cursor()
+        cursor.execute(
+            "UPDATE episode SET transcript_path = %s, status = 'completed' WHERE id = %s",
             (str(transcript_file), sample_episode.id),
         )
         db_conn.commit()
@@ -227,8 +233,9 @@ class TestHybridSearchModes:
 
     def test_mode_semantic(self, db_conn, sample_episode, search_repo, transcript_file):
         """Test semantic mode is accepted."""
-        db_conn.execute(
-            "UPDATE episode SET transcript_path = ?, status = 'completed' WHERE id = ?",
+        cursor = db_conn.cursor()
+        cursor.execute(
+            "UPDATE episode SET transcript_path = %s, status = 'completed' WHERE id = %s",
             (str(transcript_file), sample_episode.id),
         )
         db_conn.commit()
@@ -239,8 +246,9 @@ class TestHybridSearchModes:
 
     def test_mode_keyword(self, db_conn, sample_episode, search_repo, transcript_file):
         """Test keyword mode is accepted."""
-        db_conn.execute(
-            "UPDATE episode SET transcript_path = ?, status = 'completed' WHERE id = ?",
+        cursor = db_conn.cursor()
+        cursor.execute(
+            "UPDATE episode SET transcript_path = %s, status = 'completed' WHERE id = %s",
             (str(transcript_file), sample_episode.id),
         )
         db_conn.commit()

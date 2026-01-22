@@ -55,7 +55,7 @@ def queue_missing_embeddings():
     Runs on startup to backfill embeddings for existing transcripts.
     Uses low priority (10) so these don't interfere with normal operations.
     """
-    from cast2md.db.connection import get_db, is_sqlite_vec_available
+    from cast2md.db.connection import get_db
     from cast2md.db.models import EpisodeStatus, JobType
     from cast2md.db.repository import EpisodeRepository, JobRepository
     from cast2md.search.embeddings import is_embeddings_available
@@ -64,10 +64,6 @@ def queue_missing_embeddings():
     # Check if embedding infrastructure is available
     if not is_embeddings_available():
         logger.info("Embeddings not available (sentence-transformers not installed), skipping backfill")
-        return
-
-    if not is_sqlite_vec_available():
-        logger.info("sqlite-vec not available, skipping embedding backfill")
         return
 
     with get_db() as conn:
@@ -128,7 +124,7 @@ async def lifespan(app: FastAPI):
 
     # Initialize database
     init_db()
-    logger.info(f"Database initialized at {settings.database_path}")
+    logger.info("Database initialized")
 
     # Cleanup old trash
     from cast2md.storage.filesystem import cleanup_old_trash

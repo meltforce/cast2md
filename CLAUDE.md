@@ -17,7 +17,7 @@ ssh root@cast2md "cd /opt/cast2md && git pull && systemctl restart cast2md"
 - **Server**: Runs on cast2md via systemd (`systemctl restart cast2md`)
 - **Node workers**: Remote transcription nodes connect to the server
 - **Local workers**: Download workers and one local transcription worker run on the server
-- **Database**: PostgreSQL with pgvector (production), SQLite supported for development
+- **Database**: PostgreSQL with pgvector (required)
 
 ## Database Selection
 
@@ -41,6 +41,20 @@ PostgreSQL migration takes ~2 hours and eliminates all lock issues. With Postgre
 - `docs/` - Additional documentation (distributed transcription setup, architecture diagrams, etc.)
 
 ## Testing
+
+### Running Tests
+
+Tests require PostgreSQL. Use docker-compose to start a local PostgreSQL instance:
+
+```bash
+# Start PostgreSQL
+docker-compose up -d postgres
+
+# Run tests
+DATABASE_URL="postgresql://cast2md:dev@localhost:5432/cast2md" pytest tests/ -v
+```
+
+### API Testing
 
 Always test the server API directly via the URL, not by SSH + localhost:
 ```bash
@@ -264,17 +278,17 @@ Semantic search enables natural language queries like "protein and muscle buildi
 
 ### How It Works
 
-1. **Hybrid Search**: Combines FTS5 keyword search with vector similarity using Reciprocal Rank Fusion (RRF)
+1. **Hybrid Search**: Combines PostgreSQL full-text search with vector similarity using Reciprocal Rank Fusion (RRF)
 2. **Embeddings**: Uses `sentence-transformers` with `all-MiniLM-L6-v2` model (384-dim, ~80MB)
-3. **Vector Storage**: `sqlite-vec` extension with `vec0` virtual table for indexed KNN search
+3. **Vector Storage**: pgvector extension with HNSW index for fast approximate nearest neighbor search
 
 ### Architecture
 
 ```
 Query → Generate embedding (15ms)
      ↓
-     ├── FTS5 keyword search (4ms)
-     └── vec0 KNN vector search (~450ms)
+     ├── PostgreSQL tsvector search (fast)
+     └── pgvector HNSW search (fast)
      ↓
      RRF fusion → Combined results
 ```
@@ -286,7 +300,7 @@ Query → Generate embedding (15ms)
 - `api/search.py` - `/api/search/semantic` endpoint
 - `mcp/tools.py` - `semantic_search` MCP tool
 - `worker/manager.py` - Embedding worker (processes `EMBED` jobs)
-- `db/migrations.py` - Migration v7 (segment_embeddings), v8 (vec0 virtual table)
+- `db/schema.py` - `segment_embeddings` table with pgvector column
 
 ### API Endpoints
 
@@ -303,14 +317,12 @@ semantic_search(query="protein and muscle building", mode="hybrid")
 
 ### Startup Behavior
 
-- **Embeddings**: Persisted in SQLite database (survives restarts)
+- **Embeddings**: Persisted in PostgreSQL (survives restarts)
 - **Model loading**: ~2 seconds on first semantic query after restart
 - **Background worker**: Automatically generates embeddings for new transcripts
 
-### sqlite-vec Notes (v0.1.6)
+### pgvector Notes
 
-The vec0 virtual table has specific requirements:
-- Auxiliary columns need explicit types: `+column_name TYPE`
-- Use `FLOAT` not `REAL` for floating-point auxiliary columns
-- Values must match declared types exactly (use `float()` for FLOAT columns)
-- KNN syntax: `WHERE embedding MATCH ? AND k = ?`
+- Uses HNSW index for fast approximate nearest neighbor search
+- Vector column defined as `vector(384)` matching embedding dimension
+- Cosine distance used for similarity: `embedding <=> query_embedding`

@@ -1,7 +1,8 @@
 """Command-line interface for cast2md."""
 
+import os
 import shutil
-import sqlite3
+import subprocess
 import time
 import webbrowser
 from datetime import datetime
@@ -36,7 +37,7 @@ def cmd_init_db():
     settings.ensure_directories()
 
     init_db()
-    click.echo(f"Database initialized at {settings.database_path}")
+    click.echo("Database initialized")
 
 
 @cli.command("add-feed")
@@ -276,22 +277,20 @@ def cmd_status():
     click.echo("cast2md Status")
     click.echo("=" * 40)
 
-    # Check database
-    db_path = settings.database_path
-    if db_path.exists():
-        click.echo(f"Database: {db_path} (exists)")
-    else:
-        click.echo(f"Database: {db_path} (not initialized)")
-        click.echo("Run 'cast2md init-db' to initialize")
+    # Check database connection
+    try:
+        with get_db() as conn:
+            feed_repo = FeedRepository(conn)
+            episode_repo = EpisodeRepository(conn)
+
+            feeds = feed_repo.get_all()
+            status_counts = episode_repo.count_by_status()
+
+        click.echo("Database: Connected (PostgreSQL)")
+    except Exception as e:
+        click.echo(f"Database: Connection failed - {e}")
+        click.echo("Check DATABASE_URL environment variable")
         return
-
-    # Count feeds and episodes
-    with get_db() as conn:
-        feed_repo = FeedRepository(conn)
-        episode_repo = EpisodeRepository(conn)
-
-        feeds = feed_repo.get_all()
-        status_counts = episode_repo.count_by_status()
 
     click.echo(f"Feeds: {len(feeds)}")
     click.echo()
@@ -315,41 +314,57 @@ def cmd_status():
 @cli.command("backup")
 @click.option("--output", "-o", type=click.Path(), help="Custom output path for backup")
 def cmd_backup(output: str | None):
-    """Create a database backup.
+    """Create a database backup using pg_dump.
 
-    Creates a consistent backup of the SQLite database using SQLite's
-    backup API. By default, saves to data/backups/ with a timestamp.
+    Creates a consistent backup of the PostgreSQL database.
+    By default, saves to data/backups/ with a timestamp.
+
+    Requires pg_dump to be installed and DATABASE_URL to be set.
     """
-    settings = get_settings()
-    db_path = settings.database_path
+    from cast2md.db.config import get_database_config
 
-    if not db_path.exists():
-        click.echo("Error: Database not found. Nothing to backup.", err=True)
-        raise SystemExit(1)
+    config = get_database_config()
+    settings = get_settings()
 
     # Determine backup path
     if output:
         backup_path = Path(output)
     else:
-        backup_dir = settings.database_path.parent / "backups"
+        backup_dir = settings.storage_path.parent / "backups"
         backup_dir.mkdir(parents=True, exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        backup_path = backup_dir / f"cast2md_backup_{timestamp}.db"
+        backup_path = backup_dir / f"cast2md_backup_{timestamp}.sql"
 
-    click.echo(f"Backing up database: {db_path}")
-    click.echo(f"Destination: {backup_path}")
+    click.echo(f"Backing up database to: {backup_path}")
 
     try:
-        # Use SQLite backup API for consistent copy (handles WAL mode)
-        source = sqlite3.connect(db_path)
-        dest = sqlite3.connect(backup_path)
-        source.backup(dest)
-        dest.close()
-        source.close()
+        # Build pg_dump command
+        env = os.environ.copy()
+        env["PGPASSWORD"] = config.password
+
+        cmd = [
+            "pg_dump",
+            "-h", config.host,
+            "-p", str(config.port),
+            "-U", config.user,
+            "-d", config.database,
+            "-f", str(backup_path),
+            "--no-owner",
+            "--no-privileges",
+        ]
+
+        result = subprocess.run(cmd, env=env, capture_output=True, text=True)
+
+        if result.returncode != 0:
+            click.echo(f"Error: pg_dump failed: {result.stderr}", err=True)
+            raise SystemExit(1)
 
         # Get file size for confirmation
         size_mb = backup_path.stat().st_size / (1024 * 1024)
         click.echo(f"Backup complete: {size_mb:.2f} MB")
+    except FileNotFoundError:
+        click.echo("Error: pg_dump not found. Install PostgreSQL client tools.", err=True)
+        raise SystemExit(1)
     except Exception as e:
         click.echo(f"Error creating backup: {e}", err=True)
         raise SystemExit(1)
@@ -359,64 +374,75 @@ def cmd_backup(output: str | None):
 @click.argument("backup_file", type=click.Path(exists=True))
 @click.option("--force", "-f", is_flag=True, help="Skip confirmation prompt")
 def cmd_restore(backup_file: str, force: bool):
-    """Restore database from a backup.
+    """Restore database from a backup using psql.
 
-    BACKUP_FILE is the path to the backup file to restore from.
+    BACKUP_FILE is the path to the SQL backup file to restore from.
 
     WARNING: This will overwrite the current database!
+    Requires psql to be installed and DATABASE_URL to be set.
     """
-    settings = get_settings()
-    db_path = settings.database_path
+    from cast2md.db.config import get_database_config
+
+    config = get_database_config()
     backup_path = Path(backup_file)
 
-    # Validate backup file
-    try:
-        conn = sqlite3.connect(backup_path)
-        cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
-        tables = [row[0] for row in cursor.fetchall()]
-        conn.close()
-
-        required_tables = {"feed", "episode", "job_queue", "settings"}
-        if not required_tables.issubset(set(tables)):
-            click.echo("Error: Backup file does not appear to be a valid cast2md database", err=True)
-            click.echo(f"Found tables: {tables}", err=True)
-            raise SystemExit(1)
-    except sqlite3.Error as e:
-        click.echo(f"Error: Invalid SQLite database: {e}", err=True)
-        raise SystemExit(1)
+    # Validate backup file is a SQL file
+    if not backup_path.suffix == ".sql":
+        click.echo("Warning: Backup file does not have .sql extension", err=True)
 
     click.echo(f"Backup file: {backup_path}")
-    click.echo(f"Current database: {db_path}")
+    click.echo(f"Target database: {config.database}@{config.host}")
 
-    if db_path.exists():
-        size_mb = db_path.stat().st_size / (1024 * 1024)
-        click.echo(f"Current database size: {size_mb:.2f} MB")
-
-        if not force:
-            click.confirm("This will overwrite the current database. Continue?", abort=True)
+    if not force:
+        click.confirm("This will overwrite the current database. Continue?", abort=True)
 
     try:
-        # Create a pre-restore backup just in case
-        if db_path.exists():
-            pre_restore_backup = db_path.with_suffix(".db.pre-restore")
-            click.echo(f"Creating pre-restore backup: {pre_restore_backup}")
-            shutil.copy2(db_path, pre_restore_backup)
+        env = os.environ.copy()
+        env["PGPASSWORD"] = config.password
 
-            # Also copy WAL and SHM files if they exist
-            for suffix in ["-wal", "-shm"]:
-                wal_path = Path(str(db_path) + suffix)
-                if wal_path.exists():
-                    wal_path.unlink()
+        # First create a pre-restore backup
+        settings = get_settings()
+        backup_dir = settings.storage_path.parent / "backups"
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        pre_restore_path = backup_dir / f"cast2md_pre_restore_{timestamp}.sql"
 
-        # Restore using SQLite backup API
-        source = sqlite3.connect(backup_path)
-        dest = sqlite3.connect(db_path)
-        source.backup(dest)
-        dest.close()
-        source.close()
+        click.echo(f"Creating pre-restore backup: {pre_restore_path}")
+        dump_cmd = [
+            "pg_dump",
+            "-h", config.host,
+            "-p", str(config.port),
+            "-U", config.user,
+            "-d", config.database,
+            "-f", str(pre_restore_path),
+            "--no-owner",
+            "--no-privileges",
+        ]
+        subprocess.run(dump_cmd, env=env, capture_output=True)
+
+        # Restore using psql
+        click.echo("Restoring database...")
+        restore_cmd = [
+            "psql",
+            "-h", config.host,
+            "-p", str(config.port),
+            "-U", config.user,
+            "-d", config.database,
+            "-f", str(backup_path),
+            "-q",  # Quiet mode
+        ]
+
+        result = subprocess.run(restore_cmd, env=env, capture_output=True, text=True)
+
+        if result.returncode != 0:
+            click.echo(f"Error: psql restore failed: {result.stderr}", err=True)
+            raise SystemExit(1)
 
         click.echo("Database restored successfully")
         click.echo("Note: Restart the server if it's running")
+    except FileNotFoundError:
+        click.echo("Error: psql not found. Install PostgreSQL client tools.", err=True)
+        raise SystemExit(1)
     except Exception as e:
         click.echo(f"Error restoring backup: {e}", err=True)
         raise SystemExit(1)
@@ -426,13 +452,13 @@ def cmd_restore(backup_file: str, force: bool):
 def cmd_list_backups():
     """List available database backups."""
     settings = get_settings()
-    backup_dir = settings.database_path.parent / "backups"
+    backup_dir = settings.storage_path.parent / "backups"
 
     if not backup_dir.exists():
         click.echo("No backups directory found")
         return
 
-    backups = sorted(backup_dir.glob("cast2md_backup_*.db"), reverse=True)
+    backups = sorted(backup_dir.glob("cast2md_backup_*.sql"), reverse=True)
 
     if not backups:
         click.echo("No backups found")
@@ -466,18 +492,19 @@ def cmd_reindex_transcripts(feed_id: int | None):
         search_repo = TranscriptSearchRepository(conn)
 
         # Build dict of episode_id -> transcript_path
+        cursor = conn.cursor()
         if feed_id:
             # Get episodes for specific feed
-            cursor = conn.execute(
+            cursor.execute(
                 """
                 SELECT id, transcript_path FROM episode
-                WHERE feed_id = ? AND transcript_path IS NOT NULL AND status = 'completed'
+                WHERE feed_id = %s AND transcript_path IS NOT NULL AND status = 'completed'
                 """,
                 (feed_id,),
             )
         else:
             # Get all completed episodes with transcripts
-            cursor = conn.execute(
+            cursor.execute(
                 """
                 SELECT id, transcript_path FROM episode
                 WHERE transcript_path IS NOT NULL AND status = 'completed'

@@ -1,6 +1,5 @@
-"""Database configuration and type detection."""
+"""Database configuration for PostgreSQL."""
 
-from enum import Enum
 from functools import lru_cache
 from typing import Optional
 from urllib.parse import urlparse
@@ -8,21 +7,13 @@ from urllib.parse import urlparse
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-class DatabaseType(Enum):
-    """Supported database types."""
-
-    SQLITE = "sqlite"
-    POSTGRESQL = "postgresql"
-
-
 class DatabaseConfig(BaseSettings):
     """Database configuration with environment variable loading.
 
-    Supports both SQLite and PostgreSQL via the DATABASE_URL environment variable.
+    PostgreSQL connection via the DATABASE_URL environment variable.
 
-    Examples:
-        SQLite: sqlite:///data/cast2md.db or just a file path
-        PostgreSQL: postgresql://user:pass@host:5432/dbname
+    Example:
+        DATABASE_URL=postgresql://user:pass@host:5432/dbname
     """
 
     model_config = SettingsConfigDict(
@@ -32,11 +23,10 @@ class DatabaseConfig(BaseSettings):
         extra="ignore",  # Ignore other env vars (e.g., whisper_model, etc.)
     )
 
-    # DATABASE_URL takes precedence over DATABASE_PATH
+    # DATABASE_URL for PostgreSQL connection
     database_url: Optional[str] = None
-    database_path: str = "./data/cast2md.db"
 
-    # Connection pool settings (PostgreSQL only)
+    # Connection pool settings
     pool_min_size: int = 1
     pool_max_size: int = 10
 
@@ -44,63 +34,22 @@ class DatabaseConfig(BaseSettings):
     def effective_url(self) -> str:
         """Get the effective database URL.
 
-        Returns DATABASE_URL if set, otherwise converts DATABASE_PATH to SQLite URL.
+        Returns DATABASE_URL if set, otherwise raises an error.
         """
         if self.database_url:
             return self.database_url
-        return f"sqlite:///{self.database_path}"
-
-    @property
-    def db_type(self) -> DatabaseType:
-        """Detect database type from URL."""
-        url = self.effective_url
-        if url.startswith("postgresql://") or url.startswith("postgres://"):
-            return DatabaseType.POSTGRESQL
-        return DatabaseType.SQLITE
-
-    @property
-    def is_postgresql(self) -> bool:
-        """Check if using PostgreSQL."""
-        return self.db_type == DatabaseType.POSTGRESQL
-
-    @property
-    def is_sqlite(self) -> bool:
-        """Check if using SQLite."""
-        return self.db_type == DatabaseType.SQLITE
-
-    def get_sqlite_path(self) -> str:
-        """Get SQLite file path from URL.
-
-        Returns:
-            Path to SQLite database file.
-
-        Raises:
-            ValueError: If not using SQLite.
-        """
-        if not self.is_sqlite:
-            raise ValueError("Not using SQLite database")
-
-        url = self.effective_url
-        if url.startswith("sqlite:///"):
-            return url[len("sqlite:///") :]
-        return url
+        raise ValueError("DATABASE_URL environment variable is required")
 
     def get_postgres_dsn(self) -> str:
         """Get PostgreSQL connection string.
 
         Returns:
             PostgreSQL DSN for psycopg2.
-
-        Raises:
-            ValueError: If not using PostgreSQL.
         """
-        if not self.is_postgresql:
-            raise ValueError("Not using PostgreSQL database")
-
         url = self.effective_url
         # Normalize postgres:// to postgresql://
         if url.startswith("postgres://"):
-            url = "postgresql://" + url[len("postgres://") :]
+            url = "postgresql://" + url[len("postgres://"):]
         return url
 
     def get_postgres_params(self) -> dict:
@@ -108,13 +57,7 @@ class DatabaseConfig(BaseSettings):
 
         Returns:
             Dict with host, port, database, user, password.
-
-        Raises:
-            ValueError: If not using PostgreSQL.
         """
-        if not self.is_postgresql:
-            raise ValueError("Not using PostgreSQL database")
-
         parsed = urlparse(self.effective_url)
         return {
             "host": parsed.hostname or "localhost",
@@ -152,15 +95,14 @@ def reload_db_config() -> DatabaseConfig:
     return _config
 
 
-# SQL dialect helpers
+# SQL dialect helpers - PostgreSQL only
 def get_placeholder() -> str:
-    """Get the parameter placeholder for the current database.
+    """Get the parameter placeholder for PostgreSQL.
 
     Returns:
-        '?' for SQLite, '%s' for PostgreSQL.
+        '%s' for PostgreSQL.
     """
-    config = get_db_config()
-    return "%s" if config.is_postgresql else "?"
+    return "%s"
 
 
 def get_placeholder_num(n: int) -> str:
@@ -170,10 +112,9 @@ def get_placeholder_num(n: int) -> str:
         n: Number of placeholders needed.
 
     Returns:
-        Comma-separated placeholders (e.g., '?, ?, ?' or '%s, %s, %s').
+        Comma-separated placeholders (e.g., '%s, %s, %s').
     """
-    placeholder = get_placeholder()
-    return ", ".join([placeholder] * n)
+    return ", ".join(["%s"] * n)
 
 
 def get_current_timestamp_sql() -> str:
@@ -182,10 +123,7 @@ def get_current_timestamp_sql() -> str:
     Returns:
         SQL expression for current timestamp.
     """
-    config = get_db_config()
-    if config.is_postgresql:
-        return "NOW()"
-    return "datetime('now')"
+    return "NOW()"
 
 
 def get_autoincrement_type() -> str:
@@ -194,7 +132,26 @@ def get_autoincrement_type() -> str:
     Returns:
         SQL type for auto-increment primary key.
     """
+    return "SERIAL PRIMARY KEY"
+
+
+class PostgresConnectionParams:
+    """PostgreSQL connection parameters for CLI commands."""
+
+    def __init__(self, params: dict):
+        self.host = params["host"]
+        self.port = params["port"]
+        self.database = params["database"]
+        self.user = params["user"]
+        self.password = params["password"]
+
+
+def get_database_config() -> PostgresConnectionParams:
+    """Get database connection parameters for CLI backup/restore.
+
+    Returns:
+        PostgresConnectionParams with host, port, database, user, password.
+    """
     config = get_db_config()
-    if config.is_postgresql:
-        return "SERIAL PRIMARY KEY"
-    return "INTEGER PRIMARY KEY AUTOINCREMENT"
+    params = config.get_postgres_params()
+    return PostgresConnectionParams(params)

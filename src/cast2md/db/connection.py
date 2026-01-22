@@ -1,20 +1,15 @@
-"""Database connection management for SQLite and PostgreSQL."""
+"""Database connection management for PostgreSQL."""
 
 import logging
-import sqlite3
 from contextlib import contextmanager
-from pathlib import Path
-from typing import Any, Generator, Protocol, Union
+from typing import Any, Generator, Protocol
 
-from cast2md.db.config import DatabaseType, get_db_config
+from cast2md.db.config import get_db_config
 
 logger = logging.getLogger(__name__)
 
-# Connection type alias - can be sqlite3.Connection or psycopg2.connection
+# Connection type alias - psycopg2.connection
 Connection = Any
-
-# Track if sqlite-vec extension is available
-_sqlite_vec_available: bool | None = None
 
 # PostgreSQL connection pool (lazy-initialized)
 _pg_pool: Any = None
@@ -22,7 +17,7 @@ _pg_pool_initialized: bool = False
 
 
 class DatabaseConnection(Protocol):
-    """Protocol for database connections supporting both SQLite and PostgreSQL."""
+    """Protocol for database connections."""
 
     def execute(self, sql: str, params: tuple = ()) -> Any: ...
     def executemany(self, sql: str, params: list) -> Any: ...
@@ -30,71 +25,6 @@ class DatabaseConnection(Protocol):
     def rollback(self) -> None: ...
     def close(self) -> None: ...
     def cursor(self) -> Any: ...
-
-
-def _load_sqlite_vec(conn: sqlite3.Connection) -> bool:
-    """Load the sqlite-vec extension for vector similarity search.
-
-    Args:
-        conn: SQLite connection to load extension into.
-
-    Returns:
-        True if extension loaded successfully, False otherwise.
-    """
-    global _sqlite_vec_available
-
-    # Return cached result if we've already checked
-    if _sqlite_vec_available is not None:
-        if _sqlite_vec_available:
-            try:
-                import sqlite_vec
-
-                conn.enable_load_extension(True)
-                sqlite_vec.load(conn)
-                conn.enable_load_extension(False)
-            except Exception:
-                pass
-        return _sqlite_vec_available
-
-    try:
-        import sqlite_vec
-
-        conn.enable_load_extension(True)
-        sqlite_vec.load(conn)
-        conn.enable_load_extension(False)
-        _sqlite_vec_available = True
-        logger.info("sqlite-vec extension loaded successfully")
-        return True
-    except ImportError:
-        _sqlite_vec_available = False
-        logger.warning("sqlite-vec not installed, semantic search will be unavailable")
-        return False
-    except Exception as e:
-        _sqlite_vec_available = False
-        logger.warning(f"Failed to load sqlite-vec extension: {e}")
-        return False
-
-
-def is_sqlite_vec_available() -> bool:
-    """Check if sqlite-vec extension is available.
-
-    Returns:
-        True if sqlite-vec can be loaded, False otherwise.
-    """
-    global _sqlite_vec_available
-    if _sqlite_vec_available is None:
-        # Do a test load to check availability
-        try:
-            import sqlite_vec
-
-            test_conn = sqlite3.connect(":memory:")
-            test_conn.enable_load_extension(True)
-            sqlite_vec.load(test_conn)
-            test_conn.close()
-            _sqlite_vec_available = True
-        except Exception:
-            _sqlite_vec_available = False
-    return _sqlite_vec_available
 
 
 def is_pgvector_available() -> bool:
@@ -109,36 +39,6 @@ def is_pgvector_available() -> bool:
         return True
     except ImportError:
         return False
-
-
-def _get_sqlite_connection(db_path: Path | None = None) -> sqlite3.Connection:
-    """Create a new SQLite connection with proper settings.
-
-    Args:
-        db_path: Path to database file. Uses config if not provided.
-
-    Returns:
-        Configured SQLite connection.
-    """
-    if db_path is None:
-        config = get_db_config()
-        db_path = Path(config.get_sqlite_path())
-
-    conn = sqlite3.connect(str(db_path), timeout=30.0)
-
-    # Enable WAL mode for better concurrency
-    conn.execute("PRAGMA journal_mode=WAL")
-
-    # Enable foreign key constraints
-    conn.execute("PRAGMA foreign_keys=ON")
-
-    # Set busy timeout to 30 seconds - allows waiting for write lock under contention
-    conn.execute("PRAGMA busy_timeout=30000")
-
-    # Load sqlite-vec extension for vector similarity search
-    _load_sqlite_vec(conn)
-
-    return conn
 
 
 def _init_pg_pool() -> Any:
@@ -233,21 +133,13 @@ def _return_pg_connection(conn: Any) -> None:
         _pg_pool.putconn(conn)
 
 
-def get_connection(db_path: Path | None = None) -> Connection:
-    """Create a new database connection with proper settings.
-
-    Args:
-        db_path: Path to database file (SQLite only). Uses config if not provided.
+def get_connection() -> Connection:
+    """Create a new database connection.
 
     Returns:
-        Configured database connection (SQLite or PostgreSQL).
+        PostgreSQL connection from pool.
     """
-    config = get_db_config()
-
-    if config.is_postgresql:
-        return _get_pg_connection()
-    else:
-        return _get_sqlite_connection(db_path)
+    return _get_pg_connection()
 
 
 @contextmanager
@@ -257,72 +149,25 @@ def get_db() -> Generator[Connection, None, None]:
     Yields:
         Database connection that auto-commits on success, rolls back on error.
     """
-    config = get_db_config()
-
-    if config.is_postgresql:
-        conn = _get_pg_connection()
-        try:
-            yield conn
-            conn.commit()
-        except Exception:
-            conn.rollback()
-            raise
-        finally:
-            _return_pg_connection(conn)
-    else:
-        conn = _get_sqlite_connection()
-        try:
-            yield conn
-            conn.commit()
-        except Exception:
-            conn.rollback()
-            raise
-        finally:
-            conn.close()
+    conn = _get_pg_connection()
+    try:
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        _return_pg_connection(conn)
 
 
 # Alias for backwards compatibility - get_db handles writes correctly
 get_db_write = get_db
 
 
-def init_db(db_path: Path | None = None) -> None:
-    """Initialize the database with schema and run migrations.
-
-    Args:
-        db_path: Path to database file (SQLite only). Uses config if not provided.
-    """
-    from cast2md.config.settings import get_settings
+def init_db() -> None:
+    """Initialize the database with schema and run migrations."""
     from cast2md.db.migrations import run_migrations
     from cast2md.db.schema import get_schema
-
-    config = get_db_config()
-
-    if config.is_postgresql:
-        _init_postgresql_schema()
-    else:
-        # SQLite initialization
-        settings = get_settings()
-        if db_path is None:
-            db_path = Path(config.get_sqlite_path())
-
-        # Ensure directory exists
-        db_path.parent.mkdir(parents=True, exist_ok=True)
-
-        conn = _get_sqlite_connection(db_path)
-        try:
-            conn.executescript(get_schema())
-            conn.commit()
-
-            # Run migrations for existing databases
-            run_migrations(conn)
-        finally:
-            conn.close()
-
-
-def _init_postgresql_schema() -> None:
-    """Initialize PostgreSQL schema and run migrations."""
-    from cast2md.db.migrations_postgres import run_postgres_migrations
-    from cast2md.db.schema_postgres import get_postgres_schema
 
     with get_db() as conn:
         cursor = conn.cursor()
@@ -337,7 +182,7 @@ def _init_postgresql_schema() -> None:
             conn.rollback()
 
         # Create tables
-        for statement in get_postgres_schema():
+        for statement in get_schema():
             try:
                 cursor.execute(statement)
             except Exception as e:
@@ -348,7 +193,7 @@ def _init_postgresql_schema() -> None:
         conn.commit()
 
         # Run migrations
-        run_postgres_migrations(conn)
+        run_migrations(conn)
 
 
 def close_pool() -> None:
@@ -363,30 +208,3 @@ def close_pool() -> None:
         _pg_pool = None
         _pg_pool_initialized = False
         logger.info("PostgreSQL connection pool closed")
-
-
-def get_db_type() -> DatabaseType:
-    """Get the current database type.
-
-    Returns:
-        DatabaseType.SQLITE or DatabaseType.POSTGRESQL.
-    """
-    return get_db_config().db_type
-
-
-def is_postgresql() -> bool:
-    """Check if using PostgreSQL.
-
-    Returns:
-        True if PostgreSQL is configured.
-    """
-    return get_db_config().is_postgresql
-
-
-def is_sqlite() -> bool:
-    """Check if using SQLite.
-
-    Returns:
-        True if SQLite is configured.
-    """
-    return get_db_config().is_sqlite

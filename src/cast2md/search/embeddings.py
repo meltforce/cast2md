@@ -72,7 +72,7 @@ def generate_embedding(text: str, model_name: str = DEFAULT_MODEL_NAME) -> bytes
     """
     model = _get_model(model_name)
     embedding = model.encode(text, convert_to_numpy=True)
-    # Pack as float32 binary for sqlite-vec
+    # Pack as float32 binary for pgvector
     return struct.pack(f"{len(embedding)}f", *embedding)
 
 
@@ -99,7 +99,7 @@ def generate_embeddings_batch(
         # Return numpy arrays for pgvector
         return [emb for emb in embeddings]
     else:
-        # Pack each embedding as binary for sqlite-vec
+        # Pack each embedding as binary for pgvector
         return [struct.pack(f"{len(emb)}f", *emb) for emb in embeddings]
 
 
