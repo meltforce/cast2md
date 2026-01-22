@@ -1,0 +1,12 @@
+# Audio files (large, re-downloadable from RSS feeds)
+audio/
+
+# Trash (auto-cleaned after 30 days anyway)
+trash/
+
+# Old SQL backups (Kopia handles versioning)
+backups/cast2md_backup_*.sql
+
+# Temporary files
+*.tmp
+*.part
