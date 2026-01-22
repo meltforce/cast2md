@@ -43,6 +43,9 @@ class Settings(BaseSettings):
     # Queue management
     stuck_threshold_hours: int = 2  # Jobs running longer than this are considered stuck
 
+    # Transcript discovery
+    transcript_unavailable_age_days: int = 90  # Episodes older than this without external URLs marked unavailable
+
     # HTTP client settings
     user_agent: str = "cast2md/0.1.0 (Podcast Transcription Service)"
 
