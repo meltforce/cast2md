@@ -43,7 +43,6 @@ log "Creating Kopia snapshot of /mnt/nas/cast2md"
 if kopia snapshot create /mnt/nas/cast2md \
     --description="cast2md backup from $HOSTNAME" \
     --tags="host:$HOSTNAME,app:cast2md,timestamp:$(date +%s)" \
-    --ignore-rules-file "$CAST2MD_DIR/deploy/.kopiaignore" \
     2>&1 | tee -a "$LOG_FILE"; then
     log "SUCCESS: Kopia snapshot completed"
 else
