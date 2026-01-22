@@ -342,11 +342,12 @@ def retry_job(job_id: int):
             raise HTTPException(status_code=400, detail="Can only retry failed jobs")
 
         # Reset job to queued
-        conn.execute(
+        cursor = conn.cursor()
+        cursor.execute(
             """
             UPDATE job_queue
             SET status = 'queued', attempts = 0, error_message = NULL, next_retry_at = NULL
-            WHERE id = ?
+            WHERE id = %s
             """,
             (job_id,),
         )

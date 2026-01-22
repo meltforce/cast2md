@@ -98,7 +98,8 @@ def health_check():
     # Check database connectivity
     try:
         with get_db() as conn:
-            conn.execute("SELECT 1")
+            cursor = conn.cursor()
+            cursor.execute("SELECT 1")
         checks["database"] = True
     except Exception as e:
         errors.append(f"Database: {e}")
