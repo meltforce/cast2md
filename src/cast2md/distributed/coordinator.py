@@ -158,7 +158,13 @@ class RemoteTranscriptionCoordinator:
                 timeout_seconds=self._heartbeat_timeout_seconds
             )
             for node in stale_nodes:
-                if node.id not in stale_node_ids:  # Not already processed
+                # Skip if already processed or if we have a fresh in-memory heartbeat
+                with self._heartbeat_lock:
+                    has_fresh_heartbeat = (
+                        node.id in self._node_heartbeats
+                        and self._node_heartbeats[node.id] >= stale_threshold
+                    )
+                if node.id not in stale_node_ids and not has_fresh_heartbeat:
                     logger.warning(f"Node '{node.name}' ({node.id}) is stale, marking offline")
                     node_repo.mark_offline(node.id)
 
