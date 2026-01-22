@@ -1,9 +1,9 @@
 #!/bin/bash
-# Backup SQLite database to NAS
+# Backup PostgreSQL database to NAS
 # Run via cron: 0 */6 * * * /opt/cast2md/deploy/backup.sh
 #
 # This script uses cast2md's built-in backup command to create
-# consistent database snapshots (handles WAL mode properly).
+# consistent database snapshots using pg_dump.
 
 set -e
 
@@ -16,9 +16,9 @@ mkdir -p $BACKUP_DIR
 
 # Use cast2md's backup command for consistent copy
 cd $APP_DIR
-.venv/bin/python -m cast2md backup -o "$BACKUP_DIR/cast2md_backup_$TIMESTAMP.db"
+.venv/bin/python -m cast2md backup -o "$BACKUP_DIR/cast2md_backup_$TIMESTAMP.sql"
 
 # Keep only last 7 days of backups
-find $BACKUP_DIR -name "cast2md_backup_*.db" -mtime +7 -delete
+find $BACKUP_DIR -name "cast2md_backup_*.sql" -mtime +7 -delete
 
-echo "Backup complete: cast2md_backup_$TIMESTAMP.db"
+echo "Backup complete: cast2md_backup_$TIMESTAMP.sql"

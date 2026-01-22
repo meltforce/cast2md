@@ -228,10 +228,10 @@ cast2md status
 cast2md serve --host 0.0.0.0 --port 8000
 
 # Backup database
-cast2md backup -o /path/to/backup.db
+cast2md backup -o /path/to/backup.sql
 
 # Restore database
-cast2md restore /path/to/backup.db
+cast2md restore /path/to/backup.sql
 
 # Start MCP server (for Claude integration)
 cast2md mcp              # stdio mode (Claude Code/Desktop)
@@ -391,7 +391,7 @@ For unprivileged LXC containers, mount on the Proxmox host and bind-mount into t
 ### Manual Backup
 
 ```bash
-cast2md backup -o /mnt/nas/cast2md/backups/cast2md_$(date +%Y%m%d).db
+cast2md backup -o /mnt/nas/cast2md/backups/cast2md_$(date +%Y%m%d).sql
 ```
 
 ### Automated Backup (cron)

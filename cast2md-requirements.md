@@ -638,6 +638,12 @@ python-dotenv>=1.0.0
 
 ### Current State (v0.7)
 
+**Database Backup:**
+- ✅ PostgreSQL backup via `cast2md backup` command (uses `pg_dump`)
+- ✅ Point-in-time restore via `cast2md restore` command (uses `psql`)
+- ✅ Automated backup script: `deploy/backup.sh` (7-day retention)
+- Pre-restore backup created automatically before restoring
+
 **Feed Deletion:**
 - Files (audio, transcripts) are moved to trash folder: `{storage}/trash/{slug}_{id}_{timestamp}/`
 - Database records (feed, episodes) are deleted immediately
@@ -652,31 +658,38 @@ python-dotenv>=1.0.0
 
 | Requirement | Description | Priority |
 |-------------|-------------|----------|
-| SQLite Backup | Regular automated backups of database | High |
-| Point-in-time Restore | Restore database to specific backup | High |
+| PostgreSQL Backup | ✅ Regular automated backups via `pg_dump` | Done |
+| Point-in-time Restore | ✅ Restore database from backup via `psql` | Done |
 | Soft Delete | Mark feeds/episodes as deleted instead of hard delete | Medium |
 | Trash UI | View and restore trashed feeds from web UI | Low |
 | Export to Trash | Save feed+episodes JSON alongside files when deleting | Low |
-| Pocket Casts Discovery | ✅ Investigated - 403 errors on transcript downloads due to timing (transcripts not ready yet on S3) - see Section 15 for solution | Done |
 
-### Backup Options
+### Implementation Details
 
-**Option A: SQLite File Backup (Recommended for v1)**
-- Simple cron job or scheduled task
-- Copy database file with proper locking (`.backup` command or WAL checkpoint)
-- Retain N days of backups
-- Restore = stop server, replace file, restart
+**PostgreSQL Backup (Implemented):**
+- Uses `pg_dump` for consistent database snapshots
+- CLI: `cast2md backup -o /path/to/backup.sql`
+- Automated via `deploy/backup.sh` (cron: every 6 hours)
+- Retains last 7 days of backups automatically
+- Requires `pg_dump` client tool to be installed
 
-**Option B: Soft Delete**
+**PostgreSQL Restore (Implemented):**
+- Uses `psql` to restore from SQL backup
+- CLI: `cast2md restore /path/to/backup.sql`
+- Creates pre-restore backup automatically for safety
+- Requires confirmation before proceeding
+- Requires `psql` client tool to be installed
+
+**Soft Delete (Future Option):**
 - Add `deleted_at` column to feed/episode tables
 - Filter out deleted records in queries
 - Restore = clear `deleted_at` timestamp
-- Requires migration and query changes
+- More comprehensive than current file-only trash
 
-**Option C: Full Export on Delete**
-- When deleting feed, export JSON with all metadata to trash folder
+**Full Export on Delete (Future Option):**
+- Export JSON with all metadata to trash folder
 - Restore script reads JSON and recreates database records
-- Most complete but most complex
+- Most complete but most complex implementation
 
 ---
 
