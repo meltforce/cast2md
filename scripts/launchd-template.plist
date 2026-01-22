@@ -29,7 +29,6 @@
         <string>VENV_PATH/bin/cast2md</string>
         <string>node</string>
         <string>start</string>
-        <string>--no-browser</string>
     </array>
 
     <key>WorkingDirectory</key>
