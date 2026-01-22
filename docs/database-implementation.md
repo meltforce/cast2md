@@ -1,18 +1,36 @@
 # Database Implementation
 
-cast2md supports both SQLite and PostgreSQL as database backends. This document describes the dual-database architecture, configuration, and key implementation details.
+cast2md requires PostgreSQL as the database backend. This document describes the PostgreSQL configuration, architecture, and key implementation details.
 
 ## Overview
 
-The application was originally designed for SQLite, which works well for single-user deployments. PostgreSQL support was added to eliminate database lock contention and enable concurrent writes for high-throughput scenarios.
+The application was originally designed for SQLite, but migrated to PostgreSQL to eliminate database lock contention and enable concurrent writes for high-throughput scenarios. PostgreSQL is now required.
 
-| Feature | SQLite | PostgreSQL |
-|---------|--------|------------|
-| Concurrency | Single writer (WAL mode) | Full concurrent writes |
-| Full-text search | FTS5 virtual tables | tsvector + GIN indexes |
-| Vector search | sqlite-vec extension | pgvector extension |
-| Connection model | Per-request connections | Connection pool |
-| Deployment | Zero config, file-based | Requires server |
+### Key Features
+
+| Feature | Implementation |
+|---------|----------------|
+| Concurrency | Full concurrent writes via connection pool |
+| Full-text search | tsvector + GIN indexes |
+| Vector search | pgvector extension with HNSW indexes |
+| Connection model | Thread-safe connection pool |
+| Backup/Restore | `pg_dump` and `psql` |
+
+### Why PostgreSQL?
+
+**SQLite limitations encountered:**
+- "database is locked" errors under concurrent load
+- Single writer bottleneck (even with WAL mode)
+- Erratic worker counts (3/10 instead of 10/10 due to lock contention)
+- Required reducing workers from 10 to 2 to avoid lock errors
+
+**PostgreSQL benefits:**
+- Zero lock errors with 10 parallel workers
+- ~10 transcripts/second throughput
+- API remains responsive during heavy background processing
+- Proper concurrent write support
+
+See "Performance Considerations" section for benchmark results.
 
 ## Configuration
 
@@ -21,19 +39,11 @@ The application was originally designed for SQLite, which works well for single-
 The database is configured via the `DATABASE_URL` environment variable:
 
 ```bash
-# SQLite (default)
-DATABASE_URL=sqlite:///data/cast2md.db
-
-# Or simply use DATABASE_PATH (legacy)
-DATABASE_PATH=./data/cast2md.db
-
-# PostgreSQL
+# PostgreSQL (required)
 DATABASE_URL=postgresql://user:password@localhost:5432/cast2md
 ```
 
-If `DATABASE_URL` is not set, `DATABASE_PATH` is used with SQLite.
-
-### PostgreSQL Connection Pool
+### Connection Pool
 
 PostgreSQL uses a thread-safe connection pool configured via:
 
@@ -41,6 +51,8 @@ PostgreSQL uses a thread-safe connection pool configured via:
 POOL_MIN_SIZE=1   # Minimum connections (default: 1)
 POOL_MAX_SIZE=10  # Maximum connections (default: 10)
 ```
+
+The connection pool enables concurrent writes and eliminates lock contention.
 
 ## Docker Setup
 
@@ -75,34 +87,81 @@ Start PostgreSQL:
 docker compose up -d postgres
 ```
 
-## Schema Differences
+## Backup and Restore
+
+### Manual Backup
+
+Create a SQL dump of the database:
+
+```bash
+cast2md backup -o /path/to/backup.sql
+```
+
+This uses `pg_dump` internally and requires the PostgreSQL client tools to be installed.
+
+### Manual Restore
+
+Restore from a SQL backup:
+
+```bash
+cast2md restore /path/to/backup.sql
+```
+
+This uses `psql` internally and:
+- Creates a pre-restore backup automatically for safety
+- Requires confirmation before proceeding
+- Requires PostgreSQL client tools to be installed
+
+### Automated Backup
+
+Use the provided backup script with cron:
+
+```bash
+# Add to crontab: backup every 6 hours
+0 */6 * * * /opt/cast2md/deploy/backup.sh
+```
+
+The script:
+- Saves backups to `/mnt/nas/cast2md/backups/` (or configured directory)
+- Uses filename format: `cast2md_backup_YYYYMMDD_HHMMSS.sql`
+- Retains last 7 days of backups automatically
+
+### List Backups
+
+View available backups:
+
+```bash
+cast2md list-backups
+```
+
+## Schema Details
 
 ### Primary Keys
 
-| SQLite | PostgreSQL |
-|--------|------------|
-| `INTEGER PRIMARY KEY AUTOINCREMENT` | `SERIAL PRIMARY KEY` |
+Uses PostgreSQL `SERIAL PRIMARY KEY` for auto-incrementing primary keys:
+
+```sql
+CREATE TABLE feed (
+    id SERIAL PRIMARY KEY,
+    ...
+);
+```
 
 ### Timestamps
 
-| SQLite | PostgreSQL |
-|--------|------------|
-| `TEXT` (ISO format) | `TIMESTAMP` |
-| `datetime('now')` | `NOW()` |
+Uses PostgreSQL `TIMESTAMP` type with `NOW()` for current timestamp:
+
+```sql
+CREATE TABLE episode (
+    ...
+    created_at TIMESTAMP DEFAULT NOW(),
+    published_at TIMESTAMP
+);
+```
 
 ### Full-Text Search
 
-**SQLite (FTS5):**
-```sql
-CREATE VIRTUAL TABLE transcript_fts USING fts5(
-    episode_id, segment_start, segment_end, text
-);
-
--- Query
-SELECT * FROM transcript_fts WHERE transcript_fts MATCH 'search term';
-```
-
-**PostgreSQL (tsvector):**
+Uses PostgreSQL tsvector with GIN indexes:
 ```sql
 CREATE TABLE transcript_segments (
     id SERIAL PRIMARY KEY,
@@ -121,24 +180,7 @@ WHERE text_search @@ plainto_tsquery('english', 'search term');
 
 ### Vector Search
 
-**SQLite (sqlite-vec):**
-```sql
-CREATE VIRTUAL TABLE segment_vec USING vec0(
-    embedding FLOAT[384],
-    +episode_id INTEGER,
-    +feed_id INTEGER,
-    +segment_start FLOAT,
-    +segment_end FLOAT,
-    +text_hash TEXT,
-    +model_name TEXT
-);
-
--- Query (KNN syntax)
-SELECT * FROM segment_vec
-WHERE embedding MATCH ? AND k = 20;
-```
-
-**PostgreSQL (pgvector):**
+Uses PostgreSQL pgvector extension with HNSW indexes for fast approximate nearest neighbor search:
 ```sql
 CREATE TABLE segment_embeddings (
     id SERIAL PRIMARY KEY,
@@ -166,96 +208,58 @@ LIMIT 20;
 
 ```
 src/cast2md/db/
-├── config.py           # Database type detection and settings
-├── connection.py       # Connection management (SQLite/PostgreSQL)
-├── schema.py           # SQLite schema (FTS5, sqlite-vec)
-├── schema_postgres.py  # PostgreSQL schema (tsvector, pgvector)
-├── migrations.py       # SQLite migrations
-├── migrations_postgres.py  # PostgreSQL migrations
-└── repository.py       # Data access layer (database-agnostic)
-```
-
-### Database Detection
-
-```python
-from cast2md.db.config import get_db_config
-
-config = get_db_config()
-if config.is_postgresql:
-    # PostgreSQL-specific code
-else:
-    # SQLite-specific code
-```
-
-### SQL Placeholder Helper
-
-```python
-from cast2md.db.config import get_placeholder
-
-# Returns '?' for SQLite, '%s' for PostgreSQL
-placeholder = get_placeholder()
-
-cursor.execute(
-    f"SELECT * FROM episode WHERE id = {placeholder}",
-    (episode_id,)
-)
+├── config.py              # Database configuration
+├── connection.py          # Connection pool management
+├── schema_postgres.py     # PostgreSQL schema (tsvector, pgvector)
+├── migrations_postgres.py # PostgreSQL migrations
+└── repository.py          # Data access layer
 ```
 
 ### Connection Patterns
 
-**psycopg2 (PostgreSQL) requires cursor:**
+PostgreSQL uses psycopg2 which requires explicit cursor creation:
+
 ```python
-# PostgreSQL - must use cursor
-cursor = conn.cursor()
-cursor.execute("SELECT * FROM feed WHERE id = %s", (feed_id,))
-row = cursor.fetchone()
+from cast2md.db.connection import get_db
+
+with get_db() as conn:
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM feed WHERE id = %s", (feed_id,))
+    row = cursor.fetchone()
 ```
 
-**SQLite allows direct connection execution:**
+### SQL Placeholders
+
+PostgreSQL uses `%s` for parameter placeholders:
+
 ```python
-# SQLite - can use connection directly
-cursor = conn.execute("SELECT * FROM feed WHERE id = ?", (feed_id,))
-row = cursor.fetchone()
+cursor.execute(
+    "SELECT * FROM episode WHERE id = %s",
+    (episode_id,)
+)
 ```
 
 ### Embedding Format
 
-Embeddings have different storage formats:
+Embeddings are stored as numpy arrays for pgvector:
 
-**SQLite (binary-packed float32):**
-```python
-import struct
-
-# Generate embedding
-embedding_array = model.encode(text)
-
-# Pack as binary for sqlite-vec
-embedding_bytes = struct.pack(f"{len(embedding_array)}f", *embedding_array)
-```
-
-**PostgreSQL (numpy array):**
 ```python
 import numpy as np
-
-# Generate embedding
-embedding_array = model.encode(text, convert_to_numpy=True)
-
-# pgvector accepts numpy arrays directly
-# No conversion needed
-```
-
-The `generate_embeddings_batch` function handles this:
-
-```python
 from cast2md.search.embeddings import generate_embeddings_batch
 
-# as_numpy=True for PostgreSQL, False for SQLite
-embeddings = generate_embeddings_batch(texts, model_name, as_numpy=config.is_postgresql)
+# Generate embeddings as numpy arrays for pgvector
+embeddings = generate_embeddings_batch(texts, model_name, as_numpy=True)
+
+# pgvector accepts numpy arrays directly
+cursor.execute(
+    "INSERT INTO segment_embeddings (embedding, ...) VALUES (%s, ...)",
+    (embeddings[0], ...)
+)
 ```
 
-## Migration from SQLite
+## Migration from SQLite (Historical)
 
-To migrate an existing SQLite database to PostgreSQL:
+For legacy deployments migrating from SQLite to PostgreSQL:
 
 1. **Start PostgreSQL container:**
    ```bash
@@ -284,29 +288,16 @@ To migrate an existing SQLite database to PostgreSQL:
 - SQLite database is preserved as backup
 - Embeddings are regenerated (different storage format)
 
-## Rollback
-
-To revert to SQLite:
-
-1. Remove or rename `DATABASE_URL` from environment
-2. Set `DATABASE_PATH` to your SQLite database file
-3. Restart the application
-
-Both database code paths remain functional.
+**Note:** New deployments should use PostgreSQL from the start. SQLite support is maintained for legacy compatibility only.
 
 ## Performance Considerations
 
-### SQLite
+PostgreSQL enables high-throughput concurrent processing:
 
-- **Pros:** Zero configuration, embedded, fast for reads
-- **Cons:** Single writer lock, database lock errors under load
-- **Best for:** Single-user or low-write-volume deployments
-
-### PostgreSQL
-
-- **Pros:** Full concurrent writes, connection pooling, scalable
-- **Cons:** Requires separate server, more setup
-- **Best for:** Multi-worker deployments, high throughput
+- **Concurrency:** Full concurrent writes via connection pool
+- **No lock contention:** Zero "database is locked" errors
+- **Scalability:** Connection pooling allows 10+ parallel workers
+- **API responsiveness:** REST API remains responsive during heavy background jobs
 
 ### Real-World Benchmark (January 2026)
 
@@ -329,24 +320,17 @@ With SQLite, the same workload caused frequent "database is locked" errors and r
 
 ### Vector Search Performance
 
-| Operation | sqlite-vec | pgvector (HNSW) |
-|-----------|------------|-----------------|
-| Index type | Flat | HNSW (approximate) |
-| Insert | Fast | Moderate |
-| Search (10k vectors) | ~450ms | ~50ms |
-| Search (100k vectors) | ~4s | ~100ms |
+pgvector with HNSW indexes provides fast approximate nearest neighbor search:
 
-pgvector with HNSW indexes provides significantly faster approximate nearest neighbor search at scale.
+| Operation | pgvector (HNSW) |
+|-----------|-----------------|
+| Index type | HNSW (approximate) |
+| Search (10k vectors) | ~50ms |
+| Search (100k vectors) | ~100ms |
+
+HNSW (Hierarchical Navigable Small World) indexes enable sub-linear search time as the dataset grows.
 
 ## Troubleshooting
-
-### "database is locked" (SQLite)
-
-This occurs when multiple writers contend for the database. Solutions:
-
-1. Reduce concurrent workers
-2. Increase `PRAGMA busy_timeout`
-3. **Migrate to PostgreSQL** (recommended for high-throughput)
 
 ### psycopg2 connection errors
 
@@ -377,23 +361,27 @@ If embeddings fail with type errors:
 
 ## Dependencies
 
-**SQLite (default):**
+PostgreSQL requires the following Python packages:
+
 ```toml
-# No additional dependencies, uses Python's built-in sqlite3
-# Optional for vector search:
-"sqlite-vec>=0.1.0"
+"psycopg2-binary>=2.9.0"  # PostgreSQL adapter
+"pgvector>=0.2.0"         # Vector type support
 ```
 
-**PostgreSQL:**
-```toml
-"psycopg2-binary>=2.9.0"
-"pgvector>=0.2.0"
-```
-
-Install PostgreSQL support:
+Install dependencies:
 
 ```bash
-pip install cast2md[postgres]
+pip install cast2md
 # or
-uv sync --extra postgres
+uv sync
+```
+
+PostgreSQL client tools (`pg_dump`, `psql`) are required for backup/restore commands:
+
+```bash
+# Ubuntu/Debian
+sudo apt-get install postgresql-client
+
+# macOS
+brew install postgresql
 ```
