@@ -91,7 +91,8 @@ check_github_auth() {
     print_step "2/7" "GitHub authentication"
 
     # Try to access repo without auth first (in case it's public)
-    if git ls-remote https://github.com/meltforce/cast2md.git HEAD &> /dev/null; then
+    # GIT_TERMINAL_PROMPT=0 prevents git from asking for credentials
+    if GIT_TERMINAL_PROMPT=0 git ls-remote https://github.com/meltforce/cast2md.git HEAD &> /dev/null; then
         print_success "Repository is public, no auth needed"
         GITHUB_TOKEN=""
         return
