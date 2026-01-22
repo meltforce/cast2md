@@ -77,16 +77,17 @@ def generate_embedding(text: str, model_name: str = DEFAULT_MODEL_NAME) -> bytes
 
 
 def generate_embeddings_batch(
-    texts: list[str], model_name: str = DEFAULT_MODEL_NAME
-) -> list[bytes]:
+    texts: list[str], model_name: str = DEFAULT_MODEL_NAME, as_numpy: bool = False
+) -> list:
     """Generate embeddings for multiple texts efficiently.
 
     Args:
         texts: List of texts to embed.
         model_name: Name of the model to use.
+        as_numpy: If True, return numpy arrays. If False, return packed bytes.
 
     Returns:
-        List of embeddings as bytes.
+        List of embeddings as bytes (default) or numpy arrays.
     """
     if not texts:
         return []
@@ -94,8 +95,12 @@ def generate_embeddings_batch(
     model = _get_model(model_name)
     embeddings = model.encode(texts, convert_to_numpy=True, show_progress_bar=False)
 
-    # Pack each embedding as binary
-    return [struct.pack(f"{len(emb)}f", *emb) for emb in embeddings]
+    if as_numpy:
+        # Return numpy arrays for pgvector
+        return [emb for emb in embeddings]
+    else:
+        # Pack each embedding as binary for sqlite-vec
+        return [struct.pack(f"{len(emb)}f", *emb) for emb in embeddings]
 
 
 def embedding_to_floats(embedding_bytes: bytes) -> list[float]:

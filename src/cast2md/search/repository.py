@@ -663,16 +663,13 @@ class TranscriptSearchRepository:
 
         # Generate embeddings in batch
         texts = [seg.text for seg in segments]
-        embeddings = generate_embeddings_batch(texts, model_name)
+        # Use numpy arrays for PostgreSQL, binary for SQLite
+        embeddings = generate_embeddings_batch(texts, model_name, as_numpy=config.is_postgresql)
 
         # Insert embeddings
         if config.is_postgresql:
-            import numpy as np
             cursor = self.conn.cursor()
             for segment, embedding in zip(segments, embeddings):
-                # Convert to numpy array for pgvector
-                if not isinstance(embedding, np.ndarray):
-                    embedding = np.array(embedding, dtype=np.float32)
                 cursor.execute(
                     """
                     INSERT INTO segment_embeddings
