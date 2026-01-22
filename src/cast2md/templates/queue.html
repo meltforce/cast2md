@@ -82,9 +82,15 @@
             </td>
             <td>
                 {% if item.job.job_type.value == 'download' %}
-                <span title="Download">DL</span>
+                <span title="Download Audio">DL</span>
+                {% elif item.job.job_type.value == 'transcribe' %}
+                <span title="Transcribe (Whisper)">TX</span>
+                {% elif item.job.job_type.value == 'transcript_download' %}
+                <span title="Transcript Download">TDL</span>
+                {% elif item.job.job_type.value == 'embed' %}
+                <span title="Generate Embeddings">EMB</span>
                 {% else %}
-                <span title="Transcribe">TX</span>
+                <span title="{{ item.job.job_type.value }}">{{ item.job.job_type.value[:3]|upper }}</span>
                 {% endif %}
             </td>
             <td>
