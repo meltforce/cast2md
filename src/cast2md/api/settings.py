@@ -334,7 +334,8 @@ def reset_models():
     """Reset models to defaults (removes all custom models)."""
     with get_db() as conn:
         # Clear all models
-        conn.execute("DELETE FROM whisper_models")
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM whisper_models")
         conn.commit()
         # Re-seed defaults
         repo = WhisperModelRepository(conn)
