@@ -36,7 +36,7 @@ class Settings(BaseSettings):
 
     # Download settings
     max_concurrent_downloads: int = 2
-    max_transcript_download_workers: int = 5  # Parallel workers for fetching external transcripts
+    max_transcript_download_workers: int = 2  # Parallel workers for fetching external transcripts (SQLite limit)
     max_retry_attempts: int = 3
     request_timeout: int = 30
 
