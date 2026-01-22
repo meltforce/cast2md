@@ -90,7 +90,7 @@ If you prefer manual installation:
 
 ```bash
 # Clone the repository
-git clone https://github.com/linus/cast2md.git
+git clone https://github.com/meltforce/cast2md.git
 cd cast2md
 
 # Install with minimal node dependencies (faster, smaller)
