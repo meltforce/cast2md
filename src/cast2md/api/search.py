@@ -384,7 +384,7 @@ def semantic_search(
                 episode_title=r.episode_title,
                 feed_id=r.feed_id,
                 feed_title=r.feed_title,
-                published_at=r.published_at,
+                published_at=r.published_at.isoformat() if hasattr(r.published_at, 'isoformat') else r.published_at,
                 segment_start=r.segment_start,
                 segment_end=r.segment_end,
                 text=r.text,
