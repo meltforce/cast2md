@@ -17,7 +17,21 @@ ssh root@cast2md "cd /opt/cast2md && git pull && systemctl restart cast2md"
 - **Server**: Runs on cast2md via systemd (`systemctl restart cast2md`)
 - **Node workers**: Remote transcription nodes connect to the server
 - **Local workers**: Download workers and one local transcription worker run on the server
-- **Database**: PostgreSQL with pgvector (required)
+- **Database**: PostgreSQL with pgvector, runs in Docker (`docker compose up -d postgres`)
+
+### Production Database
+
+PostgreSQL runs as a Docker container on the cast2md server:
+
+```bash
+# Start PostgreSQL (required before cast2md service)
+cd /opt/cast2md && docker compose up -d postgres
+
+# Check status
+docker ps | grep postgres
+```
+
+The container uses `pgvector/pgvector:pg16` image with data persisted in a Docker volume (`postgres_data`).
 
 ## Database Selection
 
