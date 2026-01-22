@@ -1,20 +1,22 @@
 """Transcription service supporting faster-whisper and mlx-whisper backends."""
 
+from __future__ import annotations
+
 import logging
 import platform
 import threading
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Optional
+from typing import TYPE_CHECKING, Callable, Optional
 
 from cast2md.config.settings import get_settings
+from cast2md.transcription.preprocessing import cleanup_preprocessed, preprocess_audio
+
+# Type hints only - these imports don't execute at runtime for node installs
+if TYPE_CHECKING:
+    from cast2md.db.models import Episode, Feed
 
 logger = logging.getLogger(__name__)
-from cast2md.db.connection import get_db
-from cast2md.db.models import Episode, EpisodeStatus, Feed
-from cast2md.db.repository import EpisodeRepository
-from cast2md.storage.filesystem import ensure_podcast_directories, get_transcript_path
-from cast2md.transcription.preprocessing import cleanup_preprocessed, preprocess_audio
 
 
 @dataclass
@@ -325,6 +327,12 @@ def transcribe_episode(
         ValueError: If episode has no audio path.
         Exception: If transcription fails.
     """
+    # Lazy imports for DB dependencies - keeps node installs lightweight
+    from cast2md.db.connection import get_db
+    from cast2md.db.models import EpisodeStatus
+    from cast2md.db.repository import EpisodeRepository
+    from cast2md.storage.filesystem import ensure_podcast_directories, get_transcript_path
+
     if not episode.audio_path:
         raise ValueError(f"Episode {episode.id} has no audio path")
 
