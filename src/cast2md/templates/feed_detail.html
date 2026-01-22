@@ -161,9 +161,6 @@
         {% if query or status_filter %}
         <a href="?per_page={{ per_page }}" role="button" class="outline secondary" style="padding: 0.5rem 1rem; margin: 0;">Clear Filters</a>
         {% endif %}
-        {% if pending_count > 0 %}
-        <button type="button" class="secondary" style="padding: 0.5rem 1rem; margin: 0;" onclick="queueAllTranscripts({{ feed.id }})">Get All Transcripts ({{ pending_count }})</button>
-        {% endif %}
     </form>
     {% if query or status_filter %}
     <p style="margin: 0.5rem 0 0 0; font-size: 0.875rem;">
@@ -692,37 +689,6 @@ async function transcribeEpisode(episodeId, button) {
 async function retryEpisode(episodeId) {
     // For now, just try download again
     await downloadEpisode(episodeId);
-}
-
-async function queueAllTranscripts(feedId) {
-    if (!confirm('Try to get transcripts for all pending episodes?\n\nThis will try external providers (Podcast 2.0, Pocket Casts) first.')) {
-        return;
-    }
-
-    try {
-        const response = await fetch(`/api/queue/batch/feed/${feedId}/transcript-download`, {method: 'POST'});
-        const data = await response.json();
-
-        if (response.ok) {
-            // Update all pending rows to show queued status
-            document.querySelectorAll('.status-badge.status-pending').forEach(badge => {
-                const row = badge.closest('tr');
-                const btn = row.querySelector('.actions button');
-                badge.className = 'status-badge status-downloading';
-                badge.textContent = 'queued';
-                if (btn) {
-                    btn.disabled = true;
-                    btn.textContent = '...';
-                }
-            });
-            // Start polling for updates
-            startStatusPolling();
-        } else {
-            showError(data.detail);
-        }
-    } catch (error) {
-        showError(error.message);
-    }
 }
 
 async function queueAllDownloads(feedId) {
