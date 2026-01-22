@@ -648,35 +648,68 @@ class TranscriptSearchRepository:
         feed_id = episode.feed_id
 
         # Remove existing embeddings for this episode
-        self.conn.execute(
-            "DELETE FROM segment_vec WHERE episode_id = ?",
-            (episode_id,),
-        )
+        config = get_db_config()
+        if config.is_postgresql:
+            cursor = self.conn.cursor()
+            cursor.execute(
+                "DELETE FROM segment_embeddings WHERE episode_id = %s",
+                (episode_id,),
+            )
+        else:
+            self.conn.execute(
+                "DELETE FROM segment_vec WHERE episode_id = ?",
+                (episode_id,),
+            )
 
         # Generate embeddings in batch
         texts = [seg.text for seg in segments]
         embeddings = generate_embeddings_batch(texts, model_name)
 
-        # Insert embeddings into vec0 table
-        # Column order: embedding, then auxiliary columns
-        # Note: vec0 FLOAT columns require explicit float type (not int)
-        for segment, embedding in zip(segments, embeddings):
-            self.conn.execute(
-                """
-                INSERT INTO segment_vec
-                (embedding, episode_id, feed_id, segment_start, segment_end, text_hash, model_name)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    embedding,
-                    episode_id,
-                    feed_id,
-                    float(segment.start),
-                    float(segment.end),
-                    text_hash(segment.text),
-                    model_name,
-                ),
-            )
+        # Insert embeddings
+        if config.is_postgresql:
+            import numpy as np
+            cursor = self.conn.cursor()
+            for segment, embedding in zip(segments, embeddings):
+                # Convert to numpy array for pgvector
+                if not isinstance(embedding, np.ndarray):
+                    embedding = np.array(embedding, dtype=np.float32)
+                cursor.execute(
+                    """
+                    INSERT INTO segment_embeddings
+                    (episode_id, feed_id, segment_start, segment_end, text_hash, model_name, embedding)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (
+                        episode_id,
+                        feed_id,
+                        float(segment.start),
+                        float(segment.end),
+                        text_hash(segment.text),
+                        model_name,
+                        embedding,
+                    ),
+                )
+        else:
+            # SQLite with sqlite-vec
+            # Column order: embedding, then auxiliary columns
+            # Note: vec0 FLOAT columns require explicit float type (not int)
+            for segment, embedding in zip(segments, embeddings):
+                self.conn.execute(
+                    """
+                    INSERT INTO segment_vec
+                    (embedding, episode_id, feed_id, segment_start, segment_end, text_hash, model_name)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        embedding,
+                        episode_id,
+                        feed_id,
+                        float(segment.start),
+                        float(segment.end),
+                        text_hash(segment.text),
+                        model_name,
+                    ),
+                )
 
         self.conn.commit()
         return len(segments)
