@@ -1,7 +1,9 @@
 """Database connection management."""
 
 import logging
+import random
 import sqlite3
+import time
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Generator
@@ -101,8 +103,8 @@ def get_connection(db_path: Path | None = None) -> sqlite3.Connection:
     # Enable foreign key constraints
     conn.execute("PRAGMA foreign_keys=ON")
 
-    # Set busy timeout to 5 seconds
-    conn.execute("PRAGMA busy_timeout=5000")
+    # Set busy timeout to 30 seconds - allows waiting for write lock under contention
+    conn.execute("PRAGMA busy_timeout=30000")
 
     # Load sqlite-vec extension for vector similarity search
     _load_sqlite_vec(conn)
@@ -126,6 +128,53 @@ def get_db() -> Generator[sqlite3.Connection, None, None]:
         raise
     finally:
         conn.close()
+
+
+@contextmanager
+def get_db_write(max_retries: int = 3) -> Generator[sqlite3.Connection, None, None]:
+    """Context manager for write-heavy database operations with retry logic.
+
+    Uses BEGIN IMMEDIATE to acquire write lock upfront, preventing deadlocks.
+    Includes retry with exponential backoff and jitter to handle contention.
+
+    Args:
+        max_retries: Maximum number of retry attempts on lock errors.
+
+    Yields:
+        Database connection with immediate write lock.
+    """
+    last_error = None
+
+    for attempt in range(max_retries + 1):
+        conn = get_connection()
+        try:
+            # BEGIN IMMEDIATE acquires write lock at transaction start
+            # This prevents deadlocks from lock upgrades
+            conn.execute("BEGIN IMMEDIATE")
+            yield conn
+            conn.commit()
+            return
+        except sqlite3.OperationalError as e:
+            conn.rollback()
+            conn.close()
+            if "database is locked" in str(e) and attempt < max_retries:
+                # Exponential backoff with jitter: 0.1-0.2s, 0.2-0.4s, 0.4-0.8s
+                base_delay = 0.1 * (2**attempt)
+                jitter = random.uniform(0, base_delay)
+                delay = base_delay + jitter
+                logger.debug(f"Database locked, retry {attempt + 1}/{max_retries} after {delay:.2f}s")
+                time.sleep(delay)
+                last_error = e
+            else:
+                raise
+        except Exception:
+            conn.rollback()
+            conn.close()
+            raise
+
+    # Should not reach here, but just in case
+    if last_error:
+        raise last_error
 
 
 def init_db(db_path: Path | None = None) -> None:

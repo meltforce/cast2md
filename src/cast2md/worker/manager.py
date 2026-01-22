@@ -6,7 +6,7 @@ import time
 from typing import Optional
 
 from cast2md.config.settings import get_settings
-from cast2md.db.connection import get_db
+from cast2md.db.connection import get_db, get_db_write
 from cast2md.db.models import EpisodeStatus, JobStatus, JobType
 from cast2md.db.repository import EpisodeRepository, FeedRepository, JobRepository
 from cast2md.download.downloader import download_episode
@@ -249,7 +249,7 @@ class WorkerManager:
         """Process a download job."""
         logger.info(f"Processing download job {job_id} for episode {episode_id}")
 
-        with get_db() as conn:
+        with get_db_write() as conn:
             job_repo = JobRepository(conn)
             episode_repo = EpisodeRepository(conn)
             feed_repo = FeedRepository(conn)
@@ -271,7 +271,7 @@ class WorkerManager:
             # Perform the download (uses its own db connection)
             download_episode(episode, feed)
 
-            with get_db() as conn:
+            with get_db_write() as conn:
                 job_repo = JobRepository(conn)
                 job_repo.mark_completed(job_id)
                 logger.info(f"Download job {job_id} completed")
@@ -281,7 +281,7 @@ class WorkerManager:
 
         except Exception as e:
             logger.error(f"Download job {job_id} failed: {e}")
-            with get_db() as conn:
+            with get_db_write() as conn:
                 job_repo = JobRepository(conn)
                 job_repo.mark_failed(job_id, str(e))
 
@@ -292,7 +292,7 @@ class WorkerManager:
         """Process a transcription job."""
         logger.info(f"Processing transcription job {job_id} for episode {episode_id}")
 
-        with get_db() as conn:
+        with get_db_write() as conn:
             job_repo = JobRepository(conn)
             episode_repo = EpisodeRepository(conn)
             feed_repo = FeedRepository(conn)
@@ -329,7 +329,7 @@ class WorkerManager:
                 last_progress[0] = progress
                 last_update_time[0] = now
                 try:
-                    with get_db() as conn:
+                    with get_db_write() as conn:
                         job_repo = JobRepository(conn)
                         job_repo.update_progress(job_id, progress)
                 except Exception as e:
@@ -339,7 +339,7 @@ class WorkerManager:
             # Perform the transcription (uses its own db connection)
             transcribe_episode(episode, feed, progress_callback=progress_callback)
 
-            with get_db() as conn:
+            with get_db_write() as conn:
                 job_repo = JobRepository(conn)
                 job_repo.mark_completed(job_id)
                 logger.info(f"Transcription job {job_id} completed")
@@ -352,7 +352,7 @@ class WorkerManager:
 
         except Exception as e:
             logger.error(f"Transcription job {job_id} failed: {e}")
-            with get_db() as conn:
+            with get_db_write() as conn:
                 job_repo = JobRepository(conn)
                 job_repo.mark_failed(job_id, str(e))
 
@@ -371,7 +371,8 @@ class WorkerManager:
 
         logger.info(f"Processing transcript download job {job_id} for episode {episode_id}")
 
-        with get_db() as conn:
+        # Use get_db_write for job status updates to handle contention
+        with get_db_write() as conn:
             job_repo = JobRepository(conn)
             episode_repo = EpisodeRepository(conn)
             feed_repo = FeedRepository(conn)
@@ -396,7 +397,7 @@ class WorkerManager:
 
             if isinstance(result, TranscriptResult):
                 # Save the downloaded transcript
-                with get_db() as conn:
+                with get_db_write() as conn:
                     episode_repo = EpisodeRepository(conn)
                     job_repo = JobRepository(conn)
 
@@ -440,7 +441,7 @@ class WorkerManager:
             elif isinstance(result, TranscriptError):
                 # Got an error from provider (e.g., 403 forbidden)
                 # Apply age-based status logic
-                with get_db() as conn:
+                with get_db_write() as conn:
                     episode_repo = EpisodeRepository(conn)
                     job_repo = JobRepository(conn)
 
@@ -478,7 +479,7 @@ class WorkerManager:
                 # No transcript available from any provider (result is None)
                 # Mark job as completed (not failed - this is expected)
                 # Episode stays in PENDING status for user to manually queue download
-                with get_db() as conn:
+                with get_db_write() as conn:
                     episode_repo = EpisodeRepository(conn)
                     job_repo = JobRepository(conn)
 
@@ -499,18 +500,13 @@ class WorkerManager:
 
         except Exception as e:
             logger.error(f"Transcript download job {job_id} failed: {e}")
-            # Retry marking as failed with exponential backoff to handle database locks
-            for attempt in range(3):
-                try:
-                    with get_db() as conn:
-                        job_repo = JobRepository(conn)
-                        job_repo.mark_failed(job_id, str(e))
-                    break
-                except Exception as mark_error:
-                    if attempt < 2:
-                        time.sleep(0.5 * (2 ** attempt))  # 0.5s, 1s, 2s
-                    else:
-                        logger.error(f"Failed to mark job {job_id} as failed after retries: {mark_error}")
+            # Use get_db_write with built-in retry logic
+            try:
+                with get_db_write() as conn:
+                    job_repo = JobRepository(conn)
+                    job_repo.mark_failed(job_id, str(e))
+            except Exception as mark_error:
+                logger.error(f"Failed to mark job {job_id} as failed: {mark_error}")
 
     def _process_embed_job(self, job_id: int, episode_id: int):
         """Process an embedding job for semantic search.
@@ -519,7 +515,7 @@ class WorkerManager:
         """
         logger.info(f"Processing embedding job {job_id} for episode {episode_id}")
 
-        with get_db() as conn:
+        with get_db_write() as conn:
             job_repo = JobRepository(conn)
             episode_repo = EpisodeRepository(conn)
 
@@ -540,14 +536,14 @@ class WorkerManager:
             from cast2md.search.repository import TranscriptSearchRepository
 
             if not is_embeddings_available():
-                with get_db() as conn:
+                with get_db_write() as conn:
                     job_repo = JobRepository(conn)
                     job_repo.mark_failed(
                         job_id, "Embeddings not available (sentence-transformers not installed)", retry=False
                     )
                 return
 
-            with get_db() as conn:
+            with get_db_write() as conn:
                 search_repo = TranscriptSearchRepository(conn)
                 count = search_repo.index_episode_embeddings(
                     episode_id=episode_id,
@@ -563,7 +559,7 @@ class WorkerManager:
 
         except Exception as e:
             logger.error(f"Embedding job {job_id} failed: {e}")
-            with get_db() as conn:
+            with get_db_write() as conn:
                 job_repo = JobRepository(conn)
                 job_repo.mark_failed(job_id, str(e))
 
