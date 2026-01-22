@@ -675,6 +675,8 @@ class TranscriptSearchRepository:
                     INSERT INTO segment_embeddings
                     (episode_id, feed_id, segment_start, segment_end, text_hash, model_name, embedding)
                     VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (episode_id, segment_start, segment_end)
+                    DO UPDATE SET embedding = EXCLUDED.embedding, text_hash = EXCLUDED.text_hash
                     """,
                     (
                         episode_id,
