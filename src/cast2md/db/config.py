@@ -27,8 +27,8 @@ class DatabaseConfig(BaseSettings):
     database_url: Optional[str] = None
 
     # Connection pool settings
-    pool_min_size: int = 1
-    pool_max_size: int = 10
+    pool_min_size: int = 2
+    pool_max_size: int = 20
 
     @property
     def effective_url(self) -> str:
