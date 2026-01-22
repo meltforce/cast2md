@@ -1,9 +1,7 @@
 """Database connection management."""
 
 import logging
-import random
 import sqlite3
-import time
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Generator
@@ -131,50 +129,29 @@ def get_db() -> Generator[sqlite3.Connection, None, None]:
 
 
 @contextmanager
-def get_db_write(max_retries: int = 3) -> Generator[sqlite3.Connection, None, None]:
-    """Context manager for write-heavy database operations with retry logic.
+def get_db_write() -> Generator[sqlite3.Connection, None, None]:
+    """Context manager for write-heavy database operations.
 
-    Uses BEGIN IMMEDIATE to acquire write lock upfront, preventing deadlocks.
-    Includes retry with exponential backoff and jitter to handle contention.
-
-    Args:
-        max_retries: Maximum number of retry attempts on lock errors.
+    Uses BEGIN IMMEDIATE to acquire write lock upfront, preventing deadlocks
+    from lock upgrades. Combined with the 30s busy_timeout, this handles
+    contention gracefully.
 
     Yields:
         Database connection with immediate write lock.
     """
-    last_error = None
-
-    for attempt in range(max_retries + 1):
-        conn = get_connection()
-        try:
-            # BEGIN IMMEDIATE acquires write lock at transaction start
-            # This prevents deadlocks from lock upgrades
-            conn.execute("BEGIN IMMEDIATE")
-            yield conn
-            conn.commit()
-            return
-        except sqlite3.OperationalError as e:
-            conn.rollback()
-            conn.close()
-            if "database is locked" in str(e) and attempt < max_retries:
-                # Exponential backoff with jitter: 0.1-0.2s, 0.2-0.4s, 0.4-0.8s
-                base_delay = 0.1 * (2**attempt)
-                jitter = random.uniform(0, base_delay)
-                delay = base_delay + jitter
-                logger.debug(f"Database locked, retry {attempt + 1}/{max_retries} after {delay:.2f}s")
-                time.sleep(delay)
-                last_error = e
-            else:
-                raise
-        except Exception:
-            conn.rollback()
-            conn.close()
-            raise
-
-    # Should not reach here, but just in case
-    if last_error:
-        raise last_error
+    conn = get_connection()
+    try:
+        # BEGIN IMMEDIATE acquires write lock at transaction start
+        # This prevents deadlocks from lock upgrades (where multiple
+        # transactions hold read locks and all try to upgrade to write)
+        conn.execute("BEGIN IMMEDIATE")
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 
 def init_db(db_path: Path | None = None) -> None:
