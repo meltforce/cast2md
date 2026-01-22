@@ -632,6 +632,15 @@ class EpisodeRepository:
         )
         return cursor.fetchone()[0]
 
+    def count_by_feed_and_status(self, feed_id: int, status: EpisodeStatus) -> int:
+        """Count episodes for a feed with a specific status."""
+        cursor = execute(
+            self.conn,
+            "SELECT COUNT(*) FROM episode WHERE feed_id = %s AND status = %s",
+            (feed_id, status.value),
+        )
+        return cursor.fetchone()[0]
+
     def get_transcript_source_stats(self, feed_id: int) -> dict:
         """Get statistics about transcript sources for a feed.
 

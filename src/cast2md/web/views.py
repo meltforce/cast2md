@@ -271,6 +271,9 @@ def feed_detail(
         # Get transcript source stats for this feed
         transcript_stats = episode_repo.get_transcript_source_stats(feed_id)
 
+        # Count pending episodes for this feed
+        pending_count = episode_repo.count_by_feed_and_status(feed_id, EpisodeStatus.PENDING)
+
         # Get set of episode IDs that have pending/running jobs (for "queued" display)
         episode_ids = [ep.id for ep in episodes]
         queued_episode_ids = set()
@@ -297,6 +300,7 @@ def feed_detail(
             "statuses": [s.value for s in EpisodeStatus],
             "transcript_stats": transcript_stats,
             "queued_episode_ids": queued_episode_ids,
+            "pending_count": pending_count,
         },
     )
 
