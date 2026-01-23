@@ -172,11 +172,11 @@ Access the web UI at `http://localhost:8000`
 - **Feeds**: Add and manage podcast RSS feeds
 - **Episodes**: View discovered episodes and their transcription status
 - **Search**: Unified search across episode titles, descriptions, and transcripts
-  - Results grouped by episode with match source badges (episode/transcript)
-  - Click any result to open detail modal with show notes and transcript matches
+  - **Latest Transcripts carousel**: Browse recent transcripts with podcast artwork when no search query
+  - Results grouped by episode with match source badges (keyword/semantic/both)
   - Transcript matches show timestamps - click to jump to that point in the episode
-- **Status**: Monitor system health and worker status
-- **Queue**: View and manage processing jobs
+  - **Smart back navigation**: Returns to previous page (search, feed) preserving filters and scroll position
+- **Admin**: Monitor system health, worker status, and manage processing queue
 
 #### Episode Workflow
 
@@ -414,9 +414,10 @@ cast2md backup -o /mnt/nas/cast2md/backups/cast2md_$(date +%Y%m%d).sql
 - [x] Extended podcast metadata (author, website, categories)
 - [x] Editable feed titles with storage directory renaming
 - [x] Two-tier search: episode cards with detail modal showing show notes + transcript matches
+- [x] Dark mode support (theme toggle in navigation)
+- [x] Latest transcripts carousel on search page
+- [x] Smart back navigation preserving context
 - [ ] Add transcript viewer/editor
-- [ ] Dark mode support
-- [ ] Mobile-responsive improvements
 - [ ] Progress indicators for transcription
 
 ### Distributed Transcription (Mac as Remote Worker) ✅
