@@ -180,6 +180,50 @@ def sanitize_search_snippet(text: str | None) -> str:
     return escaped
 
 
+def timeago(dt) -> str:
+    """Convert datetime to human-readable relative time.
+
+    Args:
+        dt: datetime object or ISO string.
+
+    Returns:
+        Relative time string like "2h ago", "3d ago", "Jan 15".
+    """
+    from datetime import datetime
+
+    if dt is None:
+        return ""
+
+    if isinstance(dt, str):
+        try:
+            dt = datetime.fromisoformat(dt.replace("Z", "+00:00"))
+        except (ValueError, AttributeError):
+            return dt[:10] if len(dt) >= 10 else dt
+
+    now = datetime.now()
+    if dt.tzinfo:
+        # Make now timezone-aware if dt is
+        now = datetime.now(dt.tzinfo)
+
+    diff = now - dt
+    seconds = diff.total_seconds()
+
+    if seconds < 60:
+        return "just now"
+    elif seconds < 3600:
+        minutes = int(seconds / 60)
+        return f"{minutes}m ago"
+    elif seconds < 86400:
+        hours = int(seconds / 3600)
+        return f"{hours}h ago"
+    elif seconds < 604800:  # 7 days
+        days = int(seconds / 86400)
+        return f"{days}d ago"
+    else:
+        # Show date for older items
+        return dt.strftime("%b %d")
+
+
 def configure_templates(t: Jinja2Templates):
     """Configure templates instance."""
     global templates
@@ -190,6 +234,7 @@ def configure_templates(t: Jinja2Templates):
     templates.env.filters["truncate_html"] = truncate_html
     templates.env.filters["render_transcript"] = render_transcript_html
     templates.env.filters["search_snippet"] = sanitize_search_snippet
+    templates.env.filters["timeago"] = timeago
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -715,9 +760,11 @@ def transcript_search_page(
     index_stats = {"total_segments": 0, "indexed_episodes": 0, "embedded_episodes": 0, "total_embeddings": 0}
     feeds = []
     actual_mode = mode
+    recent_transcripts = []
 
     with get_db() as conn:
         feed_repo = FeedRepository(conn)
+        episode_repo = EpisodeRepository(conn)
         search_repo = TranscriptSearchRepository(conn)
 
         # Get all feeds for dropdown
@@ -745,6 +792,9 @@ def transcript_search_page(
             total = response.total
             actual_mode = response.mode
             total_pages = max(1, (total + per_page - 1) // per_page)
+        else:
+            # No query - show recent transcripts for empty state
+            recent_transcripts = episode_repo.get_recent_transcribed_episodes(limit=12)
 
     return templates.TemplateResponse(
         "search.html",
@@ -761,5 +811,6 @@ def transcript_search_page(
             "index_stats": index_stats,
             "mode": mode,
             "actual_mode": actual_mode,
+            "recent_transcripts": recent_transcripts,
         },
     )
