@@ -786,6 +786,39 @@
     <!-- Toast notification container -->
     <div id="toast-container" class="toast-container"></div>
 
+    <!-- Confirm dialog -->
+    <dialog id="confirmDialog">
+        <article>
+            <header>
+                <button aria-label="Close" rel="prev" onclick="this.closest('dialog').close()"></button>
+                <h3 id="confirmDialogTitle">Confirm</h3>
+            </header>
+            <p id="confirmDialogMessage"></p>
+            <footer style="display: flex; gap: 0.5rem; justify-content: flex-end;">
+                <button type="button" class="secondary" onclick="resolveConfirm(false)">Cancel</button>
+                <button type="button" id="confirmDialogBtn" onclick="resolveConfirm(true)">Confirm</button>
+            </footer>
+        </article>
+    </dialog>
+
+    <!-- Prompt dialog -->
+    <dialog id="promptDialog">
+        <article>
+            <header>
+                <button aria-label="Close" rel="prev" onclick="this.closest('dialog').close()"></button>
+                <h3 id="promptDialogTitle">Input</h3>
+            </header>
+            <label>
+                <span id="promptDialogMessage"></span>
+                <input type="text" id="promptDialogInput" autocomplete="off">
+            </label>
+            <footer style="display: flex; gap: 0.5rem; justify-content: flex-end;">
+                <button type="button" class="secondary" onclick="resolvePrompt(null)">Cancel</button>
+                <button type="button" onclick="resolvePrompt(document.getElementById('promptDialogInput').value)">OK</button>
+            </footer>
+        </article>
+    </dialog>
+
     <script>
         // Toast notification system
         function showToast(message, type = 'info', duration = 4000) {
@@ -822,6 +855,57 @@
         function showSuccess(message) { showToast(message, 'success'); }
         function showError(message) { showToast(message, 'error'); }
         function showInfo(message) { showToast(message, 'info'); }
+
+        // Confirm dialog system
+        let confirmResolver = null;
+        function showConfirm(message, title = 'Confirm', buttonText = 'Confirm') {
+            return new Promise((resolve) => {
+                confirmResolver = resolve;
+                document.getElementById('confirmDialogTitle').textContent = title;
+                document.getElementById('confirmDialogMessage').textContent = message;
+                document.getElementById('confirmDialogBtn').textContent = buttonText;
+                document.getElementById('confirmDialog').showModal();
+            });
+        }
+        function resolveConfirm(value) {
+            document.getElementById('confirmDialog').close();
+            if (confirmResolver) {
+                confirmResolver(value);
+                confirmResolver = null;
+            }
+        }
+        document.getElementById('confirmDialog').addEventListener('close', () => {
+            if (confirmResolver) {
+                confirmResolver(false);
+                confirmResolver = null;
+            }
+        });
+
+        // Prompt dialog system
+        let promptResolver = null;
+        function showPrompt(message, defaultValue = '', title = 'Input') {
+            return new Promise((resolve) => {
+                promptResolver = resolve;
+                document.getElementById('promptDialogTitle').textContent = title;
+                document.getElementById('promptDialogMessage').textContent = message;
+                document.getElementById('promptDialogInput').value = defaultValue;
+                document.getElementById('promptDialog').showModal();
+                document.getElementById('promptDialogInput').focus();
+            });
+        }
+        function resolvePrompt(value) {
+            document.getElementById('promptDialog').close();
+            if (promptResolver) {
+                promptResolver(value);
+                promptResolver = null;
+            }
+        }
+        document.getElementById('promptDialog').addEventListener('close', () => {
+            if (promptResolver) {
+                promptResolver(null);
+                promptResolver = null;
+            }
+        });
 
         // Theme toggle functionality
         function toggleTheme() {
