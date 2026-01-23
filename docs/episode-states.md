@@ -69,7 +69,7 @@ The initial state for all newly discovered episodes.
 **Transitions to:**
 - `completed` - External transcript found and downloaded
 - `awaiting_transcript` - Provider returned temporary error (e.g., 403), will retry
-- `needs_audio` - No external transcript available (episode > 90 days old)
+- `needs_audio` - No external transcript available
 - `downloading` - User manually queued audio download
 
 ### AWAITING_TRANSCRIPT

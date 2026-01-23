@@ -506,46 +506,24 @@ class WorkerManager:
 
             else:
                 # No transcript available from any provider (result is None)
-                # Check if episode is old - if so, mark as needs_audio
-                # Otherwise, leave in NEW for user to manually queue download
-                settings = get_settings()
-                unavailable_age = timedelta(days=settings.transcript_unavailable_age_days)
-                episode_age = timedelta(days=365)  # Default to old if no published date
-                if episode.published_at:
-                    episode_age = now - episode.published_at
-
+                # Mark as needs_audio - if no external transcript URL exists,
+                # waiting won't help (unlike 403 errors which may resolve later)
                 with get_db_write() as conn:
                     episode_repo = EpisodeRepository(conn)
                     job_repo = JobRepository(conn)
 
-                    if episode_age >= unavailable_age:
-                        # Old episode with no external transcript - mark as needs_audio
-                        episode_repo.update_transcript_check(
-                            episode.id,
-                            status=EpisodeStatus.NEEDS_AUDIO,
-                            checked_at=now,
-                            next_retry_at=None,
-                            failure_reason="no_external_url_old_episode",
-                        )
-                        logger.info(
-                            f"Marked old episode as needs_audio: {episode.title} "
-                            f"(age: {episode_age.days}d)"
-                        )
-                    else:
-                        # Newer episode - leave in NEW for potential future transcripts
-                        episode_repo.update_transcript_check(
-                            episode.id,
-                            status=EpisodeStatus.NEW,
-                            checked_at=now,
-                            next_retry_at=None,
-                            failure_reason=None,
-                        )
-                        logger.info(
-                            f"No external transcript for episode: {episode.title} "
-                            f"(age: {episode_age.days}d, stays NEW)"
-                        )
-
+                    episode_repo.update_transcript_check(
+                        episode.id,
+                        status=EpisodeStatus.NEEDS_AUDIO,
+                        checked_at=now,
+                        next_retry_at=None,
+                        failure_reason="no_external_transcript",
+                    )
                     job_repo.mark_completed(job_id)
+
+                logger.info(
+                    f"Marked episode as needs_audio (no external transcript): {episode.title}"
+                )
 
         except Exception as e:
             logger.error(f"Transcript download job {job_id} failed: {e}")
