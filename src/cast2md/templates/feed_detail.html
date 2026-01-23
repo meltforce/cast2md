@@ -149,10 +149,20 @@
         </div>
         <div style="display: flex; align-items: center; gap: 0.5rem;">
             <label style="margin: 0; font-size: 0.875rem;">Status:</label>
+            {% set status_labels = {
+                'new': 'New',
+                'awaiting_transcript': 'Awaiting Transcript',
+                'needs_audio': 'Needs Audio',
+                'downloading': 'Downloading',
+                'audio_ready': 'Audio Ready',
+                'transcribing': 'Transcribing',
+                'completed': 'Completed',
+                'failed': 'Failed'
+            } %}
             <select name="status" id="statusFilter" style="padding: 0.25rem 0.5rem; margin: 0; width: auto;">
                 <option value="">All</option>
                 {% for s in statuses %}
-                <option value="{{ s }}" {% if status_filter == s %}selected{% endif %}>{{ s|capitalize }}</option>
+                <option value="{{ s }}" {% if status_filter == s %}selected{% endif %}>{{ status_labels.get(s, s|capitalize) }}</option>
                 {% endfor %}
             </select>
         </div>
