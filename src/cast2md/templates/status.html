@@ -8,10 +8,6 @@
         <h1>System Status</h1>
         <p>Worker overview and queue status</p>
     </hgroup>
-    <div class="header-actions">
-        <button onclick="queueAllPending()">Queue All Pending</button>
-        <button class="secondary" onclick="cancelAllQueued()">Cancel All Queued</button>
-    </div>
 </div>
 
 <div class="stats-grid">
@@ -201,46 +197,6 @@
 
 {% block scripts %}
 <script>
-async function queueAllPending() {
-    if (!confirm('Queue all new episodes for processing?')) {
-        return;
-    }
-
-    try {
-        const response = await fetch('/api/queue/batch/all/process', {method: 'POST'});
-        const data = await response.json();
-
-        if (response.ok) {
-            showSuccess(data.message);
-            setTimeout(() => window.location.reload(), 1500);
-        } else {
-            showError(data.detail);
-        }
-    } catch (error) {
-        showError(error.message);
-    }
-}
-
-async function cancelAllQueued() {
-    if (!confirm('Cancel all queued jobs?')) {
-        return;
-    }
-
-    try {
-        const response = await fetch('/api/queue/batch/queued', {method: 'DELETE'});
-        const data = await response.json();
-
-        if (response.ok) {
-            showSuccess(data.message);
-            setTimeout(() => window.location.reload(), 1500);
-        } else {
-            showError(data.detail);
-        }
-    } catch (error) {
-        showError(error.message);
-    }
-}
-
 // Auto-refresh every 10 seconds if there are running jobs
 {% if queue_status.download_queue.running or queue_status.transcribe_queue.running or queue_status.transcript_download_queue.running %}
 setTimeout(() => window.location.reload(), 10000);

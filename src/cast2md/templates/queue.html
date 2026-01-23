@@ -17,7 +17,8 @@
             <option value="failed" {% if current_filter == 'failed' %}selected{% endif %}>Failed</option>
             <option value="completed" {% if current_filter == 'completed' %}selected{% endif %}>Completed</option>
         </select>
-        <button class="secondary" onclick="cleanupCompleted()">Cleanup Old Jobs</button>
+        <button onclick="queueAllPending()">Queue All Pending</button>
+        <button class="secondary" onclick="cleanupCompleted()">Cleanup Old</button>
     </div>
 </div>
 
@@ -186,6 +187,24 @@ function filterByStatus(status) {
         window.location.href = '/queue';
     } else {
         window.location.href = `/queue?status=${status}`;
+    }
+}
+
+async function queueAllPending() {
+    if (!confirm('Queue all new episodes for processing?')) return;
+
+    try {
+        const response = await fetch('/api/queue/batch/all/process', {method: 'POST'});
+        const data = await response.json();
+
+        if (response.ok) {
+            showSuccess(data.message);
+            setTimeout(() => window.location.reload(), 1500);
+        } else {
+            showError(data.detail);
+        }
+    } catch (error) {
+        showError(error.message);
     }
 }
 
