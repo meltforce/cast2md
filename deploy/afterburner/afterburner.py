@@ -60,7 +60,7 @@ tailscaled --tun=userspace-networking --state=/var/lib/tailscale/tailscaled.stat
 sleep 3
 
 # Connect to Tailscale
-tailscale up --auth-key="$TS_AUTH_KEY" --hostname="$TS_HOSTNAME" --ssh --accept-routes
+tailscale up --auth-key="$TS_AUTH_KEY" --hostname="$TS_HOSTNAME" --ssh --accept-routes --accept-dns
 echo "Tailscale connected!"
 
 # Install cast2md
