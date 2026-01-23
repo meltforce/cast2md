@@ -163,6 +163,13 @@ def render_transcript_html(content: str) -> str:
     return '\n'.join(html_parts)
 
 
+def strip_mark_tags(text: str | None) -> str:
+    """Strip <mark> tags from text (used by PostgreSQL ts_headline)."""
+    if not text:
+        return ""
+    return re.sub(r'</?mark>', '', text)
+
+
 def configure_templates(t: Jinja2Templates):
     """Configure templates instance."""
     global templates
@@ -172,6 +179,7 @@ def configure_templates(t: Jinja2Templates):
     templates.env.filters["sanitize_html"] = sanitize_html
     templates.env.filters["truncate_html"] = truncate_html
     templates.env.filters["render_transcript"] = render_transcript_html
+    templates.env.filters["strip_mark"] = strip_mark_tags
 
 
 @router.get("/", response_class=HTMLResponse)
