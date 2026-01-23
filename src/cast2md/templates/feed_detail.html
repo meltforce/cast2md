@@ -224,17 +224,17 @@
                     {% elif status == 'awaiting_transcript' %}
                     <span class="dot dot-half">◐</span><span class="dot dot-empty">○</span><span class="dot dot-empty">○</span><span class="dot dot-empty">○</span>
                     {% elif status == 'needs_audio' %}
-                    <span class="dot dot-done">✓</span><span class="dot dot-empty">○</span><span class="dot dot-empty">○</span><span class="dot dot-empty">○</span>
+                    <span class="dot dot-done">●</span><span class="dot dot-empty">○</span><span class="dot dot-empty">○</span><span class="dot dot-empty">○</span>
                     {% elif status == 'downloading' %}
-                    <span class="dot dot-done">✓</span><span class="dot dot-half">◐</span><span class="dot dot-empty">○</span><span class="dot dot-empty">○</span>
+                    <span class="dot dot-done">●</span><span class="dot dot-half">◐</span><span class="dot dot-empty">○</span><span class="dot dot-empty">○</span>
                     {% elif status == 'audio_ready' %}
-                    <span class="dot dot-done">✓</span><span class="dot dot-done">✓</span><span class="dot dot-empty">○</span><span class="dot dot-empty">○</span>
+                    <span class="dot dot-done">●</span><span class="dot dot-done">●</span><span class="dot dot-empty">○</span><span class="dot dot-empty">○</span>
                     {% elif status == 'transcribing' %}
-                    <span class="dot dot-done">✓</span><span class="dot dot-done">✓</span><span class="dot dot-half">◐</span><span class="dot dot-empty">○</span>
+                    <span class="dot dot-done">●</span><span class="dot dot-done">●</span><span class="dot dot-half">◐</span><span class="dot dot-empty">○</span>
                     {% elif status == 'completed' %}
-                    <span class="dot dot-done">✓</span><span class="dot dot-done">✓</span><span class="dot dot-done">✓</span><span class="dot dot-done">✓</span>
+                    <span class="dot dot-done">●</span><span class="dot dot-done">●</span><span class="dot dot-done">●</span><span class="dot dot-done">●</span>
                     {% elif status == 'failed' %}
-                    <span class="dot dot-done">✓</span><span class="dot dot-fail">✗</span><span class="dot dot-empty">○</span><span class="dot dot-empty">○</span>
+                    <span class="dot dot-done">●</span><span class="dot dot-fail">✗</span><span class="dot dot-empty">○</span><span class="dot dot-empty">○</span>
                     {% endif %}
                 </span>
             </td>
@@ -434,12 +434,12 @@ function getProgressDots(status) {
         'new': '<span class="dot dot-empty">○</span><span class="dot dot-empty">○</span><span class="dot dot-empty">○</span><span class="dot dot-empty">○</span>',
         'queued': '<span class="dot dot-half">◐</span><span class="dot dot-empty">○</span><span class="dot dot-empty">○</span><span class="dot dot-empty">○</span>',
         'awaiting_transcript': '<span class="dot dot-half">◐</span><span class="dot dot-empty">○</span><span class="dot dot-empty">○</span><span class="dot dot-empty">○</span>',
-        'needs_audio': '<span class="dot dot-done">✓</span><span class="dot dot-empty">○</span><span class="dot dot-empty">○</span><span class="dot dot-empty">○</span>',
-        'downloading': '<span class="dot dot-done">✓</span><span class="dot dot-half">◐</span><span class="dot dot-empty">○</span><span class="dot dot-empty">○</span>',
-        'audio_ready': '<span class="dot dot-done">✓</span><span class="dot dot-done">✓</span><span class="dot dot-empty">○</span><span class="dot dot-empty">○</span>',
-        'transcribing': '<span class="dot dot-done">✓</span><span class="dot dot-done">✓</span><span class="dot dot-half">◐</span><span class="dot dot-empty">○</span>',
-        'completed': '<span class="dot dot-done">✓</span><span class="dot dot-done">✓</span><span class="dot dot-done">✓</span><span class="dot dot-done">✓</span>',
-        'failed': '<span class="dot dot-done">✓</span><span class="dot dot-fail">✗</span><span class="dot dot-empty">○</span><span class="dot dot-empty">○</span>'
+        'needs_audio': '<span class="dot dot-done">●</span><span class="dot dot-empty">○</span><span class="dot dot-empty">○</span><span class="dot dot-empty">○</span>',
+        'downloading': '<span class="dot dot-done">●</span><span class="dot dot-half">◐</span><span class="dot dot-empty">○</span><span class="dot dot-empty">○</span>',
+        'audio_ready': '<span class="dot dot-done">●</span><span class="dot dot-done">●</span><span class="dot dot-empty">○</span><span class="dot dot-empty">○</span>',
+        'transcribing': '<span class="dot dot-done">●</span><span class="dot dot-done">●</span><span class="dot dot-half">◐</span><span class="dot dot-empty">○</span>',
+        'completed': '<span class="dot dot-done">●</span><span class="dot dot-done">●</span><span class="dot dot-done">●</span><span class="dot dot-done">●</span>',
+        'failed': '<span class="dot dot-done">●</span><span class="dot dot-fail">✗</span><span class="dot dot-empty">○</span><span class="dot dot-empty">○</span>'
     };
     return dots[status] || dots['new'];
 }

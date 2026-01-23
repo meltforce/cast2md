@@ -63,21 +63,21 @@
         }
         /* Progress dots for pipeline visualization */
         .progress-dots {
-            font-family: monospace;
-            font-size: 0.9rem;
-            letter-spacing: 0.1em;
+            font-family: system-ui, -apple-system, sans-serif;
+            font-size: 1rem;
+            letter-spacing: 0.15em;
             cursor: help;
             white-space: nowrap;
             position: relative;
         }
         .progress-dots .dot {
             display: inline-block;
-            width: 1em;
+            width: 1.1em;
             text-align: center;
         }
         .progress-dots .dot-empty { color: var(--pico-muted-color); }
         .progress-dots .dot-half { color: var(--pico-primary); }
-        .progress-dots .dot-done { color: #22c55e; }
+        .progress-dots .dot-done { color: var(--pico-primary); }
         .progress-dots .dot-fail { color: #ef4444; }
         /* Custom CSS tooltip for progress dots */
         .progress-dots::after {
