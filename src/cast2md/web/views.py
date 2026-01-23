@@ -465,7 +465,7 @@ def status_page(request: Request):
             download_job_index += 1
 
         workers.append({
-            "name": f"Server DL {i+1}",
+            "name": f"Audio Download {i+1}",
             "type": "download",
             "status": "busy" if job else "idle",
             "job": job,
@@ -482,7 +482,7 @@ def status_page(request: Request):
         assigned_transcript_download_job_ids.add(item["job"].id)
 
     workers.append({
-        "name": "Server TDL",
+        "name": "Transcript Fetch",
         "type": "transcript_download_summary",
         "status": "busy" if active_tdl_count > 0 else "idle",
         "active_count": active_tdl_count,
@@ -505,7 +505,7 @@ def status_page(request: Request):
             break
 
     workers.append({
-        "name": "Server TX",
+        "name": "Transcription",
         "type": "transcription",
         "status": "busy" if server_tx_job else "idle",
         "job": server_tx_job,

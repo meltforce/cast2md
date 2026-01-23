@@ -64,7 +64,7 @@
         <tbody>
             {% for worker in workers %}
             <tr>
-                <td><strong>{{ worker.name }}</strong></td>
+                <td>{{ worker.name }}</td>
                 <td>
                     {% if worker.status == 'busy' %}
                     <span class="status-badge status-downloading">busy</span>
@@ -126,17 +126,13 @@
     <header><h3>Download Queue ({{ queued_downloads|length }})</h3></header>
     <table>
         <thead>
-            <tr><th>Priority</th><th>Episode</th><th>Actions</th></tr>
+            <tr><th>Episode</th><th style="width: 12rem;">Actions</th></tr>
         </thead>
         <tbody>
             {% for item in queued_downloads %}
             <tr>
-                <td>{{ item.job.priority }}</td>
                 <td><a href="/episodes/{{ item.episode.id }}">{{ item.episode.title }}</a></td>
-                <td>
-                    <button class="outline secondary" style="padding: 0.25rem 0.5rem; font-size: 0.875rem;"
-                            onclick="cancelJob({{ item.job.id }})">Cancel</button>
-                </td>
+                <td><div class="actions"><button class="outline secondary" onclick="cancelJob({{ item.job.id }})">Cancel</button></div></td>
             </tr>
             {% endfor %}
         </tbody>
@@ -149,17 +145,13 @@
     <header><h3>Transcription Queue ({{ queued_transcriptions|length }})</h3></header>
     <table>
         <thead>
-            <tr><th>Priority</th><th>Episode</th><th>Actions</th></tr>
+            <tr><th>Episode</th><th style="width: 12rem;">Actions</th></tr>
         </thead>
         <tbody>
             {% for item in queued_transcriptions %}
             <tr>
-                <td>{{ item.job.priority }}</td>
                 <td><a href="/episodes/{{ item.episode.id }}">{{ item.episode.title }}</a></td>
-                <td>
-                    <button class="outline secondary" style="padding: 0.25rem 0.5rem; font-size: 0.875rem;"
-                            onclick="cancelJob({{ item.job.id }})">Cancel</button>
-                </td>
+                <td><div class="actions"><button class="outline secondary" onclick="cancelJob({{ item.job.id }})">Cancel</button></div></td>
             </tr>
             {% endfor %}
         </tbody>
@@ -172,16 +164,13 @@
     <header><h3>Ready for Transcription ({{ downloaded|length }})</h3></header>
     <table>
         <thead>
-            <tr><th>Episode</th><th>Actions</th></tr>
+            <tr><th>Episode</th><th style="width: 12rem;">Actions</th></tr>
         </thead>
         <tbody>
             {% for ep in downloaded %}
             <tr>
                 <td><a href="/episodes/{{ ep.id }}">{{ ep.title }}</a></td>
-                <td>
-                    <button class="outline" style="padding: 0.25rem 0.5rem; font-size: 0.875rem;"
-                            onclick="queueTranscribe({{ ep.id }})">Queue Transcription</button>
-                </td>
+                <td><div class="actions"><button class="outline" onclick="queueTranscribe({{ ep.id }})">Queue Transcription</button></div></td>
             </tr>
             {% endfor %}
         </tbody>
@@ -194,17 +183,14 @@
     <header><h3>Failed ({{ failed|length }})</h3></header>
     <table>
         <thead>
-            <tr><th>Episode</th><th>Error</th><th>Actions</th></tr>
+            <tr><th>Episode</th><th>Error</th><th style="width: 12rem;">Actions</th></tr>
         </thead>
         <tbody>
             {% for ep in failed %}
             <tr>
                 <td><a href="/episodes/{{ ep.id }}">{{ ep.title }}</a></td>
                 <td class="truncate">{{ ep.error_message or 'Unknown error' }}</td>
-                <td>
-                    <button class="outline secondary" style="padding: 0.25rem 0.5rem; font-size: 0.875rem;"
-                            onclick="queueProcess({{ ep.id }})">Retry</button>
-                </td>
+                <td><div class="actions"><button class="outline secondary" onclick="queueProcess({{ ep.id }})">Retry</button></div></td>
             </tr>
             {% endfor %}
         </tbody>
@@ -217,16 +203,13 @@
     <header><h3>Pending Download (showing {{ pending|length }})</h3></header>
     <table>
         <thead>
-            <tr><th>Episode</th><th>Actions</th></tr>
+            <tr><th>Episode</th><th style="width: 12rem;">Actions</th></tr>
         </thead>
         <tbody>
             {% for ep in pending %}
             <tr>
                 <td><a href="/episodes/{{ ep.id }}">{{ ep.title }}</a></td>
-                <td>
-                    <button class="outline" style="padding: 0.25rem 0.5rem; font-size: 0.875rem;"
-                            onclick="queueProcess({{ ep.id }})">Queue Download</button>
-                </td>
+                <td><div class="actions"><button class="outline" onclick="queueProcess({{ ep.id }})">Queue Download</button></div></td>
             </tr>
             {% endfor %}
         </tbody>
