@@ -5,9 +5,8 @@
 # runs these commands via SSH automatically. This file documents the
 # setup steps for manual debugging or alternative deployment methods.
 #
-# Environment variables required:
-#   TS_AUTH_KEY - Tailscale auth key (ephemeral, reusable)
-#   TS_HOSTNAME - Hostname to use on Tailscale network
+# The TS_AUTH_KEY is passed directly via SSH command (not stored in env vars)
+# to avoid exposing the reusable auth key on the pod.
 
 set -e
 
@@ -30,10 +29,11 @@ nohup tailscaled --tun=userspace-networking --state=/var/lib/tailscale/tailscale
 sleep 3
 
 # Connect to Tailscale
+# Note: In afterburner.py, the auth key is passed directly via SSH command
 echo "[setup] Connecting to Tailscale network..."
 tailscale up \
-    --auth-key="${TS_AUTH_KEY}" \
-    --hostname="${TS_HOSTNAME:-runpod-afterburner}" \
+    --auth-key="<passed-via-ssh>" \
+    --hostname="runpod-afterburner" \
     --ssh \
     --accept-routes
 

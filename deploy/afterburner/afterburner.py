@@ -121,6 +121,8 @@ def create_pod(config: Config) -> dict:
     log(f"Creating pod with {config.gpu_type}...")
 
     # Create pod - we'll run setup via SSH after it starts
+    # Note: TS_AUTH_KEY is NOT stored in pod env vars for security
+    # It's passed directly via SSH command in setup_tailscale_on_pod()
     pod = runpod.create_pod(
         name="cast2md-afterburner",
         image_name=config.image_name,
@@ -128,11 +130,6 @@ def create_pod(config: Config) -> dict:
         cloud_type=config.cloud_type,
         volume_in_gb=0,  # No persistent volume needed
         container_disk_in_gb=20,
-        # Store config in env vars for later use
-        env={
-            "TS_AUTH_KEY": config.ts_auth_key,
-            "TS_HOSTNAME": config.ts_hostname,
-        },
     )
 
     log(f"Created pod: {pod['id']}")
