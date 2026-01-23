@@ -7,9 +7,10 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-# Default embedding model - small, fast, runs well on CPU
-DEFAULT_MODEL_NAME = "all-MiniLM-L6-v2"
-EMBEDDING_DIM = 384  # Dimension of embeddings from all-MiniLM-L6-v2
+# Default embedding model - multilingual for German support
+# paraphrase-multilingual-MiniLM-L12-v2: 50+ languages, 384 dims, ~470MB
+DEFAULT_MODEL_NAME = "paraphrase-multilingual-MiniLM-L12-v2"
+EMBEDDING_DIM = 384  # Dimension of embeddings (same for multilingual model)
 
 # Singleton model instance (lazy-loaded)
 _model: Optional["SentenceTransformer"] = None  # type: ignore
