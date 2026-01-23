@@ -134,9 +134,9 @@
     <section>
         <h2 style="font-size: 1.25rem; margin-bottom: 1rem;">Latest Transcripts</h2>
         <div class="carousel-container">
-            <button class="carousel-arrow carousel-arrow-left" onclick="scrollCarousel(-1)" aria-label="Previous">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
-            </button>
+            <div class="carousel-arrow carousel-arrow-left" onclick="scrollCarousel(-1)" role="button" aria-label="Previous">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+            </div>
             <div class="carousel-track" id="carouselTrack">
                 {% for episode, feed_title, image_url in recent_transcripts %}
                 <a href="/episodes/{{ episode.id }}" class="transcript-card-square">
@@ -158,9 +158,9 @@
                 </a>
                 {% endfor %}
             </div>
-            <button class="carousel-arrow carousel-arrow-right" onclick="scrollCarousel(1)" aria-label="Next">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
-            </button>
+            <div class="carousel-arrow carousel-arrow-right" onclick="scrollCarousel(1)" role="button" aria-label="Next">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+            </div>
         </div>
         <script>
         function scrollCarousel(direction) {
