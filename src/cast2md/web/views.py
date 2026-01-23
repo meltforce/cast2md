@@ -163,11 +163,21 @@ def render_transcript_html(content: str) -> str:
     return '\n'.join(html_parts)
 
 
-def strip_mark_tags(text: str | None) -> str:
-    """Strip <mark> tags from text (used by PostgreSQL ts_headline)."""
+def sanitize_search_snippet(text: str | None) -> str:
+    """Sanitize search snippet, keeping only <mark> tags for highlighting.
+
+    PostgreSQL ts_headline adds <mark> tags for keyword highlighting.
+    This strips all other HTML but preserves <mark> for rendering.
+    """
     if not text:
         return ""
-    return re.sub(r'</?mark>', '', text)
+    from html import escape
+    # First escape everything
+    escaped = escape(text)
+    # Then restore <mark> and </mark> tags
+    escaped = escaped.replace('&lt;mark&gt;', '<mark>')
+    escaped = escaped.replace('&lt;/mark&gt;', '</mark>')
+    return escaped
 
 
 def configure_templates(t: Jinja2Templates):
@@ -179,7 +189,7 @@ def configure_templates(t: Jinja2Templates):
     templates.env.filters["sanitize_html"] = sanitize_html
     templates.env.filters["truncate_html"] = truncate_html
     templates.env.filters["render_transcript"] = render_transcript_html
-    templates.env.filters["strip_mark"] = strip_mark_tags
+    templates.env.filters["search_snippet"] = sanitize_search_snippet
 
 
 @router.get("/", response_class=HTMLResponse)
