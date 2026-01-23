@@ -178,7 +178,7 @@
             <th style="width: 2rem;"><input type="checkbox" id="selectAll" onchange="toggleSelectAll()"></th>
             <th>Episode</th>
             <th style="white-space: nowrap;">Published</th>
-            <th style="white-space: nowrap;">Status</th>
+            <th style="white-space: nowrap;">Progress</th>
             <th style="white-space: nowrap;">Actions</th>
         </tr>
     </thead>
@@ -204,11 +204,28 @@
             </td>
             <td style="white-space: nowrap;">{{ episode.published_at.strftime('%Y-%m-%d') if episode.published_at else 'Unknown' }}</td>
             <td style="white-space: nowrap;">
-                {% if episode.id in queued_episode_ids and episode.status.value == 'new' %}
-                <span class="status-badge status-downloading">queued</span>
-                {% else %}
-                <span class="status-badge status-{{ episode.status.value }}">{{ episode.status.value }}</span>
-                {% endif %}
+                {% set status = 'queued' if (episode.id in queued_episode_ids and episode.status.value == 'new') else episode.status.value %}
+                <span class="progress-dots" data-status="{{ status }}" title="{{ status|title }}">
+                    {% if status == 'new' %}
+                    <span class="dot dot-empty">○</span><span class="dot dot-empty">○</span><span class="dot dot-empty">○</span><span class="dot dot-empty">○</span>
+                    {% elif status == 'queued' %}
+                    <span class="dot dot-half">◐</span><span class="dot dot-empty">○</span><span class="dot dot-empty">○</span><span class="dot dot-empty">○</span>
+                    {% elif status == 'awaiting_transcript' %}
+                    <span class="dot dot-half">◐</span><span class="dot dot-empty">○</span><span class="dot dot-empty">○</span><span class="dot dot-empty">○</span>
+                    {% elif status == 'needs_audio' %}
+                    <span class="dot dot-done">✓</span><span class="dot dot-empty">○</span><span class="dot dot-empty">○</span><span class="dot dot-empty">○</span>
+                    {% elif status == 'downloading' %}
+                    <span class="dot dot-done">✓</span><span class="dot dot-half">◐</span><span class="dot dot-empty">○</span><span class="dot dot-empty">○</span>
+                    {% elif status == 'audio_ready' %}
+                    <span class="dot dot-done">✓</span><span class="dot dot-done">✓</span><span class="dot dot-empty">○</span><span class="dot dot-empty">○</span>
+                    {% elif status == 'transcribing' %}
+                    <span class="dot dot-done">✓</span><span class="dot dot-done">✓</span><span class="dot dot-half">◐</span><span class="dot dot-empty">○</span>
+                    {% elif status == 'completed' %}
+                    <span class="dot dot-done">✓</span><span class="dot dot-done">✓</span><span class="dot dot-done">✓</span><span class="dot dot-done">✓</span>
+                    {% elif status == 'failed' %}
+                    <span class="dot dot-done">✓</span><span class="dot dot-fail">✗</span><span class="dot dot-empty">○</span><span class="dot dot-empty">○</span>
+                    {% endif %}
+                </span>
             </td>
             <td class="actions" style="white-space: nowrap;">
                 {% if episode.id in queued_episode_ids %}
@@ -373,8 +390,8 @@ async function pollEpisodeStatus() {
             const row = document.querySelector(`tr input[value="${epId}"]`)?.closest('tr');
             if (!row) continue;
 
-            const statusBadge = row.querySelector('.status-badge');
-            const currentStatus = statusBadge.textContent.trim();
+            const progressDots = row.querySelector('.progress-dots');
+            const currentStatus = progressDots?.dataset.status || '';
 
             // Check if status changed
             // Update unless we show 'queued' and API still shows 'new' (job not started yet)
@@ -401,8 +418,38 @@ async function pollEpisodeStatus() {
     }
 }
 
+function getProgressDots(status) {
+    const dots = {
+        'new': '<span class="dot dot-empty">○</span><span class="dot dot-empty">○</span><span class="dot dot-empty">○</span><span class="dot dot-empty">○</span>',
+        'queued': '<span class="dot dot-half">◐</span><span class="dot dot-empty">○</span><span class="dot dot-empty">○</span><span class="dot dot-empty">○</span>',
+        'awaiting_transcript': '<span class="dot dot-half">◐</span><span class="dot dot-empty">○</span><span class="dot dot-empty">○</span><span class="dot dot-empty">○</span>',
+        'needs_audio': '<span class="dot dot-done">✓</span><span class="dot dot-empty">○</span><span class="dot dot-empty">○</span><span class="dot dot-empty">○</span>',
+        'downloading': '<span class="dot dot-done">✓</span><span class="dot dot-half">◐</span><span class="dot dot-empty">○</span><span class="dot dot-empty">○</span>',
+        'audio_ready': '<span class="dot dot-done">✓</span><span class="dot dot-done">✓</span><span class="dot dot-empty">○</span><span class="dot dot-empty">○</span>',
+        'transcribing': '<span class="dot dot-done">✓</span><span class="dot dot-done">✓</span><span class="dot dot-half">◐</span><span class="dot dot-empty">○</span>',
+        'completed': '<span class="dot dot-done">✓</span><span class="dot dot-done">✓</span><span class="dot dot-done">✓</span><span class="dot dot-done">✓</span>',
+        'failed': '<span class="dot dot-done">✓</span><span class="dot dot-fail">✗</span><span class="dot dot-empty">○</span><span class="dot dot-empty">○</span>'
+    };
+    return dots[status] || dots['new'];
+}
+
+function getStatusTooltip(status) {
+    const tooltips = {
+        'new': 'Ready to process',
+        'queued': 'Job queued, waiting to start',
+        'awaiting_transcript': 'Checking for external transcript',
+        'needs_audio': 'No external transcript - audio download required',
+        'downloading': 'Downloading audio...',
+        'audio_ready': 'Audio ready, waiting for transcription',
+        'transcribing': 'Transcribing with Whisper...',
+        'completed': 'Transcript available',
+        'failed': 'Processing failed'
+    };
+    return tooltips[status] || status;
+}
+
 function updateEpisodeRow(row, ep) {
-    const statusBadge = row.querySelector('.status-badge');
+    const progressDots = row.querySelector('.progress-dots');
     const actionsCell = row.querySelector('.actions');
     const checkbox = row.querySelector('.episode-checkbox');
     const wasQueued = row.dataset.isQueued === 'true';
@@ -410,16 +457,16 @@ function updateEpisodeRow(row, ep) {
     // Determine if this is a "queued" state (job is running but episode status is still new)
     // This happens for fast transcript downloads
     const isQueued = wasQueued && ep.status === 'new';
+    const displayStatus = isQueued ? 'queued' : ep.status;
 
-    // Update status badge
-    if (isQueued) {
-        statusBadge.className = 'status-badge status-downloading';
-        statusBadge.textContent = 'queued';
-    } else {
-        statusBadge.className = `status-badge status-${ep.status}`;
-        statusBadge.textContent = ep.status;
-        // Clear queued flag once status changes
-        row.dataset.isQueued = 'false';
+    // Update progress dots
+    if (progressDots) {
+        progressDots.dataset.status = displayStatus;
+        progressDots.title = getStatusTooltip(displayStatus);
+        progressDots.innerHTML = getProgressDots(displayStatus);
+        if (!isQueued) {
+            row.dataset.isQueued = 'false';
+        }
     }
 
     // Update actions based on new status
@@ -599,8 +646,7 @@ async function refreshFeed(feedId) {
 async function tryTranscript(episodeId, button) {
     // Immediately update UI to show queued state
     const row = button.closest('tr');
-    const statusBadge = row.querySelector('.status-badge');
-    const actionsCell = row.querySelector('.actions');
+    const progressDots = row.querySelector('.progress-dots');
 
     button.disabled = true;
     button.textContent = 'Queuing...';
@@ -610,9 +656,11 @@ async function tryTranscript(episodeId, button) {
         const data = await response.json();
 
         if (response.ok) {
-            // Update status badge
-            statusBadge.className = 'status-badge status-downloading';
-            statusBadge.textContent = 'queued';
+            // Update progress dots
+            progressDots.dataset.status = 'queued';
+            progressDots.title = getStatusTooltip('queued');
+            progressDots.innerHTML = getProgressDots('queued');
+            row.dataset.isQueued = 'true';
             // Keep button disabled to prevent layout jump
             button.disabled = true;
             button.textContent = '...';
@@ -650,8 +698,7 @@ async function downloadEpisode(episodeId) {
 
 async function transcribeEpisode(episodeId, button) {
     const row = button.closest('tr');
-    const statusBadge = row.querySelector('.status-badge');
-    const actionsCell = row.querySelector('.actions');
+    const progressDots = row.querySelector('.progress-dots');
 
     button.disabled = true;
     button.textContent = 'Queuing...';
@@ -661,8 +708,10 @@ async function transcribeEpisode(episodeId, button) {
         const data = await response.json();
 
         if (response.ok) {
-            statusBadge.className = 'status-badge status-transcribing';
-            statusBadge.textContent = 'queued';
+            progressDots.dataset.status = 'queued';
+            progressDots.title = getStatusTooltip('queued');
+            progressDots.innerHTML = getProgressDots('queued');
+            row.dataset.isQueued = 'true';
             button.disabled = true;
             button.textContent = '...';
             startStatusPolling();
@@ -694,11 +743,13 @@ async function queueAllDownloads(feedId) {
 
         if (response.ok) {
             // Update all new rows to show queued status
-            document.querySelectorAll('.status-badge.status-new').forEach(badge => {
-                const row = badge.closest('tr');
+            document.querySelectorAll('.progress-dots[data-status="new"]').forEach(dots => {
+                const row = dots.closest('tr');
                 const btn = row.querySelector('.actions button');
-                badge.className = 'status-badge status-downloading';
-                badge.textContent = 'queued';
+                dots.dataset.status = 'queued';
+                dots.title = getStatusTooltip('queued');
+                dots.innerHTML = getProgressDots('queued');
+                row.dataset.isQueued = 'true';
                 if (btn) {
                     btn.disabled = true;
                     btn.textContent = '...';
