@@ -66,8 +66,9 @@
             font-family: monospace;
             font-size: 0.9rem;
             letter-spacing: 0.1em;
-            cursor: default;
+            cursor: help;
             white-space: nowrap;
+            position: relative;
         }
         .progress-dots .dot {
             display: inline-block;
@@ -78,6 +79,32 @@
         .progress-dots .dot-half { color: var(--pico-primary); }
         .progress-dots .dot-done { color: #22c55e; }
         .progress-dots .dot-fail { color: #ef4444; }
+        /* Custom CSS tooltip for progress dots */
+        .progress-dots::after {
+            content: attr(title);
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 0.4rem 0.6rem;
+            background: var(--pico-card-background-color, #1a1a2e);
+            color: var(--pico-color, #fff);
+            font-size: 0.75rem;
+            font-family: var(--pico-font-family);
+            letter-spacing: normal;
+            border-radius: 4px;
+            white-space: nowrap;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.15s, visibility 0.15s;
+            z-index: 1000;
+            pointer-events: none;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        }
+        .progress-dots:hover::after {
+            opacity: 1;
+            visibility: visible;
+        }
         /* Mobile responsive navigation */
         @media (max-width: 600px) {
             nav.container {
