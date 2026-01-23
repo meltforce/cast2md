@@ -50,7 +50,7 @@
 
         <div class="card-section">
             <div class="section-label">Workers</div>
-            <div class="workers-row">
+            <div class="worker-row dots-only">
                 {% for worker in worker_groups.download.workers %}
                 <span class="worker-dot dot-{{ worker.status }}" title="{{ worker.status }}"></span>
                 {% endfor %}
@@ -72,7 +72,7 @@
 
         <div class="card-section">
             <div class="section-label">Workers</div>
-            <div class="workers-row">
+            <div class="worker-row dots-only">
                 {% for i in range(worker_groups.transcript_fetch.active_count) %}
                 <span class="worker-dot dot-busy" title="busy"></span>
                 {% endfor %}
@@ -150,6 +150,29 @@
                 {% endif %}
             </div>
             {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Search Index Card -->
+    <div class="worker-card">
+        <h4>Search Index</h4>
+
+        <div class="card-section">
+            <div class="section-label">Full-text</div>
+            <div class="queued-count">{{ search_stats.indexed_episodes }}</div>
+        </div>
+
+        <div class="card-section">
+            <div class="section-label">Semantic</div>
+            <div class="queued-count">{{ search_stats.embedded_episodes }}</div>
+        </div>
+
+        {% set pending = search_stats.indexed_episodes - search_stats.embedded_episodes %}
+        {% if pending > 0 %}
+        <div class="card-section">
+            <div class="section-label">Pending</div>
+            <div style="color: var(--pico-muted-color);">{{ pending }} episode{% if pending != 1 %}s{% endif %}</div>
         </div>
         {% endif %}
     </div>

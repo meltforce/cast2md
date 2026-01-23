@@ -9,9 +9,9 @@
         <p>Search episodes and transcripts</p>
     </hgroup>
     <small style="color: var(--pico-muted-color);">
-        Index: {{ index_stats.indexed_episodes }} episodes, {{ index_stats.total_segments }} segments
+        {{ index_stats.indexed_episodes }} episodes indexed
         {% if index_stats.embedded_episodes > 0 %}
-            ({{ index_stats.embedded_episodes }} with embeddings)
+            ({{ index_stats.embedded_episodes }} with semantic search)
         {% endif %}
     </small>
 </div>

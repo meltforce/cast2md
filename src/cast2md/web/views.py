@@ -365,13 +365,22 @@ def episode_detail(
 @router.get("/status", response_class=HTMLResponse)
 def status_page(request: Request):
     """Status page - high-level dashboard with worker cards."""
+    from cast2md.search.repository import TranscriptSearchRepository
+
     with get_db() as conn:
         episode_repo = EpisodeRepository(conn)
         feed_repo = FeedRepository(conn)
         job_repo = JobRepository(conn)
         node_repo = TranscriberNodeRepository(conn)
+        search_repo = TranscriptSearchRepository(conn)
 
         status_counts = episode_repo.count_by_status()
+
+        # Search index stats
+        search_stats = {
+            "indexed_episodes": len(search_repo.get_indexed_episodes()),
+            "embedded_episodes": len(search_repo.get_embedded_episodes()),
+        }
         feeds = feed_repo.get_all()
 
         # Get running jobs for worker status display
@@ -535,6 +544,7 @@ def status_page(request: Request):
             "feed_count": len(feeds),
             "queue_status": queue_status,
             "worker_groups": worker_groups,
+            "search_stats": search_stats,
         },
     )
 
