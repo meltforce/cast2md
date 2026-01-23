@@ -852,25 +852,24 @@
         }
         .carousel-arrow {
             flex-shrink: 0;
-            width: 40px;
-            height: 40px;
+            width: 44px;
+            height: 44px;
             border-radius: 50%;
             border: 1px solid var(--pico-muted-border-color);
             background: var(--pico-card-background-color);
+            color: var(--pico-color);
             cursor: pointer;
             display: flex;
             align-items: center;
             justify-content: center;
-            transition: opacity 0.2s, border-color 0.2s, background-color 0.2s;
+            transition: border-color 0.2s, background-color 0.2s;
             padding: 0;
             margin: 0;
+            line-height: 1;
         }
         .carousel-arrow:hover {
             border-color: var(--pico-primary);
             background-color: var(--pico-secondary-background);
-        }
-        .carousel-arrow svg {
-            color: var(--pico-color);
         }
         .carousel-track {
             flex: 1;
