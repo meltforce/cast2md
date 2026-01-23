@@ -17,7 +17,7 @@ echo "=== Afterburner Startup $(date) ==="
 
 : "${TS_AUTH_KEY:?TS_AUTH_KEY is required}"
 : "${TS_HOSTNAME:=runpod-afterburner}"
-: "${CAST2MD_SERVER_URL:=https://cast2md.leo-royal.ts.net}"
+: "${CAST2MD_SERVER_URL:?CAST2MD_SERVER_URL is required}"
 : "${GITHUB_REPO:=meltforce/cast2md}"
 
 echo "Configuration:"

@@ -146,7 +146,7 @@ python deploy/afterburner/afterburner.py --update-template
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `RUNPOD_API_KEY` | Yes | - | RunPod API key |
-| `CAST2MD_SERVER_URL` | No | `https://cast2md.leo-royal.ts.net` | Server URL |
+| `CAST2MD_SERVER_URL` | Yes | - | Your cast2md server URL (Tailscale hostname) |
 | `TS_HOSTNAME` | No | `runpod-afterburner` | Hostname on Tailscale |
 | `RUNPOD_GPU_TYPE` | No | `NVIDIA GeForce RTX 4090` | GPU type to use |
 | `GITHUB_REPO` | No | `meltforce/cast2md` | GitHub repo to install from |
@@ -198,7 +198,7 @@ ssh root@runpod-afterburner "tail -100 /tmp/cast2md-node.log"
 2. Check the server is tagged correctly
 3. Test connectivity:
    ```bash
-   ssh root@runpod-afterburner "curl -s https://cast2md.leo-royal.ts.net/api/health"
+   ssh root@runpod-afterburner "curl -s $CAST2MD_SERVER_URL/api/health"
    ```
 
 ## Files
