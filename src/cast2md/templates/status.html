@@ -41,152 +41,117 @@
 <div class="worker-cards">
     <!-- Audio Download Card -->
     <div class="worker-card">
-        <h4>
-            {{ worker_groups.download.title }}
-            {% if queue_status.running %}
-            <span class="status-badge status-completed">Running</span>
-            {% else %}
-            <span class="status-badge status-failed">Stopped</span>
-            {% endif %}
-        </h4>
-
-        <div class="card-section">
-            <div class="section-label">Workers</div>
-            <div class="workers-row">
-                {% for worker in worker_groups.download.workers %}
-                <div class="worker-info">
-                    <span class="worker-dot dot-{{ worker.status }}"></span>
-                    {% if worker.episode %}
-                    <span class="worker-job">
-                        <a href="/episodes/{{ worker.episode.id }}">{{ worker.episode.title[:25] }}{% if worker.episode.title|length > 25 %}...{% endif %}</a>
-                    </span>
-                    {% endif %}
-                </div>
-                {% endfor %}
-                {% if not worker_groups.download.workers %}
-                <span style="color: var(--pico-muted-color);">No workers</span>
-                {% endif %}
-            </div>
-        </div>
+        <h4>{{ worker_groups.download.title }}</h4>
 
         <div class="card-section">
             <div class="section-label">Queued</div>
             <div class="queued-count">{{ worker_groups.download.queued }}</div>
         </div>
-    </div>
-
-    <!-- Transcript Fetch Card -->
-    <div class="worker-card">
-        <h4>
-            {{ worker_groups.transcript_fetch.title }}
-            {% if queue_status.running %}
-            <span class="status-badge status-completed">Running</span>
-            {% else %}
-            <span class="status-badge status-failed">Stopped</span>
-            {% endif %}
-        </h4>
 
         <div class="card-section">
             <div class="section-label">Workers</div>
             <div class="workers-row">
-                <span>{{ worker_groups.transcript_fetch.active_count }}/{{ worker_groups.transcript_fetch.total_count }} active</span>
+                {% for worker in worker_groups.download.workers %}
+                <span class="worker-dot dot-{{ worker.status }}" title="{{ worker.status }}"></span>
+                {% endfor %}
+                {% if not worker_groups.download.workers %}
+                <span class="muted">No workers</span>
+                {% endif %}
             </div>
         </div>
+    </div>
 
-        {% if worker_groups.transcript_fetch.orphaned %}
-        <div class="card-section">
-            <div class="section-label">Stuck Jobs</div>
-            {% for item in worker_groups.transcript_fetch.orphaned %}
-            <div class="node-row">
-                <span class="worker-dot dot-stuck"></span>
-                <span class="node-name">{{ item.episode.title[:30] }}...</span>
-            </div>
-            {% endfor %}
-        </div>
-        {% endif %}
+    <!-- Transcript Fetch Card -->
+    <div class="worker-card">
+        <h4>{{ worker_groups.transcript_fetch.title }}</h4>
 
         <div class="card-section">
             <div class="section-label">Queued</div>
             <div class="queued-count">{{ worker_groups.transcript_fetch.queued }}</div>
         </div>
+
+        <div class="card-section">
+            <div class="section-label">Workers</div>
+            <div class="workers-row">
+                {% for i in range(worker_groups.transcript_fetch.active_count) %}
+                <span class="worker-dot dot-busy" title="busy"></span>
+                {% endfor %}
+                {% for i in range(worker_groups.transcript_fetch.total_count - worker_groups.transcript_fetch.active_count) %}
+                <span class="worker-dot dot-idle" title="idle"></span>
+                {% endfor %}
+            </div>
+        </div>
+
+        {% if worker_groups.transcript_fetch.orphaned %}
+        <div class="card-section">
+            <div class="section-label">Stuck</div>
+            {% for item in worker_groups.transcript_fetch.orphaned %}
+            <div class="worker-row">
+                <span class="worker-dot dot-stuck"></span>
+                <span class="worker-name">{{ item.episode.title[:30] }}...</span>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
     </div>
 
     <!-- Transcription Card -->
     <div class="worker-card">
-        <h4>
-            {{ worker_groups.transcription.title }}
-            {% if queue_status.running %}
-            <span class="status-badge status-completed">Running</span>
-            {% else %}
-            <span class="status-badge status-failed">Stopped</span>
-            {% endif %}
-        </h4>
+        <h4>{{ worker_groups.transcription.title }}</h4>
 
-        <!-- Server worker -->
         <div class="card-section">
-            <div class="section-label">Server</div>
-            <div class="node-row">
+            <div class="section-label">Queued</div>
+            <div class="queued-count">{{ worker_groups.transcription.queued }}</div>
+        </div>
+
+        <div class="card-section">
+            <div class="section-label">Workers</div>
+            <!-- Server worker -->
+            <div class="worker-row">
                 <span class="worker-dot dot-{{ worker_groups.transcription.server.status }}"></span>
-                <span class="node-name">Local</span>
+                <span class="worker-name">Server</span>
                 {% if worker_groups.transcription.server.episode %}
                 <span class="worker-job">
                     <a href="/episodes/{{ worker_groups.transcription.server.episode.id }}">{{ worker_groups.transcription.server.episode.title[:20] }}...</a>
                 </span>
                 {% if worker_groups.transcription.server.progress is not none %}
-                <span class="node-status">{{ worker_groups.transcription.server.progress }}%</span>
+                <span class="worker-progress">{{ worker_groups.transcription.server.progress }}%</span>
                 {% endif %}
-                {% else %}
-                <span class="node-status">idle</span>
                 {% endif %}
             </div>
-        </div>
-
-        <!-- Remote nodes -->
-        {% if worker_groups.transcription.distributed_enabled and worker_groups.transcription.nodes %}
-        <div class="divider"></div>
-        <div class="card-section">
-            <div class="section-label">Remote Nodes</div>
+            <!-- Remote nodes -->
+            {% if worker_groups.transcription.distributed_enabled and worker_groups.transcription.nodes %}
             {% for node in worker_groups.transcription.nodes %}
-            <div class="node-row">
+            <div class="worker-row">
                 <span class="worker-dot dot-{{ node.status }}"></span>
-                <span class="node-name">{{ node.name }}</span>
+                <span class="worker-name">{{ node.name }} <span class="muted">(remote)</span></span>
                 {% if node.episode %}
                 <span class="worker-job">
                     <a href="/episodes/{{ node.episode.id }}">{{ node.episode.title[:15] }}...</a>
                 </span>
                 {% if node.progress is not none %}
-                <span class="node-status">{{ node.progress }}%</span>
+                <span class="worker-progress">{{ node.progress }}%</span>
                 {% endif %}
-                {% else %}
-                <span class="node-status">{{ node.status }}</span>
                 {% endif %}
             </div>
             {% endfor %}
+            {% endif %}
         </div>
-        {% endif %}
 
-        <!-- Orphaned/stuck jobs -->
         {% if worker_groups.transcription.orphaned %}
-        <div class="divider"></div>
         <div class="card-section">
-            <div class="section-label">Stuck Jobs</div>
+            <div class="section-label">Stuck</div>
             {% for item in worker_groups.transcription.orphaned %}
-            <div class="node-row">
+            <div class="worker-row">
                 <span class="worker-dot dot-stuck"></span>
-                <span class="node-name">{{ item.episode.title[:25] }}...</span>
+                <span class="worker-name">{{ item.episode.title[:25] }}...</span>
                 {% if item.progress is not none %}
-                <span class="node-status">{{ item.progress }}%</span>
+                <span class="worker-progress">{{ item.progress }}%</span>
                 {% endif %}
             </div>
             {% endfor %}
         </div>
         {% endif %}
-
-        <div class="divider"></div>
-        <div class="card-section">
-            <div class="section-label">Queued</div>
-            <div class="queued-count">{{ worker_groups.transcription.queued }}</div>
-        </div>
     </div>
 </div>
 
