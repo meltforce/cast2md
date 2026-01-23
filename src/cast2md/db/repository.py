@@ -968,6 +968,43 @@ class EpisodeRepository:
             results.append((episode, feed_title))
         return results
 
+    def get_recent_transcribed_episodes(
+        self, limit: int = 12
+    ) -> list[tuple[Episode, str, str | None]]:
+        """Get recently transcribed episodes with feed info.
+
+        Returns completed episodes that have transcripts, sorted by most recently
+        transcribed (updated_at DESC).
+
+        Args:
+            limit: Maximum number of episodes to return (default: 12).
+
+        Returns:
+            List of tuples (Episode, feed_title, feed_image_url) sorted by updated_at DESC.
+        """
+        # Prefix episode columns with table alias
+        ep_cols = ", ".join(f"e.{c.strip()}" for c in self.EPISODE_COLUMNS.split(","))
+        cursor = execute(
+            self.conn,
+            f"""
+            SELECT {ep_cols}, COALESCE(f.custom_title, f.title) as feed_title, f.image_url
+            FROM episode e
+            JOIN feed f ON e.feed_id = f.id
+            WHERE e.status = %s AND e.transcript_path IS NOT NULL
+            ORDER BY e.updated_at DESC
+            LIMIT %s
+            """,
+            (EpisodeStatus.COMPLETED.value, limit),
+        )
+        results = []
+        for row in cursor.fetchall():
+            # Episode columns are all but the last two (feed_title, image_url)
+            episode = Episode.from_row(row[:-2])
+            feed_title = row[-2]
+            image_url = row[-1]
+            results.append((episode, feed_title, image_url))
+        return results
+
     def search_episodes_fts_full(
         self,
         query: str,

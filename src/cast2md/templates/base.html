@@ -843,6 +843,87 @@
             color: var(--pico-muted-color);
             font-size: 0.8rem;
         }
+        /* Transcript card grid for search page */
+        .transcript-card-grid {
+            display: grid;
+            grid-template-columns: repeat(1, 1fr);
+            gap: 0.75rem;
+        }
+        @media (min-width: 640px) {
+            .transcript-card-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+        @media (min-width: 900px) {
+            .transcript-card-grid {
+                grid-template-columns: repeat(3, 1fr);
+            }
+        }
+        .transcript-card {
+            display: flex;
+            gap: 0.75rem;
+            padding: 0.75rem;
+            border: 1px solid var(--pico-muted-border-color);
+            border-radius: 0.5rem;
+            text-decoration: none;
+            color: inherit;
+            transition: border-color 0.15s, background-color 0.15s;
+        }
+        .transcript-card:hover {
+            border-color: var(--pico-primary);
+            background-color: var(--pico-secondary-background);
+        }
+        .transcript-card .card-artwork {
+            flex-shrink: 0;
+            width: 80px;
+            height: 80px;
+        }
+        .transcript-card .card-artwork img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            border-radius: 0.25rem;
+        }
+        .transcript-card .no-artwork-placeholder {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--pico-muted-border-color);
+            border-radius: 0.25rem;
+            font-size: 2rem;
+        }
+        .transcript-card .card-content {
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+        .transcript-card .card-title {
+            margin: 0 0 0.25rem 0;
+            font-weight: 600;
+            font-size: 0.9rem;
+            line-height: 1.3;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+        .transcript-card .card-feed {
+            margin: 0 0 0.25rem 0;
+            font-size: 0.8rem;
+            color: var(--pico-muted-color);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .transcript-card .card-date {
+            margin: 0;
+            font-size: 0.75rem;
+            color: var(--pico-muted-color);
+        }
     </style>
 </head>
 <body>

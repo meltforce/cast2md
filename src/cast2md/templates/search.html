@@ -130,16 +130,36 @@
     {% endif %}
 
 {% else %}
-<article style="text-align: center; padding: 3rem;">
-    <p>Enter a search query to find episodes and transcripts.</p>
-    <p style="color: var(--muted-color);">
+    {% if recent_transcripts %}
+    <section>
+        <h2 style="font-size: 1.25rem; margin-bottom: 1rem;">Latest Transcripts</h2>
+        <div class="transcript-card-grid">
+            {% for episode, feed_title, image_url in recent_transcripts %}
+            <a href="/episodes/{{ episode.id }}" class="transcript-card">
+                <div class="card-artwork">
+                    {% if image_url %}
+                    <img src="{{ image_url }}" alt="" loading="lazy">
+                    {% else %}
+                    <div class="no-artwork-placeholder">🎤</div>
+                    {% endif %}
+                </div>
+                <div class="card-content">
+                    <p class="card-title">{{ episode.title }}</p>
+                    <p class="card-feed">{{ feed_title }}</p>
+                    <p class="card-date">{{ episode.updated_at|timeago }}</p>
+                </div>
+            </a>
+            {% endfor %}
+        </div>
+    </section>
+    {% endif %}
+    <p style="text-align: center; color: var(--muted-color); margin-top: 2rem;">
         {% if index_stats.indexed_episodes == 0 %}
         No transcripts indexed yet. Run <code>cast2md reindex-transcripts</code> to index existing transcripts.
         {% else %}
         Search across {{ index_stats.indexed_episodes }} transcribed episodes.
         {% endif %}
     </p>
-</article>
 {% endif %}
 
 <!-- Episode Detail Modal -->
