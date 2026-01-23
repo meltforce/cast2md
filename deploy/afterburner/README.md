@@ -9,23 +9,22 @@ Local Machine                    RunPod Pod                     cast2md Server
 ┌─────────────┐                 ┌─────────────┐                ┌─────────────┐
 │             │  1. Create pod  │             │                │             │
 │ afterburner ├────────────────►│  GPU Worker │                │   Server    │
-│    .py      │                 │             │                │             │
-│             │  2. SSH setup   │  Tailscale  │  4. Connect    │  (Tailscale │
-│             ├────────────────►│  installed  ├───────────────►│    only)    │
-│             │  (RunPod SSH)   │             │                │             │
+│    .py      │  (from template)│             │                │             │
+│             │                 │  2. Startup │  3. Tailscale  │  (Tailscale │
+│             │                 │     script  ├───────────────►│    only)    │
+│             │                 │   (auto)    │     connect    │             │
 │             │                 │             │                │             │
-│             │  3. Install     │  5. Process │  Poll jobs     │             │
-│             ├────────────────►│     jobs    │◄──────────────►│             │
-│             │  (Tailscale)    │             │                │             │
-│             │                 │             │                │             │
-│             │  6. Terminate   │             │                │             │
-│             │◄────────────────┤             │                │             │
+│             │  5. Terminate   │  4. Process │  Poll jobs     │             │
+│             │◄────────────────┤     jobs    │◄──────────────►│             │
 └─────────────┘   when done     └─────────────┘                └─────────────┘
 ```
 
-The script uses a two-stage SSH approach:
-1. **RunPod SSH** (public IP:port) - Used to install Tailscale and system dependencies
-2. **Tailscale SSH** - Used for cast2md installation and secure server communication
+The script uses a **template-based approach**:
+1. Creates/updates a RunPod template with a startup script
+2. Creates pod from template - startup script runs automatically
+3. Startup script installs Tailscale, cast2md, and starts the worker
+4. Waits for pod to appear on Tailscale
+5. Monitors queue and terminates when empty
 
 ## Prerequisites
 
@@ -39,17 +38,18 @@ The script uses a two-stage SSH approach:
    export RUNPOD_API_KEY="your-api-key"
    ```
 
-### 2. Tailscale Auth Key
+### 2. RunPod Secret for Tailscale
 
-1. Go to [Tailscale Admin Console](https://login.tailscale.com/admin/settings/keys)
-2. Generate new auth key with these settings:
+The Tailscale auth key is stored securely in RunPod Secrets:
+
+1. Generate a Tailscale auth key at [admin/settings/keys](https://login.tailscale.com/admin/settings/keys):
    - ✅ Reusable
    - ✅ Ephemeral (auto-removes when pod terminates)
    - Tags: `tag:runpod`
-3. Store as environment variable:
-   ```bash
-   export TS_AUTH_KEY="tskey-auth-..."
-   ```
+
+2. Create a RunPod secret at [runpod.io/console/user/secrets](https://www.runpod.io/console/user/secrets):
+   - **Name**: `ts_auth_key`
+   - **Value**: Your Tailscale auth key (`tskey-auth-...`)
 
 ### 3. Tailscale ACLs
 
@@ -87,20 +87,10 @@ Ensure your cast2md server has the `tag:server` tag:
 ssh root@cast2md "tailscale up --advertise-tags=tag:server"
 ```
 
-### 5. RunPod GitHub Integration (for private repos)
-
-To install directly from a private GitHub repo:
-
-1. Go to RunPod Settings → GitHub
-2. Connect your GitHub account
-3. Authorize access to the repository
-
-This allows pods to `pip install` directly from your private repo without building/uploading wheels.
-
-### 6. Install Dependencies
+### 5. Install Dependencies
 
 ```bash
-pip install runpod httpx build
+pip install runpod httpx
 ```
 
 ## Usage
@@ -108,6 +98,7 @@ pip install runpod httpx build
 ### Validate Configuration
 
 ```bash
+source deploy/afterburner/.env
 python deploy/afterburner/afterburner.py --dry-run
 ```
 
@@ -115,11 +106,11 @@ This checks:
 - RunPod API connection
 - Tailscale status
 - Server connectivity
-- Wheel build (if using wheel mode)
+- Template creation/update
 
 ### Test Mode
 
-Create pod, verify connectivity, then terminate immediately:
+Create pod, verify Tailscale connectivity, then terminate immediately:
 
 ```bash
 python deploy/afterburner/afterburner.py --test
@@ -134,47 +125,31 @@ python deploy/afterburner/afterburner.py
 ```
 
 The script will:
-1. Build a wheel package (if wheel mode)
-2. Create a RunPod GPU pod
-3. Wait for pod to be running
-4. SSH via RunPod to install Tailscale and ffmpeg
-5. Wait for pod to appear on your Tailscale network
-6. Upload and install cast2md via Tailscale SSH
-7. Register the node with the server
-8. Start the transcriber worker
-9. Monitor queue progress
-10. Auto-terminate when queue is empty
-11. Report runtime and estimated cost
+1. Create/update the RunPod template
+2. Create a GPU pod from the template
+3. Wait for the startup script to install Tailscale and cast2md
+4. Wait for pod to appear on your Tailscale network
+5. Monitor queue progress
+6. Auto-terminate when queue is empty
+7. Report runtime and estimated cost
 
-### Installation Modes
+### Update Template Only
 
-**GitHub Mode (default)** - Recommended:
+To update the template without creating a pod:
+
 ```bash
-python deploy/afterburner/afterburner.py --mode=github
+python deploy/afterburner/afterburner.py --update-template
 ```
-- Installs directly from GitHub
-- Works with private repos if RunPod has GitHub integration
-- No local build required
-- Enables future server-side auto-scaling
-
-**Wheel Mode** - Fallback for repos without GitHub integration:
-```bash
-python deploy/afterburner/afterburner.py --mode=wheel
-```
-- Builds wheel locally
-- Uploads via Tailscale SSH
-- Works without RunPod GitHub integration
 
 ### Environment Variables
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `RUNPOD_API_KEY` | Yes | - | RunPod API key |
-| `TS_AUTH_KEY` | Yes | - | Tailscale auth key (ephemeral, reusable) |
 | `CAST2MD_SERVER_URL` | No | `https://cast2md.leo-royal.ts.net` | Server URL |
 | `TS_HOSTNAME` | No | `runpod-afterburner` | Hostname on Tailscale |
 | `RUNPOD_GPU_TYPE` | No | `NVIDIA GeForce RTX 4090` | GPU type to use |
-| `AFTERBURNER_MODE` | No | `github` | Installation mode |
+| `GITHUB_REPO` | No | `meltforce/cast2md` | GitHub repo to install from |
 
 ### Terminate Existing Pods
 
@@ -198,15 +173,17 @@ Transcription speed is approximately 20x realtime with large-v3 model on RTX 409
 
 ### Pod doesn't appear on Tailscale
 
-1. Check the auth key is valid and not expired
-2. Verify the auth key has the `tag:runpod` tag
-3. Check RunPod pod logs in the dashboard
+1. Check the RunPod secret `ts_auth_key` is set correctly
+2. Verify the auth key is valid and not expired
+3. Check that the auth key has the `tag:runpod` tag
+4. Check RunPod pod logs in the dashboard
 
-### SSH connection refused
+### View startup logs
 
-1. Wait 30-60 seconds after Tailscale connects
-2. Check that SSH is enabled in Tailscale ACLs
-3. Verify your user has access to the `tag:runpod` tag
+SSH into the pod via Tailscale (once connected):
+```bash
+ssh root@runpod-afterburner "cat /var/log/afterburner-startup.log"
+```
 
 ### Node fails to start
 
@@ -227,16 +204,27 @@ ssh root@runpod-afterburner "tail -100 /tmp/cast2md-node.log"
 ## Files
 
 - `afterburner.py` - Main orchestration script
-- `node-setup.sh` - Reference script documenting the setup steps (commands are run via SSH by afterburner.py)
+- `startup.sh` - Startup script that runs when pod boots (downloaded from GitHub)
+- `.env.example` - Example environment configuration
 
-## Future: Server-Side Auto-Scaling
+## How the Template Works
 
-Once the repository is public, the server could trigger pods automatically:
+1. **Template creation**: The script creates a RunPod template with:
+   - Base image: `runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04`
+   - Startup command: Downloads and runs `startup.sh` from GitHub
+   - Environment variables including the Tailscale secret reference
 
-```python
-# In server scheduler
-if pending_jobs > THRESHOLD and no_active_afterburner():
-    spawn_afterburner_pod()  # Uses GitHub mode
-```
+2. **Pod boot sequence**:
+   - Pod starts with the template
+   - Startup script runs automatically
+   - Installs ffmpeg, Tailscale, cast2md
+   - Connects to Tailscale network
+   - Starts the transcription worker
 
-This would eliminate the need for manual triggering.
+3. **Monitoring**: The local script waits for Tailscale to connect, then monitors the queue
+
+## Security
+
+- **Tailscale auth key**: Stored in RunPod Secrets, never exposed in code or logs
+- **Ephemeral nodes**: Pods auto-remove from Tailscale when terminated
+- **Network isolation**: Server only accessible via Tailscale (not public internet)
