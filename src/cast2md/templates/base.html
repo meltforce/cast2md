@@ -75,7 +75,7 @@
             width: 1.1em;
             text-align: center;
         }
-        .progress-dots .dot-empty { color: var(--pico-muted-color); }
+        .progress-dots .dot-empty { color: var(--pico-primary); opacity: 0.35; }
         .progress-dots .dot-half { color: var(--pico-primary); }
         .progress-dots .dot-done { color: var(--pico-primary); }
         .progress-dots .dot-fail { color: #ef4444; }
@@ -153,12 +153,16 @@
         .actions {
             display: flex;
             gap: 0.5rem;
-            min-height: 2rem;
             align-items: center;
         }
         .actions button, .actions a {
             padding: 0.25rem 0.5rem;
             font-size: 0.875rem;
+        }
+        .actions-spacer {
+            display: inline-block;
+            height: 1.75rem;
+            width: 1px;
         }
         pre.transcript {
             white-space: pre-wrap;

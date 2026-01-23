@@ -250,7 +250,7 @@
             </td>
             <td class="actions" style="white-space: nowrap;">
                 {% if episode.id in queued_episode_ids %}
-                    <button class="outline" disabled>...</button>
+                    <span class="actions-spacer"></span>
                 {% elif episode.status.value == 'new' %}
                     {# NEW episodes auto-process, but show Download Audio as fallback #}
                     <button class="outline secondary" onclick="downloadEpisode({{ episode.id }})">Download Audio</button>
@@ -258,12 +258,16 @@
                     <button class="outline secondary" onclick="downloadEpisode({{ episode.id }})" title="Transcript not ready yet - download audio for Whisper instead">Download Audio</button>
                 {% elif episode.status.value == 'needs_audio' %}
                     <button class="outline secondary" onclick="downloadEpisode({{ episode.id }})" title="No external transcript available - use Whisper">Download Audio</button>
+                {% elif episode.status.value == 'downloading' or episode.status.value == 'transcribing' %}
+                    <span class="actions-spacer"></span>
                 {% elif episode.status.value == 'audio_ready' %}
-                    <button class="outline" onclick="transcribeEpisode({{ episode.id }}, this)">Transcribe</button>
+                    <button class="outline secondary" onclick="transcribeEpisode({{ episode.id }}, this)">Transcribe</button>
                 {% elif episode.status.value == 'completed' and episode.transcript_path %}
-                    <a href="/episodes/{{ episode.id }}" class="outline" role="button">View</a>
+                    <a href="/episodes/{{ episode.id }}" class="outline secondary" role="button">View</a>
                 {% elif episode.status.value == 'failed' %}
                     <button class="outline secondary" onclick="retryEpisode({{ episode.id }})">Retry</button>
+                {% else %}
+                    <span class="actions-spacer"></span>
                 {% endif %}
             </td>
         </tr>
@@ -492,7 +496,7 @@ function updateEpisodeRow(row, ep) {
 
     // Update actions based on new status
     if (isQueued) {
-        actionsCell.innerHTML = '<button class="outline" disabled>...</button>';
+        actionsCell.innerHTML = '<span class="actions-spacer"></span>';
         if (checkbox) checkbox.disabled = true;
     } else if (ep.status === 'new') {
         actionsCell.innerHTML = `<button class="outline secondary" onclick="downloadEpisode(${ep.id})">Download Audio</button>`;
@@ -504,17 +508,17 @@ function updateEpisodeRow(row, ep) {
         actionsCell.innerHTML = `<button class="outline secondary" onclick="downloadEpisode(${ep.id})" title="No external transcript available - use Whisper">Download Audio</button>`;
         if (checkbox) checkbox.disabled = true;
     } else if (ep.status === 'audio_ready') {
-        actionsCell.innerHTML = `<button class="outline" onclick="transcribeEpisode(${ep.id}, this)">Transcribe</button>`;
+        actionsCell.innerHTML = `<button class="outline secondary" onclick="transcribeEpisode(${ep.id}, this)">Transcribe</button>`;
         if (checkbox) checkbox.disabled = true;
     } else if (ep.status === 'completed') {
-        actionsCell.innerHTML = `<a href="/episodes/${ep.id}" class="outline" role="button">View</a>`;
+        actionsCell.innerHTML = `<a href="/episodes/${ep.id}" class="outline secondary" role="button">View</a>`;
         if (checkbox) checkbox.disabled = true;
     } else if (ep.status === 'failed') {
         actionsCell.innerHTML = `<button class="outline secondary" onclick="retryEpisode(${ep.id})">Retry</button>`;
         if (checkbox) checkbox.disabled = true;
     } else {
-        // downloading, transcribing - show disabled button to prevent layout jump
-        actionsCell.innerHTML = '<button class="outline" disabled>...</button>';
+        // downloading, transcribing - spacer to maintain row height
+        actionsCell.innerHTML = '<span class="actions-spacer"></span>';
         if (checkbox) checkbox.disabled = true;
     }
 }
