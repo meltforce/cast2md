@@ -176,25 +176,6 @@
             track.scrollBy({ left: direction * scrollAmount, behavior: 'smooth' });
         }
 
-        // Update arrow visibility based on scroll position
-        function updateCarouselArrows() {
-            const track = document.getElementById('carouselTrack');
-            if (!track) return;
-
-            const leftArrow = document.querySelector('.carousel-arrow-left');
-            const rightArrow = document.querySelector('.carousel-arrow-right');
-
-            leftArrow.style.opacity = track.scrollLeft <= 0 ? '0.3' : '1';
-            rightArrow.style.opacity = track.scrollLeft >= track.scrollWidth - track.offsetWidth - 10 ? '0.3' : '1';
-        }
-
-        document.addEventListener('DOMContentLoaded', () => {
-            const track = document.getElementById('carouselTrack');
-            if (track) {
-                track.addEventListener('scroll', updateCarouselArrows);
-                updateCarouselArrows();
-            }
-        });
         </script>
     </section>
     {% endif %}
