@@ -475,13 +475,15 @@ def cmd_list_backups():
 
 @cli.command("reindex-transcripts")
 @click.option("--feed-id", "-f", type=int, help="Only reindex transcripts for this feed")
-def cmd_reindex_transcripts(feed_id: int | None):
+@click.option("--embeddings", "-e", is_flag=True, help="Also regenerate embeddings for semantic search")
+def cmd_reindex_transcripts(feed_id: int | None, embeddings: bool):
     """Reindex all transcripts for full-text search.
 
-    Parses transcript markdown files and indexes them into the FTS5
+    Parses transcript markdown files and indexes them into the FTS
     search table. This enables fast full-text search across all transcripts.
 
     Use --feed-id to limit reindexing to a specific feed.
+    Use --embeddings to also regenerate embeddings for semantic search.
     """
     from cast2md.search.repository import TranscriptSearchRepository
 
@@ -519,10 +521,10 @@ def cmd_reindex_transcripts(feed_id: int | None):
 
         click.echo(f"Found {len(episode_transcripts)} transcripts to index")
 
-        # Reindex all
+        # Reindex FTS
         with click.progressbar(
             episode_transcripts.items(),
-            label="Indexing transcripts",
+            label="Indexing transcripts (FTS)",
             length=len(episode_transcripts),
         ) as items:
             episodes_indexed = 0
@@ -537,6 +539,29 @@ def cmd_reindex_transcripts(feed_id: int | None):
     click.echo()
     click.echo(f"Indexed {episodes_indexed} episodes with {segments_indexed} segments")
     click.echo("Full-text search is now available via /api/search/transcripts")
+
+    # Reindex embeddings if requested
+    if embeddings:
+        click.echo()
+        click.echo("Regenerating embeddings for semantic search...")
+
+        with get_db() as conn:
+            search_repo = TranscriptSearchRepository(conn)
+
+            with click.progressbar(
+                episode_transcripts.items(),
+                label="Generating embeddings",
+                length=len(episode_transcripts),
+            ) as items:
+                embedded_count = 0
+                for episode_id, transcript_path in items:
+                    count = search_repo.index_episode_embeddings(episode_id, transcript_path)
+                    if count > 0:
+                        embedded_count += 1
+
+        click.echo()
+        click.echo(f"Generated embeddings for {embedded_count} episodes")
+        click.echo("Semantic search is now available")
 
 
 @cli.command("reindex-episodes")
