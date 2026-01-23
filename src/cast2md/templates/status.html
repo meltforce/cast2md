@@ -19,8 +19,8 @@
         <p>Feeds</p>
     </div>
     <div class="stat-card">
-        <h3>{{ status_counts.get('pending', 0) }}</h3>
-        <p>Pending</p>
+        <h3>{{ status_counts.get('new', 0) }}</h3>
+        <p>New</p>
     </div>
     <div class="stat-card">
         <h3>{{ queue_status.download_queue.queued + queue_status.transcribe_queue.queued }}</h3>
@@ -74,7 +74,7 @@
                     {% elif worker.status == 'stuck' %}
                     <span class="status-badge status-failed">stuck</span>
                     {% else %}
-                    <span class="status-badge status-pending">idle</span>
+                    <span class="status-badge status-new">idle</span>
                     {% endif %}
                 </td>
                 <td>
@@ -345,7 +345,7 @@ async function cancelJob(jobId) {
 }
 
 async function queueAllPending() {
-    if (!confirm('Queue all pending episodes for processing?')) {
+    if (!confirm('Queue all new episodes for processing?')) {
         return;
     }
 

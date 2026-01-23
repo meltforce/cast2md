@@ -271,9 +271,9 @@ def feed_detail(
         # Get transcript source stats for this feed
         transcript_stats = episode_repo.get_transcript_source_stats(feed_id)
 
-        # Count episodes needing transcription (pending or transcript_unavailable)
-        pending_count = episode_repo.count_by_feed_and_status(feed_id, EpisodeStatus.PENDING)
-        unavailable_count = episode_repo.count_by_feed_and_status(feed_id, EpisodeStatus.TRANSCRIPT_UNAVAILABLE)
+        # Count episodes needing transcription (new or needs_audio)
+        pending_count = episode_repo.count_by_feed_and_status(feed_id, EpisodeStatus.NEW)
+        unavailable_count = episode_repo.count_by_feed_and_status(feed_id, EpisodeStatus.NEEDS_AUDIO)
         needs_transcription_count = pending_count + unavailable_count
 
         # Get set of episode IDs that have pending/running jobs (for "queued" display)
@@ -375,9 +375,9 @@ def status_page(request: Request):
         feeds = feed_repo.get_all()
 
         # Get recent episodes for each active status
-        pending = episode_repo.get_by_status(EpisodeStatus.PENDING, limit=10)
+        pending = episode_repo.get_by_status(EpisodeStatus.NEW, limit=10)
         downloading = episode_repo.get_by_status(EpisodeStatus.DOWNLOADING, limit=10)
-        downloaded = episode_repo.get_by_status(EpisodeStatus.DOWNLOADED, limit=10)
+        downloaded = episode_repo.get_by_status(EpisodeStatus.AUDIO_READY, limit=10)
         transcribing = episode_repo.get_by_status(EpisodeStatus.TRANSCRIBING, limit=10)
         failed = episode_repo.get_by_status(EpisodeStatus.FAILED, limit=10)
 

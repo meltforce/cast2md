@@ -44,8 +44,8 @@ def retry_pending_transcripts():
     """Retry transcript downloads for episodes that are due.
 
     Runs hourly to check for:
-    1. Episodes with status=transcript_pending and next_transcript_retry_at <= now
-       - If episode age >= 7 days: mark as transcript_unavailable (aged out)
+    1. Episodes with status=awaiting_transcript and next_transcript_retry_at <= now
+       - If episode age >= 7 days: mark as needs_audio (aged out)
        - Else: queue TRANSCRIPT_DOWNLOAD job for retry
 
     This handles the case where Pocket Casts returns 403 for new episodes
@@ -71,16 +71,16 @@ def retry_pending_transcripts():
         for episode in episodes:
             # Check if episode has aged out (>= 7 days old)
             if episode.published_at and episode.published_at < seven_days_ago:
-                # Transition to transcript_unavailable
+                # Transition to needs_audio
                 episode_repo.update_transcript_check(
                     episode.id,
-                    status=EpisodeStatus.TRANSCRIPT_UNAVAILABLE,
+                    status=EpisodeStatus.NEEDS_AUDIO,
                     checked_at=now,
                     next_retry_at=None,
                     failure_reason=episode.transcript_failure_reason,
                 )
                 aged_out += 1
-                logger.debug(f"Episode '{episode.title}' aged out, marking as transcript_unavailable")
+                logger.debug(f"Episode '{episode.title}' aged out, marking as needs_audio")
                 continue
 
             # Check if already has pending job

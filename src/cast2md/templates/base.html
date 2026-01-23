@@ -21,17 +21,27 @@
             text-transform: uppercase;
         }
         /* Status badges - use CSS variables for dark mode compatibility */
-        .status-pending {
+        .status-new {
             background: color-mix(in srgb, var(--pico-color) 10%, transparent);
             color: var(--pico-color);
             border: 1px solid color-mix(in srgb, var(--pico-color) 30%, transparent);
+        }
+        .status-awaiting_transcript {
+            background: color-mix(in srgb, #fbbf24 15%, transparent);
+            color: #f59e0b;
+            border: 1px solid color-mix(in srgb, #fbbf24 40%, transparent);
+        }
+        .status-needs_audio {
+            background: color-mix(in srgb, #9ca3af 15%, transparent);
+            color: #9ca3af;
+            border: 1px solid color-mix(in srgb, #9ca3af 40%, transparent);
         }
         .status-downloading {
             background: color-mix(in srgb, var(--pico-primary) 15%, transparent);
             color: var(--pico-primary);
             border: 1px solid color-mix(in srgb, var(--pico-primary) 40%, transparent);
         }
-        .status-downloaded {
+        .status-audio_ready {
             background: color-mix(in srgb, var(--pico-secondary) 15%, transparent);
             color: var(--pico-secondary);
             border: 1px solid color-mix(in srgb, var(--pico-secondary) 40%, transparent);
@@ -51,16 +61,23 @@
             color: #ef4444;
             border: 1px solid color-mix(in srgb, #ef4444 40%, transparent);
         }
-        .status-transcript_pending {
-            background: color-mix(in srgb, #fbbf24 15%, transparent);
-            color: #f59e0b;
-            border: 1px solid color-mix(in srgb, #fbbf24 40%, transparent);
+        /* Progress dots for pipeline visualization */
+        .progress-dots {
+            font-family: monospace;
+            font-size: 0.9rem;
+            letter-spacing: 0.1em;
+            cursor: default;
+            white-space: nowrap;
         }
-        .status-transcript_unavailable {
-            background: color-mix(in srgb, #9ca3af 15%, transparent);
-            color: #9ca3af;
-            border: 1px solid color-mix(in srgb, #9ca3af 40%, transparent);
+        .progress-dots .dot {
+            display: inline-block;
+            width: 1em;
+            text-align: center;
         }
+        .progress-dots .dot-empty { color: var(--pico-muted-color); }
+        .progress-dots .dot-half { color: var(--pico-primary); }
+        .progress-dots .dot-done { color: #22c55e; }
+        .progress-dots .dot-fail { color: #ef4444; }
         /* Mobile responsive navigation */
         @media (max-width: 600px) {
             nav.container {

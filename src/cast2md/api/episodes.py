@@ -212,7 +212,7 @@ def trigger_download(episode_id: int):
             episode = episode_repo.get_by_id(episode_id)
 
         # Only transcribe if not already done or in progress
-        if episode.status == EpisodeStatus.DOWNLOADED:
+        if episode.status == EpisodeStatus.AUDIO_READY:
             transcript_path = transcribe_episode(episode, feed)
             return MessageResponse(
                 message="Download and transcription completed",

@@ -467,7 +467,7 @@ def batch_queue_feed(feed_id: int, request: BatchQueueRequest | None = None):
         episodes = episode_repo.get_by_feed(feed_id, limit=10000)
         needs_transcription = [
             e for e in episodes
-            if e.status in (EpisodeStatus.PENDING, EpisodeStatus.TRANSCRIPT_UNAVAILABLE)
+            if e.status in (EpisodeStatus.NEW, EpisodeStatus.NEEDS_AUDIO)
         ]
 
         queued = 0
@@ -509,7 +509,7 @@ def batch_queue_transcript_download(feed_id: int, request: BatchQueueRequest | N
         job_repo = JobRepository(conn)
 
         episodes = episode_repo.get_by_feed(feed_id, limit=10000)
-        pending = [e for e in episodes if e.status == EpisodeStatus.PENDING]
+        pending = [e for e in episodes if e.status == EpisodeStatus.NEW]
 
         queued = 0
         skipped = 0
@@ -559,7 +559,7 @@ def batch_queue_all(request: BatchQueueRequest | None = None):
         for feed in feeds:
             # TODO: Add get_by_feed_and_status() for more efficient querying
             episodes = episode_repo.get_by_feed(feed.id, limit=10000)
-            pending = [e for e in episodes if e.status == EpisodeStatus.PENDING]
+            pending = [e for e in episodes if e.status == EpisodeStatus.NEW]
 
             for episode in pending:
                 if job_repo.has_pending_job(episode.id, JobType.DOWNLOAD):
@@ -627,7 +627,7 @@ def batch_queue_episodes(request: BatchQueueByIdsRequest):
                 continue
 
             # Skip if not pending or already has a job
-            if episode.status != EpisodeStatus.PENDING:
+            if episode.status != EpisodeStatus.NEW:
                 skipped += 1
                 continue
 
@@ -700,7 +700,7 @@ def batch_queue_by_range(request: BatchQueueByRangeRequest):
             all_episodes = filtered
 
         # Filter to pending only
-        pending = [e for e in all_episodes if e.status == EpisodeStatus.PENDING]
+        pending = [e for e in all_episodes if e.status == EpisodeStatus.NEW]
 
         queued = 0
         skipped = 0
@@ -1049,7 +1049,7 @@ def get_retranscribe_info(feed_id: int):
 def queue_retranscribe(episode_id: int, request: QueueEpisodeRequest | None = None):
     """Queue an episode for re-transcription with the current model.
 
-    Resets the episode status to DOWNLOADED and creates a transcribe job.
+    Resets the episode status to AUDIO_READY and creates a transcribe job.
     Returns 409 if the episode already uses the current model.
     """
     from cast2md.config.settings import get_settings
@@ -1089,8 +1089,8 @@ def queue_retranscribe(episode_id: int, request: QueueEpisodeRequest | None = No
         if job_repo.has_pending_job(episode_id, JobType.TRANSCRIBE):
             raise HTTPException(status_code=409, detail="Transcription already queued")
 
-        # Reset status to DOWNLOADED so it can be re-transcribed
-        episode_repo.update_status(episode_id, EpisodeStatus.DOWNLOADED)
+        # Reset status to AUDIO_READY so it can be re-transcribed
+        episode_repo.update_status(episode_id, EpisodeStatus.AUDIO_READY)
 
         # Create transcription job
         job = job_repo.create(
@@ -1135,8 +1135,8 @@ def batch_retranscribe_feed(feed_id: int, request: BatchQueueRequest | None = No
                 skipped += 1
                 continue
 
-            # Reset status to DOWNLOADED
-            episode_repo.update_status(episode.id, EpisodeStatus.DOWNLOADED)
+            # Reset status to AUDIO_READY
+            episode_repo.update_status(episode.id, EpisodeStatus.AUDIO_READY)
 
             # Create transcription job
             job_repo.create(
@@ -1157,7 +1157,7 @@ def batch_retranscribe_feed(feed_id: int, request: BatchQueueRequest | None = No
 def force_transcript_retry(episode_id: int, request: QueueEpisodeRequest | None = None):
     """Force retry transcript download for an episode.
 
-    Resets transcript_unavailable or transcript_pending status back to pending
+    Resets needs_audio or awaiting_transcript status back to new
     and queues a TRANSCRIPT_DOWNLOAD job. Useful for retrying after external
     transcripts become available.
     """
@@ -1173,11 +1173,11 @@ def force_transcript_retry(episode_id: int, request: QueueEpisodeRequest | None 
         if not episode:
             raise HTTPException(status_code=404, detail="Episode not found")
 
-        # Only allow for transcript_pending or transcript_unavailable
-        if episode.status not in (EpisodeStatus.TRANSCRIPT_PENDING, EpisodeStatus.TRANSCRIPT_UNAVAILABLE):
+        # Only allow for awaiting_transcript or needs_audio
+        if episode.status not in (EpisodeStatus.AWAITING_TRANSCRIPT, EpisodeStatus.NEEDS_AUDIO):
             raise HTTPException(
                 status_code=400,
-                detail=f"Can only force retry for transcript_pending or transcript_unavailable episodes (current: {episode.status.value})"
+                detail=f"Can only force retry for awaiting_transcript or needs_audio episodes (current: {episode.status.value})"
             )
 
         # Check if already has pending job
@@ -1187,7 +1187,7 @@ def force_transcript_retry(episode_id: int, request: QueueEpisodeRequest | None 
         # Reset status to pending and clear retry tracking
         episode_repo.update_transcript_check(
             episode_id,
-            status=EpisodeStatus.PENDING,
+            status=EpisodeStatus.NEW,
             checked_at=None,
             next_retry_at=None,
             failure_reason=None,

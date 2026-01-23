@@ -88,8 +88,9 @@ def get_feed(feed_id: int) -> str:
         if feed.get("episodes"):
             lines.append("## Recent Episodes\n")
             for ep in feed["episodes"][:25]:
-                status = ep.get("status", "pending")
-                status_icon = {"pending": "[ ]", "downloading": "[D]", "downloaded": "[d]",
+                status = ep.get("status", "new")
+                status_icon = {"new": "[ ]", "awaiting_transcript": "[A]", "needs_audio": "[N]",
+                              "downloading": "[D]", "audio_ready": "[d]",
                               "transcribing": "[T]", "completed": "[x]", "failed": "[!]"}.get(status, "[ ]")
                 pub_date = ep.get("published_at", "Unknown")[:10] if ep.get("published_at") else "Unknown"
                 lines.append(f"- {status_icon} **{ep['title']}** (ID: {ep['id']})")
@@ -132,9 +133,11 @@ def get_feed(feed_id: int) -> str:
         else:
             for ep in episodes:
                 status_icon = {
-                    EpisodeStatus.PENDING: "[ ]",
+                    EpisodeStatus.NEW: "[ ]",
+                    EpisodeStatus.AWAITING_TRANSCRIPT: "[A]",
+                    EpisodeStatus.NEEDS_AUDIO: "[N]",
                     EpisodeStatus.DOWNLOADING: "[D]",
-                    EpisodeStatus.DOWNLOADED: "[d]",
+                    EpisodeStatus.AUDIO_READY: "[d]",
                     EpisodeStatus.TRANSCRIBING: "[T]",
                     EpisodeStatus.COMPLETED: "[x]",
                     EpisodeStatus.FAILED: "[!]",
