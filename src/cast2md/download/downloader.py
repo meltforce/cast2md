@@ -260,7 +260,7 @@ def download_episode(episode: Episode, feed: Feed) -> Path:
 
             # Update episode with path and status
             repo.update_audio_path(episode.id, str(dest_path))
-            repo.update_status(episode.id, EpisodeStatus.DOWNLOADED)
+            repo.update_status(episode.id, EpisodeStatus.AUDIO_READY)
 
             return dest_path
 

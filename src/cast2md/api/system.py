@@ -17,9 +17,11 @@ router = APIRouter(prefix="/api", tags=["system"])
 class StatusCounts(BaseModel):
     """Episode counts by status."""
 
-    pending: int = 0
+    new: int = 0
+    awaiting_transcript: int = 0
+    needs_audio: int = 0
     downloading: int = 0
-    downloaded: int = 0
+    audio_ready: int = 0
     transcribing: int = 0
     completed: int = 0
     failed: int = 0
@@ -50,17 +52,21 @@ def get_status():
         status_counts = episode_repo.count_by_status()
 
     counts = StatusCounts(
-        pending=status_counts.get(EpisodeStatus.PENDING.value, 0),
+        new=status_counts.get(EpisodeStatus.NEW.value, 0),
+        awaiting_transcript=status_counts.get(EpisodeStatus.AWAITING_TRANSCRIPT.value, 0),
+        needs_audio=status_counts.get(EpisodeStatus.NEEDS_AUDIO.value, 0),
         downloading=status_counts.get(EpisodeStatus.DOWNLOADING.value, 0),
-        downloaded=status_counts.get(EpisodeStatus.DOWNLOADED.value, 0),
+        audio_ready=status_counts.get(EpisodeStatus.AUDIO_READY.value, 0),
         transcribing=status_counts.get(EpisodeStatus.TRANSCRIBING.value, 0),
         completed=status_counts.get(EpisodeStatus.COMPLETED.value, 0),
         failed=status_counts.get(EpisodeStatus.FAILED.value, 0),
     )
     counts.total = sum([
-        counts.pending,
+        counts.new,
+        counts.awaiting_transcript,
+        counts.needs_audio,
         counts.downloading,
-        counts.downloaded,
+        counts.audio_ready,
         counts.transcribing,
         counts.completed,
         counts.failed,

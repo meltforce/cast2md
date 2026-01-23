@@ -9,6 +9,18 @@ logger = logging.getLogger(__name__)
 MIGRATIONS: list[dict] = [
     # Initial schema is version 10
     # Future migrations go here as the schema evolves
+    {
+        "version": 11,
+        "description": "Rename episode status values for improved UX",
+        "sql": [
+            "UPDATE episode SET status = 'new' WHERE status = 'pending'",
+            "UPDATE episode SET status = 'awaiting_transcript' WHERE status = 'transcript_pending'",
+            "UPDATE episode SET status = 'needs_audio' WHERE status = 'transcript_unavailable'",
+            "UPDATE episode SET status = 'audio_ready' WHERE status = 'downloaded'",
+            # Also update the default value for the column
+            "ALTER TABLE episode ALTER COLUMN status SET DEFAULT 'new'",
+        ],
+    },
 ]
 
 

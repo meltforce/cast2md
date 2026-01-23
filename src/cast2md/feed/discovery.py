@@ -352,23 +352,23 @@ def discover_new_episodes(
                     episode_age = now - episode.published_at
 
                 if not has_external_url and episode_age >= unavailable_age:
-                    # Old episode with no external URL - mark as unavailable, skip queuing
+                    # Old episode with no external URL - mark as needs_audio, skip queuing
                     episode_repo.update_transcript_check(
                         episode.id,
-                        status=EpisodeStatus.TRANSCRIPT_UNAVAILABLE,
+                        status=EpisodeStatus.NEEDS_AUDIO,
                         checked_at=now,
                         next_retry_at=None,
                         failure_reason="no_external_url_old_episode",
                     )
                     logger.debug(
-                        f"Marked old episode as transcript unavailable: {episode.title} "
+                        f"Marked old episode as needs_audio: {episode.title} "
                         f"(age: {episode_age.days}d, threshold: {unavailable_age.days}d)"
                     )
                     continue
 
                 # Queue transcript download job with priority 1 (high) for new episodes
                 # This tries external providers first (Podcast 2.0, Pocket Casts)
-                # If no transcript available, episode stays PENDING for manual download
+                # If no transcript available, episode stays NEW for manual download
                 job_repo.create(
                     episode_id=episode_id,
                     job_type=JobType.TRANSCRIPT_DOWNLOAD,

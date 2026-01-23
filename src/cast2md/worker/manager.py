@@ -397,7 +397,7 @@ class WorkerManager:
         Tries to download transcript from external providers (Podcast 2.0, Pocket Casts).
         If successful, saves the transcript and marks episode as COMPLETED.
         If 403 error, marks episode with retry info based on age.
-        If no transcript is available, episode stays PENDING for manual audio download.
+        If no transcript is available, episode stays NEW for manual audio download.
         """
         from datetime import datetime, timedelta
 
@@ -480,7 +480,7 @@ class WorkerManager:
 
                     if episode_age < timedelta(days=7):
                         # New episode - might get transcript later, schedule retry
-                        new_status = EpisodeStatus.TRANSCRIPT_PENDING
+                        new_status = EpisodeStatus.AWAITING_TRANSCRIPT
                         next_retry = now + timedelta(hours=24)
                         logger.info(
                             f"Episode {episode.title} got {result.error_type}, "
@@ -488,7 +488,7 @@ class WorkerManager:
                         )
                     else:
                         # Old episode - transcript won't appear, mark as unavailable
-                        new_status = EpisodeStatus.TRANSCRIPT_UNAVAILABLE
+                        new_status = EpisodeStatus.NEEDS_AUDIO
                         next_retry = None
                         logger.info(
                             f"Episode {episode.title} got {result.error_type}, "
@@ -506,8 +506,8 @@ class WorkerManager:
 
             else:
                 # No transcript available from any provider (result is None)
-                # Check if episode is old - if so, mark as unavailable
-                # Otherwise, leave in PENDING for user to manually queue download
+                # Check if episode is old - if so, mark as needs_audio
+                # Otherwise, leave in NEW for user to manually queue download
                 settings = get_settings()
                 unavailable_age = timedelta(days=settings.transcript_unavailable_age_days)
                 episode_age = timedelta(days=365)  # Default to old if no published date
@@ -519,30 +519,30 @@ class WorkerManager:
                     job_repo = JobRepository(conn)
 
                     if episode_age >= unavailable_age:
-                        # Old episode with no external transcript - mark as unavailable
+                        # Old episode with no external transcript - mark as needs_audio
                         episode_repo.update_transcript_check(
                             episode.id,
-                            status=EpisodeStatus.TRANSCRIPT_UNAVAILABLE,
+                            status=EpisodeStatus.NEEDS_AUDIO,
                             checked_at=now,
                             next_retry_at=None,
                             failure_reason="no_external_url_old_episode",
                         )
                         logger.info(
-                            f"Marked old episode as transcript unavailable: {episode.title} "
+                            f"Marked old episode as needs_audio: {episode.title} "
                             f"(age: {episode_age.days}d)"
                         )
                     else:
-                        # Newer episode - leave in PENDING for potential future transcripts
+                        # Newer episode - leave in NEW for potential future transcripts
                         episode_repo.update_transcript_check(
                             episode.id,
-                            status=EpisodeStatus.PENDING,
+                            status=EpisodeStatus.NEW,
                             checked_at=now,
                             next_retry_at=None,
                             failure_reason=None,
                         )
                         logger.info(
                             f"No external transcript for episode: {episode.title} "
-                            f"(age: {episode_age.days}d, stays PENDING)"
+                            f"(age: {episode_age.days}d, stays NEW)"
                         )
 
                     job_repo.mark_completed(job_id)

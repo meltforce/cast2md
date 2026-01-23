@@ -247,7 +247,7 @@ async function loadSettings() {
             const row = document.createElement('tr');
 
             // Determine source badge styling
-            let sourceClass = 'status-pending';
+            let sourceClass = 'status-new';
             let sourceText = info.source;
             if (info.source === 'database') {
                 sourceClass = 'status-completed';
@@ -498,7 +498,7 @@ async function loadNodes() {
                 ? new Date(node.last_heartbeat).toLocaleString()
                 : 'Never';
 
-            let statusClass = 'status-pending';
+            let statusClass = 'status-new';
             if (node.status === 'online') statusClass = 'status-completed';
             else if (node.status === 'busy') statusClass = 'status-downloading';
             else if (node.status === 'offline') statusClass = 'status-failed';

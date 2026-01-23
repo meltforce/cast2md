@@ -32,7 +32,7 @@ SCHEMA_STATEMENTS = [
         audio_url TEXT NOT NULL,
         duration_seconds INTEGER,
         published_at TIMESTAMP,
-        status TEXT NOT NULL DEFAULT 'pending',
+        status TEXT NOT NULL DEFAULT 'new',
         audio_path TEXT,
         transcript_path TEXT,
         transcript_url TEXT,

@@ -218,7 +218,7 @@ class EpisodeRepository:
             """,
             (
                 feed_id, guid, title, description, audio_url,
-                duration_seconds, published_str, EpisodeStatus.PENDING.value,
+                duration_seconds, published_str, EpisodeStatus.NEW.value,
                 transcript_url, transcript_type, link, author, now, now,
             ),
         )
@@ -448,9 +448,9 @@ class EpisodeRepository:
 
         Args:
             episode_id: Episode ID to update.
-            status: New status (PENDING, TRANSCRIPT_PENDING, or TRANSCRIPT_UNAVAILABLE).
+            status: New status (NEW, AWAITING_TRANSCRIPT, or NEEDS_AUDIO).
             checked_at: When the check was performed (None to clear).
-            next_retry_at: When to retry (for TRANSCRIPT_PENDING), or None.
+            next_retry_at: When to retry (for AWAITING_TRANSCRIPT), or None.
             failure_reason: Type of failure (e.g., 'forbidden'), or None.
         """
         now = datetime.now().isoformat()
@@ -472,7 +472,7 @@ class EpisodeRepository:
         """Get episodes that are due for transcript retry.
 
         Returns episodes with:
-        - status = 'transcript_pending'
+        - status = 'awaiting_transcript'
         - next_transcript_retry_at <= now
 
         Returns:
@@ -488,7 +488,7 @@ class EpisodeRepository:
               AND next_transcript_retry_at <= %s
             ORDER BY next_transcript_retry_at ASC
             """,
-            (EpisodeStatus.TRANSCRIPT_PENDING.value, now),
+            (EpisodeStatus.AWAITING_TRANSCRIPT.value, now),
         )
         return [Episode.from_row(row) for row in cursor.fetchall()]
 
@@ -1472,17 +1472,17 @@ class JobRepository:
                     execute(
                         self.conn,
                         "UPDATE episode SET status = %s WHERE id = %s",
-                        (EpisodeStatus.PENDING.value, episode_id),
+                        (EpisodeStatus.NEW.value, episode_id),
                     )
                 elif job_type == JobType.TRANSCRIBE.value:
                     execute(
                         self.conn,
                         "UPDATE episode SET status = %s WHERE id = %s",
-                        (EpisodeStatus.DOWNLOADED.value, episode_id),
+                        (EpisodeStatus.AUDIO_READY.value, episode_id),
                     )
                 elif job_type == JobType.TRANSCRIPT_DOWNLOAD.value:
                     # Transcript download jobs don't change episode status during processing
-                    # Episode stays in PENDING until transcript is found or user queues download
+                    # Episode stays in NEW until transcript is found or user queues download
                     pass
 
         self.conn.commit()

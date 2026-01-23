@@ -30,11 +30,11 @@ def parse_datetime(value) -> Optional[datetime]:
 class EpisodeStatus(str, Enum):
     """Episode processing status."""
 
-    PENDING = "pending"
-    TRANSCRIPT_PENDING = "transcript_pending"  # Got 403, will retry (< 7 days old)
-    TRANSCRIPT_UNAVAILABLE = "transcript_unavailable"  # Won't retry (>= 7 days old)
+    NEW = "new"  # Just discovered, ready to process
+    AWAITING_TRANSCRIPT = "awaiting_transcript"  # Checking external sources, will retry
+    NEEDS_AUDIO = "needs_audio"  # No external transcript, audio download required
     DOWNLOADING = "downloading"
-    DOWNLOADED = "downloaded"
+    AUDIO_READY = "audio_ready"  # Audio downloaded, ready for Whisper
     TRANSCRIBING = "transcribing"
     COMPLETED = "completed"
     FAILED = "failed"

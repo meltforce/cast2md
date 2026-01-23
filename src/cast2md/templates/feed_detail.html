@@ -190,7 +190,7 @@
             data-is-queued="{{ 'true' if episode.id in queued_episode_ids else 'false' }}">
             <td>
                 <input type="checkbox" class="episode-checkbox" value="{{ episode.id }}"
-                       onchange="updateSelectedCount()" {% if episode.status.value != 'pending' or episode.id in queued_episode_ids %}disabled{% endif %}>
+                       onchange="updateSelectedCount()" {% if episode.status.value != 'new' or episode.id in queued_episode_ids %}disabled{% endif %}>
             </td>
             <td>
                 {% set ep_params = [] %}
@@ -204,7 +204,7 @@
             </td>
             <td style="white-space: nowrap;">{{ episode.published_at.strftime('%Y-%m-%d') if episode.published_at else 'Unknown' }}</td>
             <td style="white-space: nowrap;">
-                {% if episode.id in queued_episode_ids and episode.status.value == 'pending' %}
+                {% if episode.id in queued_episode_ids and episode.status.value == 'new' %}
                 <span class="status-badge status-downloading">queued</span>
                 {% else %}
                 <span class="status-badge status-{{ episode.status.value }}">{{ episode.status.value }}</span>
@@ -213,17 +213,14 @@
             <td class="actions" style="white-space: nowrap;">
                 {% if episode.id in queued_episode_ids %}
                     <button class="outline" disabled>...</button>
-                {% elif episode.status.value == 'pending' %}
-                    {% if episode.transcript_url or episode.pocketcasts_transcript_url %}
-                        <button class="outline" onclick="tryTranscript({{ episode.id }}, this)">Get Transcript</button>
-                    {% else %}
-                        <button class="outline secondary" onclick="downloadEpisode({{ episode.id }})">Download Audio</button>
-                    {% endif %}
-                {% elif episode.status.value == 'transcript_pending' %}
+                {% elif episode.status.value == 'new' %}
+                    {# NEW episodes auto-process, but show Download Audio as fallback #}
+                    <button class="outline secondary" onclick="downloadEpisode({{ episode.id }})">Download Audio</button>
+                {% elif episode.status.value == 'awaiting_transcript' %}
                     <button class="outline secondary" onclick="downloadEpisode({{ episode.id }})" title="Transcript not ready yet - download audio for Whisper instead">Download Audio</button>
-                {% elif episode.status.value == 'transcript_unavailable' %}
+                {% elif episode.status.value == 'needs_audio' %}
                     <button class="outline secondary" onclick="downloadEpisode({{ episode.id }})" title="No external transcript available - use Whisper">Download Audio</button>
-                {% elif episode.status.value == 'downloaded' %}
+                {% elif episode.status.value == 'audio_ready' %}
                     <button class="outline" onclick="transcribeEpisode({{ episode.id }}, this)">Transcribe</button>
                 {% elif episode.status.value == 'completed' and episode.transcript_path %}
                     <a href="/episodes/{{ episode.id }}" class="outline" role="button">View</a>
@@ -380,9 +377,9 @@ async function pollEpisodeStatus() {
             const currentStatus = statusBadge.textContent.trim();
 
             // Check if status changed
-            // Update unless we show 'queued' and API still shows 'pending' (job not started yet)
+            // Update unless we show 'queued' and API still shows 'new' (job not started yet)
             if (currentStatus !== ep.status) {
-                if (!(currentStatus === 'queued' && ep.status === 'pending')) {
+                if (!(currentStatus === 'queued' && ep.status === 'new')) {
                     updateEpisodeRow(row, ep);
                 }
             }
@@ -408,12 +405,11 @@ function updateEpisodeRow(row, ep) {
     const statusBadge = row.querySelector('.status-badge');
     const actionsCell = row.querySelector('.actions');
     const checkbox = row.querySelector('.episode-checkbox');
-    const hasExternalTranscript = row.dataset.hasExternalTranscript === 'true';
     const wasQueued = row.dataset.isQueued === 'true';
 
-    // Determine if this is a "queued" state (job is running but episode status is still pending)
+    // Determine if this is a "queued" state (job is running but episode status is still new)
     // This happens for fast transcript downloads
-    const isQueued = wasQueued && ep.status === 'pending';
+    const isQueued = wasQueued && ep.status === 'new';
 
     // Update status badge
     if (isQueued) {
@@ -430,20 +426,16 @@ function updateEpisodeRow(row, ep) {
     if (isQueued) {
         actionsCell.innerHTML = '<button class="outline" disabled>...</button>';
         if (checkbox) checkbox.disabled = true;
-    } else if (ep.status === 'pending') {
-        if (hasExternalTranscript) {
-            actionsCell.innerHTML = `<button class="outline" onclick="tryTranscript(${ep.id}, this)">Get Transcript</button>`;
-        } else {
-            actionsCell.innerHTML = `<button class="outline secondary" onclick="downloadEpisode(${ep.id})">Download Audio</button>`;
-        }
+    } else if (ep.status === 'new') {
+        actionsCell.innerHTML = `<button class="outline secondary" onclick="downloadEpisode(${ep.id})">Download Audio</button>`;
         if (checkbox) checkbox.disabled = false;
-    } else if (ep.status === 'transcript_pending') {
+    } else if (ep.status === 'awaiting_transcript') {
         actionsCell.innerHTML = `<button class="outline secondary" onclick="downloadEpisode(${ep.id})" title="Transcript not ready yet - download audio for Whisper instead">Download Audio</button>`;
         if (checkbox) checkbox.disabled = true;
-    } else if (ep.status === 'transcript_unavailable') {
+    } else if (ep.status === 'needs_audio') {
         actionsCell.innerHTML = `<button class="outline secondary" onclick="downloadEpisode(${ep.id})" title="No external transcript available - use Whisper">Download Audio</button>`;
         if (checkbox) checkbox.disabled = true;
-    } else if (ep.status === 'downloaded') {
+    } else if (ep.status === 'audio_ready') {
         actionsCell.innerHTML = `<button class="outline" onclick="transcribeEpisode(${ep.id}, this)">Transcribe</button>`;
         if (checkbox) checkbox.disabled = true;
     } else if (ep.status === 'completed') {
@@ -692,7 +684,7 @@ async function retryEpisode(episodeId) {
 }
 
 async function queueAllDownloads(feedId) {
-    if (!confirm('Download audio and transcribe all pending episodes?\n\nThis will download audio files and use Whisper for transcription.')) {
+    if (!confirm('Download audio and transcribe all new episodes?\n\nThis will download audio files and use Whisper for transcription.')) {
         return;
     }
 
@@ -701,8 +693,8 @@ async function queueAllDownloads(feedId) {
         const data = await response.json();
 
         if (response.ok) {
-            // Update all pending rows to show queued status
-            document.querySelectorAll('.status-badge.status-pending').forEach(badge => {
+            // Update all new rows to show queued status
+            document.querySelectorAll('.status-badge.status-new').forEach(badge => {
                 const row = badge.closest('tr');
                 const btn = row.querySelector('.actions button');
                 badge.className = 'status-badge status-downloading';
