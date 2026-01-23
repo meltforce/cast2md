@@ -199,16 +199,14 @@ async function addFromSearch(feedUrl) {
             window.location.reload();
         } else {
             const data = await response.json();
-            showError(data.detail);
+            resultsDiv.innerHTML = `<div class="itunes-search-error">${escapeHtml(data.detail)}</div>`;
             isAddingFeed = false;
             document.getElementById('feedInput').disabled = false;
-            handleInput(); // Restore previous results
         }
     } catch (error) {
-        showError(error.message);
+        resultsDiv.innerHTML = `<div class="itunes-search-error">${escapeHtml(error.message)}</div>`;
         isAddingFeed = false;
         document.getElementById('feedInput').disabled = false;
-        handleInput();
     }
 }
 
