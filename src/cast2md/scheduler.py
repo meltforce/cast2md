@@ -45,16 +45,19 @@ def retry_pending_transcripts():
 
     Runs hourly to check for:
     1. Episodes with status=awaiting_transcript and next_transcript_retry_at <= now
-       - If episode age >= 7 days: mark as needs_audio (aged out)
+       - If episode age >= transcript_retry_days: mark as needs_audio (aged out)
        - Else: queue TRANSCRIPT_DOWNLOAD job for retry
 
     This handles the case where Pocket Casts returns 403 for new episodes
-    (transcripts not yet generated) - we retry daily for up to 7 days.
+    (transcripts not yet generated) - we retry daily for up to transcript_retry_days.
     """
+    from cast2md.config.settings import get_settings
+
     logger.info("Starting scheduled transcript retry check")
+    settings = get_settings()
 
     now = datetime.now()
-    seven_days_ago = now - timedelta(days=7)
+    retry_cutoff = now - timedelta(days=settings.transcript_retry_days)
 
     with get_db() as conn:
         episode_repo = EpisodeRepository(conn)
@@ -69,8 +72,8 @@ def retry_pending_transcripts():
         skipped = 0
 
         for episode in episodes:
-            # Check if episode has aged out (>= 7 days old)
-            if episode.published_at and episode.published_at < seven_days_ago:
+            # Check if episode has aged out (>= transcript_retry_days old)
+            if episode.published_at and episode.published_at < retry_cutoff:
                 # Transition to needs_audio
                 episode_repo.update_transcript_check(
                     episode.id,
