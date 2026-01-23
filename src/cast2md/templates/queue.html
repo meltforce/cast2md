@@ -191,7 +191,7 @@ function filterByStatus(status) {
 }
 
 async function queueAllPending() {
-    if (!confirm('Queue all new episodes for processing?')) return;
+    if (!await showConfirm('Queue all new episodes for processing?', 'Queue All')) return;
 
     try {
         const response = await fetch('/api/queue/batch/all/process', {method: 'POST'});
@@ -209,7 +209,7 @@ async function queueAllPending() {
 }
 
 async function cancelJob(jobId) {
-    if (!confirm('Cancel this job?')) return;
+    if (!await showConfirm('Cancel this job?', 'Cancel Job')) return;
 
     try {
         const response = await fetch(`/api/queue/${jobId}`, {method: 'DELETE'});
@@ -226,7 +226,7 @@ async function cancelJob(jobId) {
 }
 
 async function resetJob(jobId) {
-    if (!confirm('Reset this running job back to queued?')) return;
+    if (!await showConfirm('Reset this running job back to queued?', 'Reset Job')) return;
 
     try {
         const response = await fetch(`/api/queue/${jobId}/reset`, {method: 'POST'});
@@ -243,7 +243,7 @@ async function resetJob(jobId) {
 }
 
 async function retryJob(jobId) {
-    if (!confirm('Retry this failed job?')) return;
+    if (!await showConfirm('Retry this failed job?', 'Retry Job')) return;
 
     try {
         const response = await fetch(`/api/queue/${jobId}/retry`, {method: 'POST'});
@@ -260,7 +260,7 @@ async function retryJob(jobId) {
 }
 
 async function deleteJob(jobId) {
-    if (!confirm('Delete this job permanently?')) return;
+    if (!await showConfirm('Delete this job permanently?', 'Delete Job', 'Delete')) return;
 
     try {
         const response = await fetch(`/api/queue/${jobId}/force`, {method: 'DELETE'});
@@ -277,7 +277,7 @@ async function deleteJob(jobId) {
 }
 
 async function resetAllStuck() {
-    if (!confirm('Reset all stuck jobs back to queued? This will allow them to be processed again.')) return;
+    if (!await showConfirm('Reset all stuck jobs back to queued? This will allow them to be processed again.', 'Reset Stuck Jobs')) return;
 
     try {
         const response = await fetch('/api/queue/batch/reset-stuck', {method: 'POST'});
@@ -295,7 +295,7 @@ async function resetAllStuck() {
 }
 
 async function cancelAllQueued() {
-    if (!confirm('Cancel all queued jobs?')) return;
+    if (!await showConfirm('Cancel all queued jobs?', 'Cancel All')) return;
 
     try {
         const response = await fetch('/api/queue/batch/queued', {method: 'DELETE'});
@@ -313,7 +313,7 @@ async function cancelAllQueued() {
 }
 
 async function retryAllFailed() {
-    if (!confirm('Retry all failed jobs?')) return;
+    if (!await showConfirm('Retry all failed jobs?', 'Retry All')) return;
 
     try {
         const response = await fetch('/api/queue/batch/retry-failed', {method: 'POST'});
@@ -331,7 +331,7 @@ async function retryAllFailed() {
 }
 
 async function cleanupCompleted() {
-    const days = prompt('Delete completed/failed jobs older than how many days?', '7');
+    const days = await showPrompt('Delete completed/failed jobs older than how many days?', '7', 'Cleanup Old Jobs');
     if (days === null) return;
 
     const daysNum = parseInt(days);

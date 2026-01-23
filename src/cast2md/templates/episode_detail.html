@@ -200,7 +200,7 @@ async function queueTranscribe(episodeId) {
 }
 
 async function confirmRetranscribe(episodeId, currentModel) {
-    if (!confirm(`Re-transcribe this episode using "${currentModel}"?\n\nThis will replace the existing transcript.`)) {
+    if (!await showConfirm(`Re-transcribe this episode using "${currentModel}"? This will replace the existing transcript.`, 'Re-transcribe')) {
         return;
     }
 
@@ -220,7 +220,7 @@ async function confirmRetranscribe(episodeId, currentModel) {
 }
 
 async function confirmDeleteAudio(episodeId) {
-    if (!confirm('Delete the audio file for this episode?\n\nThe transcript will be preserved and you can re-download the audio later if needed.')) {
+    if (!await showConfirm('Delete the audio file for this episode? The transcript will be preserved and you can re-download the audio later if needed.', 'Delete Audio', 'Delete')) {
         return;
     }
 

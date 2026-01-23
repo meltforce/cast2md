@@ -545,7 +545,7 @@ async function loadRetranscribeInfo(feedId) {
 
 async function batchRetranscribe(feedId) {
     const infoText = document.getElementById('retranscribeInfo').textContent;
-    if (!confirm(`Re-transcribe all outdated episodes?\n\n${infoText}\n\nThis will replace existing transcripts.`)) {
+    if (!await showConfirm(`Re-transcribe all outdated episodes? ${infoText}. This will replace existing transcripts.`, 'Re-transcribe All')) {
         return;
     }
 
@@ -758,7 +758,7 @@ async function retryEpisode(episodeId) {
 }
 
 async function queueAllDownloads(feedId) {
-    if (!confirm('Download audio and transcribe all new episodes?\n\nThis will download audio files and use Whisper for transcription.')) {
+    if (!await showConfirm('Download audio and transcribe all new episodes? This will download audio files and use Whisper for transcription.', 'Download & Transcribe All')) {
         return;
     }
 
@@ -814,7 +814,7 @@ async function queueSelected() {
         return;
     }
 
-    if (!confirm(`Queue ${selected.length} selected episode(s) for processing?`)) {
+    if (!await showConfirm(`Queue ${selected.length} selected episode(s) for processing?`, 'Queue Selected')) {
         return;
     }
 
@@ -850,7 +850,7 @@ async function queueByPosition(feedId) {
                       posFrom ? `episodes from position ${posFrom}` :
                       `episodes up to position ${posTo}`;
 
-    if (!confirm(`Queue ${rangeDesc} for processing?`)) {
+    if (!await showConfirm(`Queue ${rangeDesc} for processing?`, 'Queue by Position')) {
         return;
     }
 
@@ -890,7 +890,7 @@ async function queueByDate(feedId) {
                       dateFrom ? `episodes from ${dateFrom}` :
                       `episodes up to ${dateTo}`;
 
-    if (!confirm(`Queue ${rangeDesc} for processing?`)) {
+    if (!await showConfirm(`Queue ${rangeDesc} for processing?`, 'Queue by Date')) {
         return;
     }
 
