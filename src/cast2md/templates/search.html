@@ -77,7 +77,7 @@
     <div class="search-results">
         {% for result in results %}
         <article class="search-result" style="cursor: pointer;">
-            <a href="/episodes/{{ result.episode_id }}?t={{ result.segment_start|int }}" style="text-decoration: none; color: inherit; display: block;">
+            <a href="/episodes/{{ result.episode_id }}?t={{ result.segment_start|int }}&amp;back=search&amp;back_url={{ ('/search?q=' ~ query|urlencode ~ ('&feed_id=' ~ feed_id if feed_id else '') ~ '&mode=' ~ mode ~ '&page=' ~ page)|urlencode }}" style="text-decoration: none; color: inherit; display: block;">
                 <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 0.5rem;">
                     <div style="flex: 1; min-width: 200px;">
                         <strong>{{ result.episode_title }}</strong>
@@ -139,7 +139,7 @@
             </div>
             <div class="carousel-track" id="carouselTrack">
                 {% for episode, feed_title, image_url in recent_transcripts %}
-                <a href="/episodes/{{ episode.id }}" class="transcript-card-square">
+                <a href="/episodes/{{ episode.id }}?back=search" class="transcript-card-square">
                     <div class="card-artwork-square">
                         {% if image_url %}
                         <img src="{{ image_url }}" alt="" loading="lazy">
