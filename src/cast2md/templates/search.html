@@ -101,7 +101,7 @@
                     {% set minutes = (result.segment_start|int) // 60 %}
                     {% set seconds = (result.segment_start|int) % 60 %}
                     <span class="match-timestamp" style="font-family: monospace; margin-right: 0.5rem;">[{{ '%02d'|format(minutes) }}:{{ '%02d'|format(seconds) }}]</span>
-                    <span class="match-text">{{ result.text|truncate(200) }}</span>
+                    <span class="match-text">{{ result.text|strip_mark|truncate(200) }}</span>
                 </div>
                 {% endif %}
             </a>
