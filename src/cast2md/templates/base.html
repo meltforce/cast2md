@@ -871,9 +871,11 @@
             border-color: var(--pico-primary);
             background-color: var(--pico-secondary-background);
         }
-        .carousel-arrow svg,
         .carousel-arrow svg polyline {
-            stroke: var(--pico-contrast);
+            stroke: #666;
+        }
+        [data-theme="dark"] .carousel-arrow svg polyline {
+            stroke: #aaa;
         }
         .carousel-track {
             flex: 1;
