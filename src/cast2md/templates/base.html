@@ -843,25 +843,47 @@
             color: var(--pico-muted-color);
             font-size: 0.8rem;
         }
-        /* Transcript card horizontal scroll for search page */
-        .transcript-card-scroll {
+        /* Transcript carousel for search page */
+        .carousel-container {
+            position: relative;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .carousel-arrow {
+            flex-shrink: 0;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            border: 1px solid var(--pico-muted-border-color);
+            background: var(--pico-card-background-color);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: opacity 0.2s, border-color 0.2s, background-color 0.2s;
+            padding: 0;
+            margin: 0;
+        }
+        .carousel-arrow:hover {
+            border-color: var(--pico-primary);
+            background-color: var(--pico-secondary-background);
+        }
+        .carousel-arrow svg {
+            color: var(--pico-color);
+        }
+        .carousel-track {
+            flex: 1;
             display: flex;
             gap: 1rem;
             overflow-x: auto;
             scroll-snap-type: x mandatory;
             -webkit-overflow-scrolling: touch;
-            padding-bottom: 0.5rem;
+            scrollbar-width: none; /* Firefox */
+            -ms-overflow-style: none; /* IE/Edge */
         }
-        .transcript-card-scroll::-webkit-scrollbar {
-            height: 6px;
-        }
-        .transcript-card-scroll::-webkit-scrollbar-track {
-            background: var(--pico-muted-border-color);
-            border-radius: 3px;
-        }
-        .transcript-card-scroll::-webkit-scrollbar-thumb {
-            background: var(--pico-secondary);
-            border-radius: 3px;
+        .carousel-track::-webkit-scrollbar {
+            display: none; /* Chrome/Safari */
         }
         .transcript-card-square {
             flex: 0 0 280px;
