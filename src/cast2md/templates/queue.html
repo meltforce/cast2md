@@ -1,6 +1,6 @@
-{% extends "base.html" %}
+{% extends "admin_base.html" %}
 
-{% block title %}Queue Management - cast2md{% endblock %}
+{% block title %}Queue - Admin - cast2md{% endblock %}
 
 {% block content %}
 <div class="page-header">
@@ -184,9 +184,9 @@
 <script>
 function filterByStatus(status) {
     if (status === 'all') {
-        window.location.href = '/queue';
+        window.location.href = '/admin/queue';
     } else {
-        window.location.href = `/queue?status=${status}`;
+        window.location.href = `/admin/queue?status=${status}`;
     }
 }
 
