@@ -843,84 +843,97 @@
             color: var(--pico-muted-color);
             font-size: 0.8rem;
         }
-        /* Transcript card grid for search page */
-        .transcript-card-grid {
-            display: grid;
-            grid-template-columns: repeat(1, 1fr);
-            gap: 0.75rem;
-        }
-        @media (min-width: 640px) {
-            .transcript-card-grid {
-                grid-template-columns: repeat(2, 1fr);
-            }
-        }
-        @media (min-width: 900px) {
-            .transcript-card-grid {
-                grid-template-columns: repeat(3, 1fr);
-            }
-        }
-        .transcript-card {
+        /* Transcript card horizontal scroll for search page */
+        .transcript-card-scroll {
             display: flex;
-            gap: 0.75rem;
-            padding: 0.75rem;
+            gap: 1rem;
+            overflow-x: auto;
+            scroll-snap-type: x mandatory;
+            -webkit-overflow-scrolling: touch;
+            padding-bottom: 0.5rem;
+        }
+        .transcript-card-scroll::-webkit-scrollbar {
+            height: 6px;
+        }
+        .transcript-card-scroll::-webkit-scrollbar-track {
+            background: var(--pico-muted-border-color);
+            border-radius: 3px;
+        }
+        .transcript-card-scroll::-webkit-scrollbar-thumb {
+            background: var(--pico-secondary);
+            border-radius: 3px;
+        }
+        .transcript-card-square {
+            flex: 0 0 280px;
+            scroll-snap-align: start;
+            display: flex;
+            flex-direction: column;
             border: 1px solid var(--pico-muted-border-color);
             border-radius: 0.5rem;
             text-decoration: none;
             color: inherit;
-            transition: border-color 0.15s, background-color 0.15s;
+            overflow: hidden;
+            transition: border-color 0.15s, box-shadow 0.15s;
         }
-        .transcript-card:hover {
+        .transcript-card-square:hover {
             border-color: var(--pico-primary);
-            background-color: var(--pico-secondary-background);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
         }
-        .transcript-card .card-artwork {
-            flex-shrink: 0;
-            width: 80px;
-            height: 80px;
+        .card-artwork-square {
+            width: 100%;
+            aspect-ratio: 1;
+            overflow: hidden;
         }
-        .transcript-card .card-artwork img {
+        .card-artwork-square img {
             width: 100%;
             height: 100%;
             object-fit: cover;
-            border-radius: 0.25rem;
         }
-        .transcript-card .no-artwork-placeholder {
+        .card-artwork-square .no-artwork-placeholder {
             width: 100%;
             height: 100%;
             display: flex;
             align-items: center;
             justify-content: center;
             background: var(--pico-muted-border-color);
-            border-radius: 0.25rem;
-            font-size: 2rem;
+            font-size: 4rem;
         }
-        .transcript-card .card-content {
-            flex: 1;
-            min-width: 0;
+        .card-content-square {
+            padding: 1rem;
             display: flex;
             flex-direction: column;
-            justify-content: center;
+            gap: 0.25rem;
         }
-        .transcript-card .card-title {
-            margin: 0 0 0.25rem 0;
+        .card-title-square {
+            margin: 0;
             font-weight: 600;
-            font-size: 0.9rem;
+            font-size: 1rem;
             line-height: 1.3;
             display: -webkit-box;
             -webkit-line-clamp: 2;
             -webkit-box-orient: vertical;
             overflow: hidden;
         }
-        .transcript-card .card-feed {
-            margin: 0 0 0.25rem 0;
-            font-size: 0.8rem;
-            color: var(--pico-muted-color);
+        .card-feed-square {
+            margin: 0;
+            font-size: 0.85rem;
+            color: var(--pico-primary);
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
         }
-        .transcript-card .card-date {
-            margin: 0;
+        .card-description {
+            margin: 0.5rem 0 0 0;
+            font-size: 0.8rem;
+            color: var(--pico-muted-color);
+            line-height: 1.4;
+            display: -webkit-box;
+            -webkit-line-clamp: 3;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+        .card-date-square {
+            margin: 0.5rem 0 0 0;
             font-size: 0.75rem;
             color: var(--pico-muted-color);
         }
