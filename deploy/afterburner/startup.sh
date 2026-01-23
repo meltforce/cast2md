@@ -45,7 +45,8 @@ tailscale up \
     --auth-key="$TS_AUTH_KEY" \
     --hostname="$TS_HOSTNAME" \
     --ssh \
-    --accept-routes
+    --accept-routes \
+    --accept-dns
 
 echo "Tailscale connected!"
 tailscale status
