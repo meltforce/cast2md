@@ -50,7 +50,7 @@
                 <td>
                     <a href="/feeds/{{ item.feed.id }}">{{ item.feed.display_title }}</a>
                 </td>
-                <td style="color: var(--muted-color); font-size: 0.875rem;">{{ item.feed.category_list[0] if item.feed.category_list else '' }}</td>
+                <td>{{ item.feed.category_list[0] if item.feed.category_list else '' }}</td>
                 <td>{{ item.episode_count }}</td>
                 <td>
                     {% if item.feed.last_polled %}

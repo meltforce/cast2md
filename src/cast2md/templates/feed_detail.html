@@ -15,9 +15,9 @@
             <button class="outline" style="padding: 0.25rem 0.5rem; font-size: 0.75rem; vertical-align: middle; margin-left: 0.5rem;" onclick="document.getElementById('editTitleModal').showModal()">Edit</button>
         </h1>
         {% if feed.author %}<p style="margin-bottom: 0.25rem;">by {{ feed.author }}</p>{% endif %}
-        {% if feed.category_list %}<p style="margin-bottom: 0.25rem; color: var(--muted-color); font-size: 0.875rem;">{{ feed.category_list|join(', ') }}</p>{% endif %}
         {% set desc = feed.description|strip_html %}
-        <p style="margin-bottom: 0;">{{ desc[:200] + '...' if desc and desc|length > 200 else desc or 'No description' }}</p>
+        <p style="margin-bottom: 0.5rem; color: var(--secondary);">{{ desc[:200] + '...' if desc and desc|length > 200 else desc or 'No description' }}</p>
+        {% if feed.category_list %}<p style="margin-bottom: 0;">{% for cat in feed.category_list %}<span style="display: inline-block; background: var(--muted-border-color); padding: 0.125rem 0.5rem; border-radius: 1rem; font-size: 0.75rem; margin-right: 0.25rem;">{{ cat }}</span>{% endfor %}</p>{% endif %}
     </hgroup>
 </div>
 
@@ -189,7 +189,6 @@
             <th style="width: 2rem;"><input type="checkbox" id="selectAll" onchange="toggleSelectAll()"></th>
             <th>Episode</th>
             <th style="white-space: nowrap;">Published</th>
-            <th style="white-space: nowrap;">Duration</th>
             <th style="white-space: nowrap;">Progress</th>
             <th style="white-space: nowrap;">Actions</th>
         </tr>
@@ -213,9 +212,9 @@
                 <a href="/episodes/{{ episode.id }}{% if ep_params %}?{{ ep_params|join('&') }}{% endif %}" class="truncate" style="display: block;">
                     {{ episode.title }}
                 </a>
+                {% if episode.duration_seconds %}<span style="color: var(--muted-color); font-size: 0.875rem;">{{ '%d:%02d' % (episode.duration_seconds // 60, episode.duration_seconds % 60) }}</span>{% endif %}
             </td>
             <td style="white-space: nowrap;">{{ episode.published_at.strftime('%Y-%m-%d') if episode.published_at else 'Unknown' }}</td>
-            <td style="white-space: nowrap; color: var(--muted-color);">{% if episode.duration_seconds %}{{ '%d:%02d' % (episode.duration_seconds // 60, episode.duration_seconds % 60) }}{% endif %}</td>
             <td style="white-space: nowrap;">
                 {% set status = 'queued' if (episode.id in queued_episode_ids and episode.status.value == 'new') else episode.status.value %}
                 {% set tooltips = {
@@ -276,7 +275,7 @@
         </tr>
         {% else %}
         <tr>
-            <td colspan="6" style="text-align: center; padding: 2rem;">
+            <td colspan="5" style="text-align: center; padding: 2rem;">
                 {% if query or status_filter %}
                 No episodes found matching your search criteria.
                 {% else %}
