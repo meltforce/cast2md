@@ -36,7 +36,7 @@ class SystemStatus(BaseModel):
     whisper_model: str
     whisper_device: str
     storage_path: str
-    database_path: str
+    database_url: str
 
 
 @router.get("/status", response_model=SystemStatus)
@@ -78,7 +78,7 @@ def get_status():
         whisper_model=settings.whisper_model,
         whisper_device=settings.whisper_device,
         storage_path=str(settings.storage_path),
-        database_path=str(settings.database_path),
+        database_url=settings.database_url.split("@")[-1] if "@" in settings.database_url else settings.database_url,
     )
 
 
