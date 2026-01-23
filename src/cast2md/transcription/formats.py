@@ -33,6 +33,95 @@ def _format_timestamp(seconds: float) -> str:
     return f"{minutes:02d}:{secs:02d}"
 
 
+def _merge_word_level_segments(
+    segments: list[TranscriptSegment],
+    min_phrase_chars: int = 40,
+    max_phrase_chars: int = 200,
+    pause_threshold: float = 1.5,
+) -> list[TranscriptSegment]:
+    """Merge word-level segments into phrase-level segments.
+
+    External transcript sources (especially Pocket Casts) often provide word-level
+    timestamps where each word is a separate cue. This function merges consecutive
+    short segments into natural phrases.
+
+    Merging stops when:
+    - The phrase reaches min_phrase_chars and ends with punctuation
+    - The phrase reaches max_phrase_chars
+    - There's a pause (gap) of pause_threshold seconds between segments
+
+    Args:
+        segments: List of transcript segments (potentially word-level).
+        min_phrase_chars: Minimum characters before considering phrase complete.
+        max_phrase_chars: Maximum characters per phrase.
+        pause_threshold: Seconds of pause that indicates a natural break.
+
+    Returns:
+        List of merged transcript segments.
+    """
+    if not segments:
+        return []
+
+    # Check if segments need merging (average text length < 15 chars suggests word-level)
+    avg_len = sum(len(s.text) for s in segments) / len(segments)
+    if avg_len > 15:
+        # Segments are already phrase-level, no merging needed
+        return segments
+
+    merged = []
+    current_texts = []
+    current_start = segments[0].start
+    current_end = segments[0].end
+
+    for i, seg in enumerate(segments):
+        text = seg.text.strip()
+        if not text:
+            continue
+
+        # Check if we should start a new phrase
+        start_new = False
+
+        if current_texts:
+            # Check for pause between segments
+            gap = seg.start - current_end
+            if gap > pause_threshold:
+                start_new = True
+
+            # Check if phrase is getting too long
+            current_len = sum(len(t) for t in current_texts) + len(current_texts)  # +spaces
+            if current_len >= max_phrase_chars:
+                start_new = True
+
+            # Check if phrase is complete (min length + ends with punctuation)
+            if current_len >= min_phrase_chars:
+                last_text = current_texts[-1] if current_texts else ""
+                if last_text and last_text[-1] in ".!?":
+                    start_new = True
+
+        if start_new and current_texts:
+            # Save the current phrase
+            merged.append(TranscriptSegment(
+                start=current_start,
+                end=current_end,
+                text=" ".join(current_texts),
+            ))
+            current_texts = []
+            current_start = seg.start
+
+        current_texts.append(text)
+        current_end = seg.end
+
+    # Don't forget the last phrase
+    if current_texts:
+        merged.append(TranscriptSegment(
+            start=current_start,
+            end=current_end,
+            text=" ".join(current_texts),
+        ))
+
+    return merged
+
+
 def _segments_to_markdown(
     segments: list[TranscriptSegment],
     title: str = "",
@@ -58,8 +147,11 @@ def _segments_to_markdown(
         lines.append(f"*{source_info}*")
         lines.append("")
 
-    if segments:
-        for seg in segments:
+    # Merge word-level segments into phrases for better readability
+    merged_segments = _merge_word_level_segments(segments)
+
+    if merged_segments:
+        for seg in merged_segments:
             timestamp = _format_timestamp(seg.start)
             lines.append(f"**[{timestamp}]** {seg.text.strip()}")
             lines.append("")

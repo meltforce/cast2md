@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any, Literal, Optional
 
 from cast2md.db.sql import execute
-from cast2md.search.parser import parse_transcript_file
+from cast2md.search.parser import merge_word_level_segments, parse_transcript_file
 
 logger = logging.getLogger(__name__)
 
@@ -87,8 +87,9 @@ class TranscriptSearchRepository:
         # Remove existing segments for this episode
         execute(self.conn, "DELETE FROM transcript_segments WHERE episode_id = %s", (episode_id,))
 
-        # Parse transcript
+        # Parse transcript and merge word-level segments into phrases
         segments = parse_transcript_file(path)
+        segments = merge_word_level_segments(segments)
 
         # Insert segments
         for segment in segments:
@@ -351,8 +352,9 @@ class TranscriptSearchRepository:
         if not path.exists():
             return 0
 
-        # Parse transcript
+        # Parse transcript and merge word-level segments into phrases
         segments = parse_transcript_file(path)
+        segments = merge_word_level_segments(segments)
         if not segments:
             return 0
 
