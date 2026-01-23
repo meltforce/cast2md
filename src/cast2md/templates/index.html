@@ -76,31 +76,9 @@
             <h3>Add Podcast Feed</h3>
         </header>
 
-        <div class="dialog-tabs">
-            <button class="dialog-tab active" onclick="switchTab('search')">Search iTunes</button>
-            <button class="dialog-tab" onclick="switchTab('url')">Enter URL</button>
-        </div>
-
-        <!-- Search Tab -->
-        <div id="tab-search" class="tab-content active">
-            <input type="search" id="itunesSearchInput" placeholder="Search podcasts..." oninput="debouncedSearch()">
-            <div id="itunesSearchResults" class="itunes-search-results">
-                <div class="itunes-search-empty">Type to search for podcasts</div>
-            </div>
-        </div>
-
-        <!-- URL Tab -->
-        <div id="tab-url" class="tab-content">
-            <form id="addFeedForm" onsubmit="addFeed(event)">
-                <label for="feedUrl">
-                    RSS Feed URL or Apple Podcasts URL
-                    <input type="url" id="feedUrl" name="url" placeholder="https://example.com/feed.xml" required>
-                </label>
-                <footer>
-                    <button type="button" class="secondary" onclick="closeAddFeedDialog()">Cancel</button>
-                    <button type="submit">Add Feed</button>
-                </footer>
-            </form>
+        <input type="text" id="feedInput" placeholder="Search or enter URL" oninput="handleInput()" autocomplete="off">
+        <div id="feedResults" class="itunes-search-results">
+            <div class="itunes-search-empty">Type to search for podcasts</div>
         </div>
     </article>
 </dialog>
@@ -109,55 +87,61 @@
 {% block scripts %}
 <script>
 let searchTimeout = null;
+let isAddingFeed = false;
 
 function showAddFeedDialog() {
     document.getElementById('addFeedDialog').showModal();
-    // Focus the search input when opening
-    document.getElementById('itunesSearchInput').focus();
+    document.getElementById('feedInput').focus();
 }
 
 function closeAddFeedDialog() {
     document.getElementById('addFeedDialog').close();
-    // Reset state
-    document.getElementById('itunesSearchInput').value = '';
-    document.getElementById('feedUrl').value = '';
-    document.getElementById('itunesSearchResults').innerHTML =
+    document.getElementById('feedInput').value = '';
+    document.getElementById('feedInput').disabled = false;
+    document.getElementById('feedResults').innerHTML =
         '<div class="itunes-search-empty">Type to search for podcasts</div>';
-    switchTab('search');
+    isAddingFeed = false;
 }
 
-function switchTab(tab) {
-    // Update tab buttons
-    document.querySelectorAll('.dialog-tab').forEach(btn => btn.classList.remove('active'));
-    document.querySelector(`.dialog-tab:nth-child(${tab === 'search' ? 1 : 2})`).classList.add('active');
+function isUrl(input) {
+    const trimmed = input.trim().toLowerCase();
+    return trimmed.startsWith('http://') ||
+           trimmed.startsWith('https://') ||
+           trimmed.includes('podcasts.apple.com');
+}
 
-    // Update tab content
-    document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
-    document.getElementById(`tab-${tab}`).classList.add('active');
+function handleInput() {
+    if (searchTimeout) clearTimeout(searchTimeout);
+    const input = document.getElementById('feedInput').value.trim();
 
-    // Focus appropriate input
-    if (tab === 'search') {
-        document.getElementById('itunesSearchInput').focus();
+    if (!input) {
+        document.getElementById('feedResults').innerHTML =
+            '<div class="itunes-search-empty">Type to search for podcasts</div>';
+        return;
+    }
+
+    if (isUrl(input)) {
+        renderUrlOption(input);
     } else {
-        document.getElementById('feedUrl').focus();
+        searchTimeout = setTimeout(() => searchItunes(input), 300);
     }
 }
 
-function debouncedSearch() {
-    if (searchTimeout) clearTimeout(searchTimeout);
-    searchTimeout = setTimeout(() => {
-        const query = document.getElementById('itunesSearchInput').value.trim();
-        if (query.length > 0) {
-            searchItunes(query);
-        } else {
-            document.getElementById('itunesSearchResults').innerHTML =
-                '<div class="itunes-search-empty">Type to search for podcasts</div>';
-        }
-    }, 300);
+function renderUrlOption(url) {
+    const resultsDiv = document.getElementById('feedResults');
+    resultsDiv.innerHTML = `
+        <div class="feed-url-option" onclick="addFromSearch('${escapeHtml(url)}')">
+            <div class="url-icon">🔗</div>
+            <div class="url-info">
+                <p class="url-label">Add podcast from URL</p>
+                <p class="url-value">${escapeHtml(url)}</p>
+            </div>
+        </div>
+    `;
 }
 
 async function searchItunes(query) {
-    const resultsDiv = document.getElementById('itunesSearchResults');
+    const resultsDiv = document.getElementById('feedResults');
     resultsDiv.innerHTML = '<div class="itunes-search-loading">Searching...</div>';
 
     try {
@@ -173,7 +157,7 @@ async function searchItunes(query) {
 }
 
 function renderSearchResults(results) {
-    const resultsDiv = document.getElementById('itunesSearchResults');
+    const resultsDiv = document.getElementById('feedResults');
 
     if (results.length === 0) {
         resultsDiv.innerHTML = '<div class="itunes-search-empty">No podcasts found</div>';
@@ -195,6 +179,14 @@ function renderSearchResults(results) {
 }
 
 async function addFromSearch(feedUrl) {
+    if (isAddingFeed) return;
+    isAddingFeed = true;
+
+    // Show loading state
+    const resultsDiv = document.getElementById('feedResults');
+    resultsDiv.innerHTML = '<div class="itunes-search-loading">Adding podcast...</div>';
+    document.getElementById('feedInput').disabled = true;
+
     try {
         const response = await fetch('/api/feeds', {
             method: 'POST',
@@ -203,13 +195,20 @@ async function addFromSearch(feedUrl) {
         });
 
         if (response.ok) {
+            resultsDiv.innerHTML = '<div class="itunes-search-loading">Done! Redirecting...</div>';
             window.location.reload();
         } else {
             const data = await response.json();
             showError(data.detail);
+            isAddingFeed = false;
+            document.getElementById('feedInput').disabled = false;
+            handleInput(); // Restore previous results
         }
     } catch (error) {
         showError(error.message);
+        isAddingFeed = false;
+        document.getElementById('feedInput').disabled = false;
+        handleInput();
     }
 }
 
@@ -217,28 +216,6 @@ function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
-}
-
-async function addFeed(event) {
-    event.preventDefault();
-    const url = document.getElementById('feedUrl').value;
-
-    try {
-        const response = await fetch('/api/feeds', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({url: url})
-        });
-
-        if (response.ok) {
-            window.location.reload();
-        } else {
-            const data = await response.json();
-            showError(data.detail);
-        }
-    } catch (error) {
-        showError(error.message);
-    }
 }
 
 async function refreshFeed(feedId) {
