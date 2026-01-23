@@ -378,13 +378,18 @@ class WorkerManager:
             notify_transcription_complete(episode.title, feed.title)
 
         except Exception as e:
-            logger.error(f"Transcription job {job_id} failed: {e}")
+            import traceback
+            error_detail = f"{type(e).__name__}: {e}"
+            logger.error(
+                f"Transcription job {job_id} failed for '{episode.title}': {error_detail}"
+            )
+            logger.debug(f"Traceback:\n{traceback.format_exc()}")
             with get_db_write() as conn:
                 job_repo = JobRepository(conn)
-                job_repo.mark_failed(job_id, str(e))
+                job_repo.mark_failed(job_id, error_detail)
 
             # Send failure notification
-            notify_transcription_failed(episode.title, feed.title, str(e))
+            notify_transcription_failed(episode.title, feed.title, error_detail)
 
     def _process_transcript_download_job(self, job_id: int, episode_id: int):
         """Process a transcript download job.
