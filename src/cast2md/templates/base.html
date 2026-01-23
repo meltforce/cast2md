@@ -607,6 +607,50 @@
             padding: 2rem;
             color: var(--pico-muted-color);
         }
+        /* Unified page header pattern */
+        .page-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+        .page-header hgroup {
+            margin: 0;
+        }
+        .page-header h1 {
+            margin: 0;
+        }
+        .page-header p {
+            margin: 0;
+            color: var(--pico-muted-color);
+        }
+        .page-header .header-actions {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+        .action-bar {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+            margin-bottom: 1rem;
+        }
+        /* Fix details/summary styling - left-align arrow, bold summary */
+        details summary {
+            display: list-item;
+            list-style: disclosure-closed inside;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        details summary::after {
+            display: none; /* Hide PicoCSS right-side chevron */
+        }
+        details[open] summary {
+            list-style-type: disclosure-open;
+            margin-bottom: 0.5rem;
+        }
     </style>
 </head>
 <body>

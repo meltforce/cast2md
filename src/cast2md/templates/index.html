@@ -3,10 +3,15 @@
 {% block title %}Feeds - cast2md{% endblock %}
 
 {% block content %}
-<hgroup>
-    <h1>Podcast Feeds</h1>
-    <p>Manage your podcast subscriptions</p>
-</hgroup>
+<div class="page-header">
+    <hgroup>
+        <h1>Podcast Feeds</h1>
+        <p>Manage your podcast subscriptions</p>
+    </hgroup>
+    <div class="header-actions">
+        <button onclick="showAddFeedDialog()">Add Feed</button>
+    </div>
+</div>
 
 <div class="stats-grid">
     <div class="stat-card">
@@ -28,13 +33,6 @@
 </div>
 
 <article>
-    <header>
-        <div style="display: flex; justify-content: space-between; align-items: center;">
-            <h2 style="margin: 0;">Feeds</h2>
-            <button onclick="showAddFeedDialog()">Add Feed</button>
-        </div>
-    </header>
-
     {% if feeds %}
     <table>
         <thead>

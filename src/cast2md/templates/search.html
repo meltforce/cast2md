@@ -3,10 +3,18 @@
 {% block title %}Search - cast2md{% endblock %}
 
 {% block content %}
-<hgroup>
-    <h1>Search</h1>
-    <p>Search episodes and transcripts</p>
-</hgroup>
+<div class="page-header">
+    <hgroup>
+        <h1>Search</h1>
+        <p>Search episodes and transcripts</p>
+    </hgroup>
+    <small style="color: var(--pico-muted-color);">
+        Index: {{ index_stats.indexed_episodes }} episodes, {{ index_stats.total_segments }} segments
+        {% if index_stats.embedded_episodes > 0 %}
+            ({{ index_stats.embedded_episodes }} with embeddings)
+        {% endif %}
+    </small>
+</div>
 
 <article style="margin-bottom: 1.5rem; padding: 1rem; background: var(--card-background-color);">
     <form id="search-form" method="get" style="display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-end;">
@@ -58,15 +66,11 @@
     </details>
 </article>
 
+{% if query %}
 <p style="font-size: 0.875rem; color: var(--muted-color);">
-    Index: {{ index_stats.indexed_episodes }} episodes, {{ index_stats.total_segments }} segments
-    {% if index_stats.embedded_episodes > 0 %}
-        ({{ index_stats.embedded_episodes }} with embeddings)
-    {% endif %}
-    {% if query %}
-        | Found <strong>{{ total }}</strong> result{{ 's' if total != 1 else '' }}
-    {% endif %}
+    Found <strong>{{ total }}</strong> result{{ 's' if total != 1 else '' }}
 </p>
+{% endif %}
 
 {% if query %}
     {% if results %}
