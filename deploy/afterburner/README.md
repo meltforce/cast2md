@@ -87,7 +87,17 @@ Ensure your cast2md server has the `tag:server` tag:
 ssh root@cast2md "tailscale up --advertise-tags=tag:server"
 ```
 
-### 5. Install Dependencies
+### 5. RunPod GitHub Integration (for private repos)
+
+To install directly from a private GitHub repo:
+
+1. Go to RunPod Settings → GitHub
+2. Connect your GitHub account
+3. Authorize access to the repository
+
+This allows pods to `pip install` directly from your private repo without building/uploading wheels.
+
+### 6. Install Dependencies
 
 ```bash
 pip install runpod httpx build
@@ -138,21 +148,22 @@ The script will:
 
 ### Installation Modes
 
-**Wheel Mode (default)** - For private repos:
+**GitHub Mode (default)** - Recommended:
+```bash
+python deploy/afterburner/afterburner.py --mode=github
+```
+- Installs directly from GitHub
+- Works with private repos if RunPod has GitHub integration
+- No local build required
+- Enables future server-side auto-scaling
+
+**Wheel Mode** - Fallback for repos without GitHub integration:
 ```bash
 python deploy/afterburner/afterburner.py --mode=wheel
 ```
 - Builds wheel locally
 - Uploads via Tailscale SSH
-- Works with private repositories
-
-**GitHub Mode** - For public repos:
-```bash
-python deploy/afterburner/afterburner.py --mode=github
-```
-- Installs directly from GitHub
-- No local build required
-- Enables future server-side auto-scaling
+- Works without RunPod GitHub integration
 
 ### Environment Variables
 
@@ -163,7 +174,7 @@ python deploy/afterburner/afterburner.py --mode=github
 | `CAST2MD_SERVER_URL` | No | `https://cast2md.leo-royal.ts.net` | Server URL |
 | `TS_HOSTNAME` | No | `runpod-afterburner` | Hostname on Tailscale |
 | `RUNPOD_GPU_TYPE` | No | `NVIDIA GeForce RTX 4090` | GPU type to use |
-| `AFTERBURNER_MODE` | No | `wheel` | Installation mode |
+| `AFTERBURNER_MODE` | No | `github` | Installation mode |
 
 ### Terminate Existing Pods
 
