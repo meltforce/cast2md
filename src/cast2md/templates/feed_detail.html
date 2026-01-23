@@ -188,6 +188,7 @@
         <tr>
             <th style="width: 2rem;"><input type="checkbox" id="selectAll" onchange="toggleSelectAll()"></th>
             <th>Episode</th>
+            <th style="white-space: nowrap;">Length</th>
             <th style="white-space: nowrap;">Published</th>
             <th style="white-space: nowrap;">Progress</th>
             <th style="white-space: nowrap;">Actions</th>
@@ -212,8 +213,8 @@
                 <a href="/episodes/{{ episode.id }}{% if ep_params %}?{{ ep_params|join('&') }}{% endif %}" class="truncate" style="display: block;">
                     {{ episode.title }}
                 </a>
-                {% if episode.duration_seconds %}<span style="color: var(--muted-color); font-size: 0.875rem;">{{ '%d:%02d' % (episode.duration_seconds // 60, episode.duration_seconds % 60) }}</span>{% endif %}
             </td>
+            <td style="white-space: nowrap;">{% if episode.duration_seconds %}{{ '%d:%02d' % (episode.duration_seconds // 60, episode.duration_seconds % 60) }}{% endif %}</td>
             <td style="white-space: nowrap;">{{ episode.published_at.strftime('%Y-%m-%d') if episode.published_at else 'Unknown' }}</td>
             <td style="white-space: nowrap;">
                 {% set status = 'queued' if (episode.id in queued_episode_ids and episode.status.value == 'new') else episode.status.value %}
@@ -275,7 +276,7 @@
         </tr>
         {% else %}
         <tr>
-            <td colspan="5" style="text-align: center; padding: 2rem;">
+            <td colspan="6" style="text-align: center; padding: 2rem;">
                 {% if query or status_filter %}
                 No episodes found matching your search criteria.
                 {% else %}
