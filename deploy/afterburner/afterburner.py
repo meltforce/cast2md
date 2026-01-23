@@ -33,7 +33,44 @@ import httpx
 
 
 TEMPLATE_NAME = "cast2md-afterburner"
-STARTUP_SCRIPT_URL = "https://raw.githubusercontent.com/meltforce/cast2md/main/deploy/afterburner/startup.sh"
+
+# Inline startup script (embedded because repo is private)
+STARTUP_SCRIPT = '''
+#!/bin/bash
+set -e
+
+echo "=== Afterburner Startup $(date) ==="
+
+# Required env vars from template
+: "${TS_AUTH_KEY:?TS_AUTH_KEY is required}"
+: "${TS_HOSTNAME:=runpod-afterburner}"
+: "${CAST2MD_SERVER_URL:?CAST2MD_SERVER_URL is required}"
+: "${GITHUB_REPO:=meltforce/cast2md}"
+
+echo "Config: TS_HOSTNAME=$TS_HOSTNAME SERVER=$CAST2MD_SERVER_URL"
+
+# Install dependencies
+apt-get update -qq && apt-get install -y -qq ffmpeg curl > /dev/null
+
+# Install Tailscale
+curl -fsSL https://tailscale.com/install.sh | sh
+
+# Start tailscaled in userspace mode
+tailscaled --tun=userspace-networking --state=/var/lib/tailscale/tailscaled.state &
+sleep 3
+
+# Connect to Tailscale
+tailscale up --auth-key="$TS_AUTH_KEY" --hostname="$TS_HOSTNAME" --ssh --accept-routes
+echo "Tailscale connected!"
+
+# Install cast2md
+pip install "cast2md[node] @ git+https://github.com/${GITHUB_REPO}.git"
+cast2md --version
+
+# Register and start node
+cast2md node register --server "$CAST2MD_SERVER_URL" --name "RunPod Afterburner"
+cast2md node start
+'''
 
 
 @dataclass
@@ -41,7 +78,7 @@ class Config:
     """Afterburner configuration."""
 
     runpod_api_key: str
-    server_url: str = "https://cast2md.leo-royal.ts.net"
+    server_url: str  # Required - your cast2md server URL
     ts_hostname: str = "runpod-afterburner"
     gpu_type: str = "NVIDIA GeForce RTX 4090"
     image_name: str = "runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04"
@@ -65,11 +102,13 @@ class Config:
         if not runpod_api_key:
             raise ValueError("RUNPOD_API_KEY environment variable required")
 
+        server_url = os.environ.get("CAST2MD_SERVER_URL")
+        if not server_url:
+            raise ValueError("CAST2MD_SERVER_URL environment variable required")
+
         return cls(
             runpod_api_key=runpod_api_key,
-            server_url=os.environ.get(
-                "CAST2MD_SERVER_URL", "https://cast2md.leo-royal.ts.net"
-            ),
+            server_url=server_url,
             ts_hostname=os.environ.get("TS_HOSTNAME", "runpod-afterburner"),
             gpu_type=os.environ.get("RUNPOD_GPU_TYPE", cls.gpu_type),
             github_repo=os.environ.get("GITHUB_REPO", "meltforce/cast2md"),
@@ -103,6 +142,8 @@ class RunPodAPI:
     def create_template(self, template_data: dict) -> dict:
         """Create a new template."""
         response = self.client.post(f"{self.BASE_URL}/templates", json=template_data)
+        if response.status_code >= 400:
+            log(f"Template creation failed: {response.text}", "DEBUG")
         response.raise_for_status()
         return response.json()
 
@@ -111,6 +152,8 @@ class RunPodAPI:
         response = self.client.patch(
             f"{self.BASE_URL}/templates/{template_id}", json=template_data
         )
+        if response.status_code >= 400:
+            log(f"Template update failed: {response.text}", "DEBUG")
         response.raise_for_status()
         return response.json()
 
@@ -120,10 +163,10 @@ class RunPodAPI:
         response.raise_for_status()
 
 
-def get_startup_command(config: Config) -> str:
+def get_startup_command(config: Config) -> list[str]:
     """Generate the startup command that runs when the pod boots."""
-    # Download and run the startup script, passing env vars
-    return f"curl -fsSL {STARTUP_SCRIPT_URL} | bash"
+    # Run the inline startup script
+    return ["bash", "-c", STARTUP_SCRIPT]
 
 
 def get_template_env(config: Config) -> dict:
@@ -146,27 +189,30 @@ def ensure_template(config: Config) -> str:
     templates = api.get_templates()
     existing = next((t for t in templates if t.get("name") == TEMPLATE_NAME), None)
 
-    template_data = {
+    # Base template data (shared between create and update)
+    base_data = {
         "name": TEMPLATE_NAME,
         "imageName": config.image_name,
         "dockerStartCmd": get_startup_command(config),
         "containerDiskInGb": 20,
         "volumeInGb": 0,
-        "ports": "22/tcp",
+        "ports": ["22/tcp"],
         "isPublic": False,
-        "isServerless": False,
         "env": get_template_env(config),
         "readme": "cast2md Afterburner - On-demand GPU transcription worker",
     }
 
     if existing:
         template_id = existing["id"]
-        log(f"Updating existing template: {template_id}")
-        api.update_template(template_id, template_data)
+        log(f"Using existing template: {template_id}")
+        # Only update if needed - for now just use the existing template
+        # The update API has stricter field requirements
         return template_id
     else:
         log("Creating new template...")
-        result = api.create_template(template_data)
+        # Create requires isServerless
+        create_data = {**base_data, "isServerless": False}
+        result = api.create_template(create_data)
         template_id = result["id"]
         log(f"Created template: {template_id}")
         return template_id
@@ -374,14 +420,25 @@ def estimate_cost(start_time: datetime, gpu_type: str) -> tuple[float, str]:
     return cost, runtime_str
 
 
-def tailscale_ssh_cmd(hostname: str, cmd: str, check: bool = True) -> str:
+def tailscale_ssh_cmd(hostname: str, cmd: str, check: bool = True, retries: int = 1) -> str:
     """Run a command on the pod via Tailscale SSH."""
-    result = subprocess.run(
-        ["ssh", "-o", "StrictHostKeyChecking=no", f"root@{hostname}", cmd],
-        capture_output=True,
-        text=True,
-        check=check,
-    )
+    last_error = None
+    for attempt in range(retries):
+        result = subprocess.run(
+            ["ssh", "-o", "StrictHostKeyChecking=no", "-o", "ConnectTimeout=10", f"root@{hostname}", cmd],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+        last_error = result.stderr
+        if attempt < retries - 1:
+            log(f"SSH command failed, retrying ({attempt + 1}/{retries})...", "DEBUG")
+            time.sleep(5)
+
+    if check:
+        raise subprocess.CalledProcessError(result.returncode, result.args, result.stdout, result.stderr)
     return result.stdout.strip()
 
 
@@ -504,15 +561,19 @@ def main():
         if not wait_for_tailscale(config):
             raise RuntimeError("Pod failed to connect to Tailscale")
 
-        # Give the worker a moment to start
-        time.sleep(10)
-
         if args.test:
-            log("Test mode - verifying connectivity...")
-            result = tailscale_ssh_cmd(config.ts_hostname, "cast2md --version")
+            # Wait for startup script to complete (installs dependencies, tailscale, cast2md)
+            log("Test mode - waiting for startup script to complete...")
+            time.sleep(30)  # Give time for pip install
+
+            log("Verifying connectivity...")
+            result = tailscale_ssh_cmd(config.ts_hostname, "cast2md --version", retries=6)
             log(f"cast2md version: {result}")
             log("Test successful!")
             return
+
+        # For full run, wait for worker to start
+        time.sleep(30)
 
         # Monitor queue until empty
         monitor_queue(config)
