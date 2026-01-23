@@ -3,82 +3,64 @@
 {% block title %}Settings - cast2md{% endblock %}
 
 {% block content %}
-<hgroup>
-    <h1>Settings</h1>
-    <p>Configure worker counts and storage paths</p>
-</hgroup>
+<div class="page-header">
+    <hgroup>
+        <h1>Settings</h1>
+        <p>Configure storage, transcription, and workers</p>
+    </hgroup>
+    <div class="header-actions">
+        <button type="submit" form="settingsForm" style="width: auto;">Save</button>
+        <button type="button" class="secondary" style="width: auto;" onclick="resetAllSettings()">Reset All</button>
+    </div>
+</div>
 
+<form id="settingsForm">
+
+<!-- Storage -->
 <article>
     <header>
-        <h3>Configuration</h3>
+        <h3 style="margin: 0;">Storage</h3>
     </header>
-
-    <form id="settingsForm">
-        <!-- Form fields will be populated dynamically -->
-        <div id="settingsFields"></div>
-
-        <div style="display: flex; gap: 1rem; margin-top: 1rem;">
-            <button type="submit">Save Settings</button>
-            <button type="button" class="secondary" onclick="resetAllSettings()">Reset to Defaults</button>
-            <button type="button" class="outline" onclick="testNotification()">Test Notification</button>
-        </div>
-    </form>
-
-    <footer>
-        <small>Note: Some settings require a server restart to take effect.</small>
-    </footer>
+    <div id="storageFields" class="grid"></div>
 </article>
 
+<!-- Transcription -->
 <article>
-    <header>
-        <h3>Current Values</h3>
+    <header style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+        <h3 style="margin: 0;">Transcription</h3>
+        <button type="button" class="outline secondary" onclick="resetModels()">Reset Models</button>
     </header>
-    <table id="currentSettings">
-        <thead>
-            <tr>
-                <th>Setting</th>
-                <th>Value</th>
-                <th>Source</th>
-                <th>Actions</th>
-            </tr>
-        </thead>
-        <tbody>
-            <!-- Populated by JavaScript -->
-        </tbody>
-    </table>
-</article>
-
-<article>
-    <header>
-        <h3>Whisper Models</h3>
-    </header>
-
-    <table id="modelsTable">
-        <thead>
-            <tr>
-                <th>Model ID</th>
-                <th>Backend</th>
-                <th>Description</th>
-                <th>Size</th>
-                <th>Actions</th>
-            </tr>
-        </thead>
-        <tbody>
-            <!-- Populated by JavaScript -->
-        </tbody>
-    </table>
+    <div id="transcriptionFields" class="grid"></div>
 
     <details style="margin-top: 1rem;">
+        <summary>Available Models</summary>
+        <table id="modelsTable" style="margin-top: 0.5rem;">
+            <thead>
+                <tr>
+                    <th>Model ID</th>
+                    <th>Backend</th>
+                    <th>Description</th>
+                    <th>Size</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                <!-- Populated by JavaScript -->
+            </tbody>
+        </table>
+    </details>
+
+    <details>
         <summary>Add Custom Model</summary>
-        <form id="addModelForm" style="margin-top: 1rem;">
+        <div style="margin-top: 1rem;">
             <div class="grid">
                 <label>
                     Model ID
-                    <input type="text" name="id" required placeholder="e.g., distil-large-v3">
+                    <input type="text" id="newModelId" placeholder="e.g., distil-large-v3">
                 </label>
                 <label>
                     Backend
-                    <select name="backend">
+                    <select id="newModelBackend">
                         <option value="both">both</option>
                         <option value="faster-whisper">faster-whisper</option>
                         <option value="mlx">mlx</option>
@@ -88,35 +70,47 @@
             <div class="grid">
                 <label>
                     HuggingFace Repo (for mlx)
-                    <input type="text" name="hf_repo" placeholder="e.g., mlx-community/whisper-...">
+                    <input type="text" id="newModelHfRepo" placeholder="e.g., mlx-community/whisper-...">
                 </label>
                 <label>
                     Size (MB)
-                    <input type="number" name="size_mb" placeholder="optional">
+                    <input type="number" id="newModelSize" placeholder="optional">
                 </label>
             </div>
             <label>
                 Description
-                <input type="text" name="description" placeholder="optional">
+                <input type="text" id="newModelDesc" placeholder="optional">
             </label>
-            <button type="submit">Add Model</button>
-        </form>
+            <button type="button" onclick="addModel()">Add Model</button>
+        </div>
     </details>
-
-    <div style="margin-top: 1rem;">
-        <button class="secondary outline" onclick="resetModels()">Reset to Default Models</button>
-    </div>
 </article>
 
+<!-- Workers -->
 <article>
     <header>
-        <h3>Transcriber Nodes</h3>
+        <h3 style="margin: 0;">Workers</h3>
     </header>
+    <div id="workersFields" class="grid"></div>
+</article>
 
-    <p>Remote nodes can process transcription jobs in parallel with this server.
-       Enable distributed transcription in settings above to use this feature.</p>
+<!-- Notifications -->
+<article>
+    <header style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+        <h3 style="margin: 0;">Notifications</h3>
+        <button type="button" class="outline secondary" onclick="testNotification()">Test</button>
+    </header>
+    <div id="notificationsFields"></div>
+</article>
 
-    <table id="nodesTable">
+<!-- Distributed Transcription -->
+<article>
+    <header>
+        <h3 style="margin: 0;">Distributed Transcription</h3>
+    </header>
+    <div id="distributedFields"></div>
+
+    <table id="nodesTable" style="margin-top: 1rem;">
         <thead>
             <tr>
                 <th>Name</th>
@@ -133,30 +127,60 @@
 
     <details style="margin-top: 1rem;">
         <summary>Add Node Manually</summary>
-        <form id="addNodeForm" style="margin-top: 1rem;">
+        <div style="margin-top: 1rem;">
             <div class="grid">
                 <label>
                     Name
-                    <input type="text" name="name" required placeholder="e.g., M4 MacBook Pro">
+                    <input type="text" id="newNodeName" placeholder="e.g., M4 MacBook Pro">
                 </label>
                 <label>
                     URL
-                    <input type="text" name="url" required placeholder="e.g., http://192.168.1.100:8001">
+                    <input type="text" id="newNodeUrl" placeholder="e.g., http://192.168.1.100:8001">
                 </label>
             </div>
             <div class="grid">
                 <label>
                     Whisper Model (optional)
-                    <input type="text" name="whisper_model" placeholder="e.g., large-v3-turbo">
+                    <input type="text" id="newNodeModel" placeholder="e.g., large-v3-turbo">
                 </label>
                 <label>
                     Priority
-                    <input type="number" name="priority" value="10" min="1" max="100">
+                    <input type="number" id="newNodePriority" value="10" min="1" max="100">
                 </label>
             </div>
-            <button type="submit">Add Node</button>
-        </form>
+            <button type="button" onclick="addNode()">Add Node</button>
+        </div>
     </details>
+</article>
+
+<!-- General -->
+<article>
+    <header>
+        <h3 style="margin: 0;">General</h3>
+    </header>
+    <div id="generalFields" class="grid"></div>
+</article>
+
+</form>
+
+<!-- Current Values (reference) -->
+<article>
+    <header>
+        <h3 style="margin: 0;">Current Values</h3>
+    </header>
+    <table id="currentSettings">
+        <thead>
+            <tr>
+                <th>Setting</th>
+                <th>Value</th>
+                <th>Source</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            <!-- Populated by JavaScript -->
+        </tbody>
+    </table>
 </article>
 {% endblock %}
 
@@ -164,80 +188,100 @@
 <script>
 let currentSettings = {};
 
+// Map settings to their sections
+const settingSections = {
+    'storage_path': 'storage',
+    'temp_download_path': 'storage',
+    'whisper_model': 'transcription',
+    'whisper_backend': 'transcription',
+    'max_concurrent_downloads': 'workers',
+    'max_transcript_download_workers': 'workers',
+    'stuck_threshold_hours': 'workers',
+    'transcript_unavailable_age_days': 'workers',
+    'ntfy_enabled': 'notifications',
+    'ntfy_url': 'notifications',
+    'ntfy_topic': 'notifications',
+    'distributed_transcription_enabled': 'distributed',
+    'node_heartbeat_timeout_seconds': 'distributed',
+    'remote_job_timeout_hours': 'distributed',
+    'itunes_country': 'general',
+};
+
+const sectionContainers = {
+    'storage': 'storageFields',
+    'transcription': 'transcriptionFields',
+    'workers': 'workersFields',
+    'notifications': 'notificationsFields',
+    'distributed': 'distributedFields',
+    'general': 'generalFields',
+};
+
 async function loadSettings() {
     try {
         const response = await fetch('/api/settings');
         const data = await response.json();
         currentSettings = data.settings;
 
-        // Build form fields dynamically
-        const fieldsContainer = document.getElementById('settingsFields');
-        fieldsContainer.innerHTML = '';
-
-        const entries = Object.entries(currentSettings);
-        let html = '';
-        let inGrid = false;
-        let gridCount = 0;
-
-        entries.forEach(([key, info], index) => {
-            let inputHtml = '';
-            const isBool = info.type === 'bool';
-            const isChecked = info.value === true || info.value === 'true' || info.value === '1';
-            const isFullWidth = info.full_width === true;
-
-            if (info.type === 'int') {
-                inputHtml = `<input type="number" name="${key}" id="${key}"
-                    min="${info.min || ''}" max="${info.max || ''}" value="${info.value}">`;
-            } else if (info.type === 'select') {
-                const options = info.options.map(opt =>
-                    `<option value="${opt}" ${info.value === opt ? 'selected' : ''}>${opt}</option>`
-                ).join('');
-                inputHtml = `<select name="${key}" id="${key}">${options}</select>`;
-            } else if (info.type === 'bool') {
-                inputHtml = `<input type="checkbox" name="${key}" id="${key}" value="true" ${isChecked ? 'checked' : ''} role="switch">`;
-            } else {
-                inputHtml = `<input type="text" name="${key}" id="${key}" value="${info.value || ''}">`;
-            }
-
-            // Handle full-width items - close current grid if open
-            if (isFullWidth && inGrid) {
-                html += '</div>';
-                inGrid = false;
-                gridCount = 0;
-            }
-
-            // Start a new grid if needed for non-full-width items
-            if (!isFullWidth && !inGrid) {
-                html += '<div class="grid">';
-                inGrid = true;
-                gridCount = 0;
-            }
-
-            html += `
-                <label${isBool ? ' style="display: flex; align-items: center; gap: 0.5rem;"' : ''}>
-                    ${isBool ? inputHtml + ' ' + info.label : info.label + inputHtml}
-                    ${isBool ? '' : '<small>' + info.description + '</small>'}
-                </label>
-                ${isBool ? '<small style="margin-top: -0.75rem; margin-bottom: 0.5rem;">' + info.description + '</small>' : ''}
-            `;
-
-            if (!isFullWidth) {
-                gridCount++;
-                // Close grid after 2 items
-                if (gridCount === 2) {
-                    html += '</div>';
-                    inGrid = false;
-                    gridCount = 0;
-                }
-            }
+        // Clear all section containers
+        Object.values(sectionContainers).forEach(id => {
+            document.getElementById(id).innerHTML = '';
         });
 
-        // Close any open grid
-        if (inGrid) {
-            html += '</div>';
+        // Group settings by section
+        const sections = {};
+        for (const [key, info] of Object.entries(currentSettings)) {
+            const section = settingSections[key] || 'general';
+            if (!sections[section]) sections[section] = [];
+            sections[section].push({ key, info });
         }
 
-        fieldsContainer.innerHTML = html;
+        // Render each section
+        for (const [section, settings] of Object.entries(sections)) {
+            const containerId = sectionContainers[section];
+            const container = document.getElementById(containerId);
+            if (!container) continue;
+
+            let html = '';
+            let needsGrid = section !== 'notifications' && section !== 'distributed';
+
+            settings.forEach(({ key, info }) => {
+                const isBool = info.type === 'bool';
+                const isChecked = info.value === true || info.value === 'true' || info.value === '1';
+
+                let inputHtml = '';
+                if (info.type === 'int') {
+                    inputHtml = `<input type="number" name="${key}" id="${key}" min="${info.min || ''}" max="${info.max || ''}" value="${info.value}">`;
+                } else if (info.type === 'select') {
+                    const options = info.options.map(opt =>
+                        `<option value="${opt}" ${info.value === opt ? 'selected' : ''}>${opt}</option>`
+                    ).join('');
+                    inputHtml = `<select name="${key}" id="${key}">${options}</select>`;
+                } else if (info.type === 'bool') {
+                    inputHtml = `<input type="checkbox" name="${key}" id="${key}" value="true" ${isChecked ? 'checked' : ''} role="switch">`;
+                } else {
+                    inputHtml = `<input type="text" name="${key}" id="${key}" value="${info.value || ''}">`;
+                }
+
+                if (isBool) {
+                    html += `
+                        <label style="display: flex; align-items: center; gap: 0.5rem;">
+                            ${inputHtml} ${info.label}
+                        </label>
+                        <small style="margin-top: -0.5rem; margin-bottom: 1rem; display: block;">${info.description}</small>
+                    `;
+                } else {
+                    html += `
+                        <label>
+                            ${info.label}
+                            ${inputHtml}
+                            <small>${info.description}</small>
+                        </label>
+                    `;
+                }
+            });
+
+            container.innerHTML = html;
+        }
 
         // Populate current values table
         const tbody = document.querySelector('#currentSettings tbody');
@@ -246,38 +290,21 @@ async function loadSettings() {
         for (const [key, info] of Object.entries(currentSettings)) {
             const row = document.createElement('tr');
 
-            // Determine source badge styling
             let sourceClass = 'status-new';
-            let sourceText = info.source;
-            if (info.source === 'database') {
-                sourceClass = 'status-completed';
-            } else if (info.source === 'env_file') {
-                sourceClass = 'status-downloading';
-            }
+            if (info.source === 'database') sourceClass = 'status-completed';
+            else if (info.source === 'env_file') sourceClass = 'status-downloading';
 
-            // Add warning if node-specific setting has ignored DB value
-            let warning = '';
-            if (info.is_node_specific && info.db_value) {
-                warning = '<br><small style="color: var(--pico-del-color);">DB value ignored (node-specific)</small>';
-            }
-
-            // Show reset button if there's a DB value (even if ignored)
             const hasDbValue = info.db_value !== null && info.db_value !== undefined;
 
             row.innerHTML = `
                 <td>
                     <strong>${info.label}</strong><br>
                     <small>${info.description}</small>
-                    ${info.is_node_specific ? '<br><small><em>Configure in .env file</em></small>' : ''}
                 </td>
-                <td><code>${info.value}</code>${warning}</td>
+                <td><code>${info.value}</code></td>
+                <td><span class="status-badge ${sourceClass}">${info.source}</span></td>
                 <td>
-                    <span class="status-badge ${sourceClass}">
-                        ${sourceText}
-                    </span>
-                </td>
-                <td>
-                    ${hasDbValue ? `<button class="outline secondary" style="padding: 0.25rem 0.5rem; font-size: 0.875rem;" onclick="resetSetting('${key}')">Reset</button>` : ''}
+                    ${hasDbValue ? `<button type="button" class="outline secondary" style="padding: 0.25rem 0.5rem; font-size: 0.875rem;" onclick="resetSetting('${key}')">Reset</button>` : ''}
                 </td>
             `;
             tbody.appendChild(row);
@@ -293,7 +320,6 @@ document.getElementById('settingsForm').addEventListener('submit', async (e) => 
     const formData = new FormData(e.target);
     const settings = {};
 
-    // Handle all fields, including unchecked checkboxes
     for (const [key, info] of Object.entries(currentSettings)) {
         if (info.type === 'bool') {
             settings[key] = formData.has(key) ? 'true' : 'false';
@@ -325,9 +351,7 @@ document.getElementById('settingsForm').addEventListener('submit', async (e) => 
 });
 
 async function resetSetting(key) {
-    if (!confirm(`Reset '${currentSettings[key]?.label || key}' to default?`)) {
-        return;
-    }
+    if (!confirm(`Reset '${currentSettings[key]?.label || key}' to default?`)) return;
 
     try {
         const response = await fetch(`/api/settings/${key}`, {method: 'DELETE'});
@@ -345,9 +369,7 @@ async function resetSetting(key) {
 }
 
 async function resetAllSettings() {
-    if (!confirm('Reset all settings to defaults?')) {
-        return;
-    }
+    if (!confirm('Reset all settings to defaults?')) return;
 
     try {
         const response = await fetch('/api/settings', {method: 'DELETE'});
@@ -391,7 +413,7 @@ async function loadModels() {
                 <td>${model.description || '-'}</td>
                 <td>${model.size_mb ? model.size_mb + ' MB' : '-'}</td>
                 <td>
-                    <button class="outline secondary" style="padding: 0.25rem 0.5rem; font-size: 0.875rem;"
+                    <button type="button" class="outline secondary" style="padding: 0.25rem 0.5rem; font-size: 0.875rem;"
                             onclick="deleteModel('${model.id}')">Delete</button>
                 </td>
             `;
@@ -402,16 +424,19 @@ async function loadModels() {
     }
 }
 
-document.getElementById('addModelForm').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const formData = new FormData(e.target);
+async function addModel() {
     const model = {
-        id: formData.get('id'),
-        backend: formData.get('backend'),
-        hf_repo: formData.get('hf_repo') || null,
-        description: formData.get('description') || null,
-        size_mb: formData.get('size_mb') ? parseInt(formData.get('size_mb')) : null,
+        id: document.getElementById('newModelId').value,
+        backend: document.getElementById('newModelBackend').value,
+        hf_repo: document.getElementById('newModelHfRepo').value || null,
+        description: document.getElementById('newModelDesc').value || null,
+        size_mb: document.getElementById('newModelSize').value ? parseInt(document.getElementById('newModelSize').value) : null,
     };
+
+    if (!model.id) {
+        showError('Model ID is required');
+        return;
+    }
 
     try {
         const response = await fetch('/api/settings/models', {
@@ -423,21 +448,22 @@ document.getElementById('addModelForm').addEventListener('submit', async (e) => 
 
         if (response.ok) {
             showSuccess(data.message);
-            e.target.reset();
+            document.getElementById('newModelId').value = '';
+            document.getElementById('newModelHfRepo').value = '';
+            document.getElementById('newModelDesc').value = '';
+            document.getElementById('newModelSize').value = '';
             loadModels();
-            loadSettings(); // Refresh settings to update model dropdown
+            loadSettings();
         } else {
             showError(data.detail);
         }
     } catch (error) {
         showError(error.message);
     }
-});
+}
 
 async function deleteModel(modelId) {
-    if (!confirm(`Delete model '${modelId}'?`)) {
-        return;
-    }
+    if (!confirm(`Delete model '${modelId}'?`)) return;
 
     try {
         const response = await fetch(`/api/settings/models/${modelId}`, {method: 'DELETE'});
@@ -456,9 +482,7 @@ async function deleteModel(modelId) {
 }
 
 async function resetModels() {
-    if (!confirm('Reset to default models? This will remove all custom models.')) {
-        return;
-    }
+    if (!confirm('Reset to default models? This will remove all custom models.')) return;
 
     try {
         const response = await fetch('/api/settings/models/reset', {method: 'POST'});
@@ -487,7 +511,7 @@ async function loadNodes() {
 
         if (data.nodes.length === 0) {
             const row = document.createElement('tr');
-            row.innerHTML = '<td colspan="5" style="text-align: center;">No nodes registered</td>';
+            row.innerHTML = '<td colspan="5" style="text-align: center; color: var(--pico-muted-color);">No nodes registered</td>';
             tbody.appendChild(row);
             return;
         }
@@ -509,9 +533,9 @@ async function loadNodes() {
                 <td>${node.whisper_model || '-'}</td>
                 <td>${lastHeartbeat}</td>
                 <td>
-                    <button class="outline secondary" style="padding: 0.25rem 0.5rem; font-size: 0.875rem;"
+                    <button type="button" class="outline secondary" style="padding: 0.25rem 0.5rem; font-size: 0.875rem;"
                             onclick="testNode('${node.id}')">Test</button>
-                    <button class="outline secondary" style="padding: 0.25rem 0.5rem; font-size: 0.875rem;"
+                    <button type="button" class="outline secondary" style="padding: 0.25rem 0.5rem; font-size: 0.875rem;"
                             onclick="deleteNode('${node.id}')">Delete</button>
                 </td>
             `;
@@ -522,15 +546,18 @@ async function loadNodes() {
     }
 }
 
-document.getElementById('addNodeForm').addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const formData = new FormData(e.target);
+async function addNode() {
     const node = {
-        name: formData.get('name'),
-        url: formData.get('url'),
-        whisper_model: formData.get('whisper_model') || null,
-        priority: parseInt(formData.get('priority')) || 10,
+        name: document.getElementById('newNodeName').value,
+        url: document.getElementById('newNodeUrl').value,
+        whisper_model: document.getElementById('newNodeModel').value || null,
+        priority: parseInt(document.getElementById('newNodePriority').value) || 10,
     };
+
+    if (!node.name || !node.url) {
+        showError('Name and URL are required');
+        return;
+    }
 
     try {
         const response = await fetch('/api/nodes', {
@@ -542,7 +569,10 @@ document.getElementById('addNodeForm').addEventListener('submit', async (e) => {
 
         if (response.ok) {
             showSuccess(`Node added! API Key: ${data.api_key} - Save this key, it won't be shown again.`);
-            e.target.reset();
+            document.getElementById('newNodeName').value = '';
+            document.getElementById('newNodeUrl').value = '';
+            document.getElementById('newNodeModel').value = '';
+            document.getElementById('newNodePriority').value = '10';
             loadNodes();
         } else {
             showError(data.detail);
@@ -550,7 +580,7 @@ document.getElementById('addNodeForm').addEventListener('submit', async (e) => {
     } catch (error) {
         showError(error.message);
     }
-});
+}
 
 async function testNode(nodeId) {
     try {
@@ -563,9 +593,7 @@ async function testNode(nodeId) {
 }
 
 async function deleteNode(nodeId) {
-    if (!confirm('Delete this node?')) {
-        return;
-    }
+    if (!confirm('Delete this node?')) return;
 
     try {
         const response = await fetch(`/api/nodes/${nodeId}`, {method: 'DELETE'});
@@ -582,7 +610,7 @@ async function deleteNode(nodeId) {
     }
 }
 
-// Load settings, models, and nodes on page load
+// Load everything on page load
 loadSettings();
 loadModels();
 loadNodes();

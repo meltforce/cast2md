@@ -3,14 +3,15 @@
 {% block title %}Status - cast2md{% endblock %}
 
 {% block content %}
-<hgroup>
-    <h1>System Status</h1>
-    <p>Overview of episode processing</p>
-</hgroup>
-
-<div style="margin-bottom: 1rem;">
-    <button onclick="queueAllPending()">Queue All Pending</button>
-    <button class="secondary" onclick="cancelAllQueued()">Cancel All Queued</button>
+<div class="page-header">
+    <hgroup>
+        <h1>System Status</h1>
+        <p>Overview of episode processing</p>
+    </hgroup>
+    <div class="header-actions">
+        <button onclick="queueAllPending()">Queue All Pending</button>
+        <button class="secondary" onclick="cancelAllQueued()">Cancel All Queued</button>
+    </div>
 </div>
 
 <div class="stats-grid">

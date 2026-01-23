@@ -3,10 +3,47 @@
 {% block title %}Queue Management - cast2md{% endblock %}
 
 {% block content %}
-<hgroup>
-    <h1>Queue Management</h1>
-    <p>View and manage job queue</p>
-</hgroup>
+<div class="page-header">
+    <hgroup>
+        <h1>Queue Management</h1>
+        <p>View and manage job queue</p>
+    </hgroup>
+    <div class="header-actions">
+        <select id="statusFilter" onchange="filterByStatus(this.value)" style="width: auto; margin: 0;">
+            <option value="all" {% if current_filter == 'all' %}selected{% endif %}>All jobs</option>
+            <option value="running" {% if current_filter == 'running' %}selected{% endif %}>Running</option>
+            <option value="stuck" {% if current_filter == 'stuck' %}selected{% endif %}>Stuck</option>
+            <option value="queued" {% if current_filter == 'queued' %}selected{% endif %}>Queued</option>
+            <option value="failed" {% if current_filter == 'failed' %}selected{% endif %}>Failed</option>
+            <option value="completed" {% if current_filter == 'completed' %}selected{% endif %}>Completed</option>
+        </select>
+        <button class="outline secondary" onclick="cleanupCompleted()">Cleanup Old Jobs</button>
+    </div>
+</div>
+
+<!-- Stats Grid -->
+<div class="stats-grid">
+    <div class="stat-card">
+        <h3>{{ job_counts.get('running', 0) }}</h3>
+        <p>Running</p>
+    </div>
+    <div class="stat-card">
+        <h3>{{ stuck_count }}</h3>
+        <p>Stuck</p>
+    </div>
+    <div class="stat-card">
+        <h3>{{ job_counts.get('queued', 0) }}</h3>
+        <p>Queued</p>
+    </div>
+    <div class="stat-card">
+        <h3>{{ job_counts.get('failed', 0) }}</h3>
+        <p>Failed</p>
+    </div>
+    <div class="stat-card">
+        <h3>{{ job_counts.get('completed', 0) }}</h3>
+        <p>Completed</p>
+    </div>
+</div>
 
 <!-- Alert for stuck jobs -->
 {% if stuck_count > 0 %}
@@ -18,47 +55,27 @@
 </article>
 {% endif %}
 
-<!-- Bulk Actions -->
-<div style="margin-bottom: 1rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
-    {% if stuck_count > 0 %}
-    <button onclick="resetAllStuck()">Reset Stuck ({{ stuck_count }})</button>
-    {% endif %}
-    {% if job_counts.get('queued', 0) > 0 %}
-    <button class="secondary" onclick="cancelAllQueued()">Cancel Queued ({{ job_counts.get('queued', 0) }})</button>
-    {% endif %}
-    {% if job_counts.get('failed', 0) > 0 %}
-    <button class="secondary" onclick="retryAllFailed()">Retry Failed ({{ job_counts.get('failed', 0) }})</button>
-    {% endif %}
-    <button class="outline secondary" onclick="cleanupCompleted()">Cleanup Old Jobs</button>
-</div>
-
-<!-- Filter Tabs -->
-<div style="margin-bottom: 1rem;">
-    <nav>
-        <ul>
-            <li><a href="/queue" {% if current_filter == 'all' %}aria-current="page"{% endif %}>All</a></li>
-            <li><a href="/queue?status=running" {% if current_filter == 'running' %}aria-current="page"{% endif %}>
-                Running ({{ job_counts.get('running', 0) }})
-            </a></li>
-            <li><a href="/queue?status=stuck" {% if current_filter == 'stuck' %}aria-current="page"{% endif %}>
-                Stuck ({{ stuck_count }})
-            </a></li>
-            <li><a href="/queue?status=queued" {% if current_filter == 'queued' %}aria-current="page"{% endif %}>
-                Queued ({{ job_counts.get('queued', 0) }})
-            </a></li>
-            <li><a href="/queue?status=failed" {% if current_filter == 'failed' %}aria-current="page"{% endif %}>
-                Failed ({{ job_counts.get('failed', 0) }})
-            </a></li>
-            <li><a href="/queue?status=completed" {% if current_filter == 'completed' %}aria-current="page"{% endif %}>
-                Completed ({{ job_counts.get('completed', 0) }})
-            </a></li>
-        </ul>
-    </nav>
-</div>
-
 <!-- Job Table -->
-{% if jobs %}
-<table>
+<article>
+    {% if stuck_count > 0 or job_counts.get('queued', 0) > 0 or job_counts.get('failed', 0) > 0 %}
+    <header style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+        <h3 style="margin: 0;">Jobs{% if current_filter != 'all' %} ({{ current_filter }}){% endif %}</h3>
+        <div class="action-bar" style="margin: 0;">
+            {% if stuck_count > 0 %}
+            <button onclick="resetAllStuck()">Reset Stuck</button>
+            {% endif %}
+            {% if job_counts.get('queued', 0) > 0 %}
+            <button class="secondary" onclick="cancelAllQueued()">Cancel Queued</button>
+            {% endif %}
+            {% if job_counts.get('failed', 0) > 0 %}
+            <button class="secondary" onclick="retryAllFailed()">Retry Failed</button>
+            {% endif %}
+        </div>
+    </header>
+    {% endif %}
+
+    {% if jobs %}
+    <table>
     <thead>
         <tr>
             <th>Episode</th>
@@ -151,14 +168,12 @@
         </tr>
         {% endfor %}
     </tbody>
-</table>
-<p><small>Showing {{ jobs|length }} jobs</small></p>
-{% else %}
-<article>
+    </table>
+    <p><small>Showing {{ jobs|length }} jobs</small></p>
+    {% else %}
     <p>No jobs found{% if current_filter != 'all' %} with status "{{ current_filter }}"{% endif %}.</p>
-    <a href="/status">Back to Status</a>
+    {% endif %}
 </article>
-{% endif %}
 
 <!-- Error Modal -->
 <dialog id="error-modal">
@@ -174,6 +189,14 @@
 
 {% block scripts %}
 <script>
+function filterByStatus(status) {
+    if (status === 'all') {
+        window.location.href = '/queue';
+    } else {
+        window.location.href = `/queue?status=${status}`;
+    }
+}
+
 async function cancelJob(jobId) {
     if (!confirm('Cancel this job?')) return;
 
