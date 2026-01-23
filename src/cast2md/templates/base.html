@@ -732,38 +732,38 @@
             margin: 0.75rem 0;
         }
         .worker-card .queued-count {
-            font-size: 1.25rem;
-            font-weight: 600;
+            font-size: 1rem;
+            font-weight: 500;
         }
-        .worker-card .node-row {
+        .worker-card .worker-row {
             display: flex;
             align-items: center;
             gap: 0.5rem;
             padding: 0.25rem 0;
         }
-        .worker-card .node-name {
-            flex: 1;
+        .worker-card .worker-name {
             font-size: 0.875rem;
-        }
-        .worker-card .node-status {
-            font-size: 0.75rem;
-            color: var(--pico-muted-color);
-        }
-        .worker-card .worker-info {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
         }
         .worker-card .worker-job {
-            font-size: 0.875rem;
+            font-size: 0.8rem;
             color: var(--pico-muted-color);
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
-            max-width: 180px;
+            max-width: 120px;
+            margin-left: auto;
         }
         .worker-card .worker-job a {
             color: var(--pico-primary);
+        }
+        .worker-card .worker-progress {
+            font-size: 0.75rem;
+            color: var(--pico-muted-color);
+            font-family: monospace;
+        }
+        .worker-card .muted {
+            color: var(--pico-muted-color);
+            font-size: 0.8rem;
         }
     </style>
 </head>
