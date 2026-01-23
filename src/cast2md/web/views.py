@@ -193,8 +193,15 @@ def configure_templates(t: Jinja2Templates):
 
 
 @router.get("/", response_class=HTMLResponse)
-def index(request: Request):
-    """Home page - list all feeds."""
+def home(request: Request):
+    """Home page - redirect to search."""
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/search", status_code=302)
+
+
+@router.get("/feeds", response_class=HTMLResponse)
+def feeds_index(request: Request):
+    """Feeds page - list all feeds."""
     with get_db() as conn:
         feed_repo = FeedRepository(conn)
         episode_repo = EpisodeRepository(conn)
@@ -384,8 +391,15 @@ def episode_detail(
 
 
 @router.get("/status", response_class=HTMLResponse)
-def status_page(request: Request):
-    """Status page - high-level dashboard with worker cards."""
+def status_page_redirect(request: Request):
+    """Redirect old status URL to admin."""
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/admin", status_code=302)
+
+
+@router.get("/admin", response_class=HTMLResponse)
+def admin_status_page(request: Request):
+    """Admin status page - high-level dashboard with worker cards."""
     from cast2md.search.repository import TranscriptSearchRepository
 
     with get_db() as conn:
@@ -571,8 +585,15 @@ def status_page(request: Request):
 
 
 @router.get("/settings", response_class=HTMLResponse)
-def settings_page(request: Request):
-    """Settings page."""
+def settings_page_redirect(request: Request):
+    """Redirect old settings URL to admin."""
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url="/admin/settings", status_code=302)
+
+
+@router.get("/admin/settings", response_class=HTMLResponse)
+def admin_settings_page(request: Request):
+    """Admin settings page."""
     return templates.TemplateResponse(
         "settings.html",
         {"request": request},
@@ -580,8 +601,18 @@ def settings_page(request: Request):
 
 
 @router.get("/queue", response_class=HTMLResponse)
-def queue_management(request: Request, status: str | None = None):
-    """Queue management page for viewing and managing all jobs."""
+def queue_page_redirect(request: Request, status: str | None = None):
+    """Redirect old queue URL to admin."""
+    from fastapi.responses import RedirectResponse
+    url = "/admin/queue"
+    if status:
+        url += f"?status={status}"
+    return RedirectResponse(url=url, status_code=302)
+
+
+@router.get("/admin/queue", response_class=HTMLResponse)
+def admin_queue_page(request: Request, status: str | None = None):
+    """Admin queue management page for viewing and managing all jobs."""
     from datetime import datetime, timedelta
 
     from cast2md.config.settings import get_settings

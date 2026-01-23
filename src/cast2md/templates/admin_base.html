@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Admin - cast2md{% endblock %}</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
+    <style>
+        :root {
+            --pico-font-size: 16px;
+            --sidebar-width: 200px;
+        }
+        .admin-layout {
+            display: flex;
+            min-height: calc(100vh - 4rem);
+        }
+        .admin-sidebar {
+            width: var(--sidebar-width);
+            flex-shrink: 0;
+            padding: 1.5rem 1rem;
+            border-right: 1px solid var(--pico-muted-border-color);
+            background: var(--pico-card-background-color);
+        }
+        .admin-sidebar nav {
+            margin: 0;
+        }
+        .admin-sidebar ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        .admin-sidebar li {
+            margin-bottom: 0.25rem;
+        }
+        .admin-sidebar a {
+            display: block;
+            padding: 0.5rem 0.75rem;
+            border-radius: 0.25rem;
+            text-decoration: none;
+            color: var(--pico-color);
+        }
+        .admin-sidebar a:hover {
+            background: var(--pico-secondary-background);
+        }
+        .admin-sidebar a.active {
+            background: var(--pico-primary-background);
+            color: var(--pico-primary-inverse);
+        }
+        .admin-sidebar .back-link {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 0.75rem;
+            margin-bottom: 1rem;
+            color: var(--pico-muted-color);
+            font-size: 0.875rem;
+        }
+        .admin-sidebar .back-link:hover {
+            color: var(--pico-color);
+            background: none;
+        }
+        .admin-sidebar h4 {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--pico-muted-color);
+            margin: 1rem 0 0.5rem 0.75rem;
+        }
+        .admin-content {
+            flex: 1;
+            padding: 2rem;
+            max-width: 1200px;
+        }
+        @media (max-width: 768px) {
+            .admin-layout {
+                flex-direction: column;
+            }
+            .admin-sidebar {
+                width: 100%;
+                border-right: none;
+                border-bottom: 1px solid var(--pico-muted-border-color);
+                padding: 1rem;
+            }
+            .admin-sidebar ul {
+                display: flex;
+                gap: 0.5rem;
+                flex-wrap: wrap;
+            }
+            .admin-sidebar h4 {
+                display: none;
+            }
+            .admin-sidebar .back-link {
+                margin-bottom: 0.5rem;
+            }
+            .admin-content {
+                padding: 1rem;
+            }
+        }
+        /* Status badges */
+        .status-badge {
+            display: inline-block;
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.25rem;
+            font-size: 0.75rem;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        .status-new {
+            background: color-mix(in srgb, var(--pico-color) 10%, transparent);
+            color: var(--pico-color);
+            border: 1px solid color-mix(in srgb, var(--pico-color) 30%, transparent);
+        }
+        .status-downloading {
+            background: color-mix(in srgb, var(--pico-primary) 15%, transparent);
+            color: var(--pico-primary);
+            border: 1px solid color-mix(in srgb, var(--pico-primary) 40%, transparent);
+        }
+        .status-completed {
+            background: color-mix(in srgb, #22c55e 15%, transparent);
+            color: #22c55e;
+            border: 1px solid color-mix(in srgb, #22c55e 40%, transparent);
+        }
+        .status-failed {
+            background: color-mix(in srgb, #ef4444 15%, transparent);
+            color: #ef4444;
+            border: 1px solid color-mix(in srgb, #ef4444 40%, transparent);
+        }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        .stat-card {
+            text-align: center;
+            padding: 1rem;
+            background: var(--pico-card-background-color);
+            border-radius: 0.5rem;
+            border: 1px solid var(--pico-muted-border-color);
+        }
+        .stat-card h3 {
+            margin: 0;
+            font-size: 2rem;
+        }
+        .stat-card p {
+            margin: 0;
+            color: var(--pico-muted-color);
+            font-size: 0.875rem;
+        }
+        .actions {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+            min-height: 2.25rem;
+        }
+        .actions button, .actions a {
+            padding: 0.25rem 0.5rem;
+            font-size: 0.875rem;
+        }
+        /* Generic CSS tooltip */
+        .css-tooltip {
+            position: relative;
+            cursor: help;
+        }
+        .css-tooltip::after {
+            content: attr(title);
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 0.4rem 0.6rem;
+            background: var(--pico-card-background-color, #1a1a2e);
+            color: var(--pico-color, #fff);
+            font-size: 0.75rem;
+            font-family: var(--pico-font-family);
+            border-radius: 4px;
+            white-space: nowrap;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.15s, visibility 0.15s;
+            z-index: 1000;
+            pointer-events: none;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        }
+        .css-tooltip:hover::after {
+            opacity: 1;
+            visibility: visible;
+        }
+        /* Unified page header pattern */
+        .page-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+        .page-header hgroup {
+            margin: 0;
+        }
+        .page-header h1 {
+            margin: 0;
+        }
+        .page-header p {
+            margin: 0;
+            color: var(--pico-muted-color);
+        }
+        .page-header .header-actions {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+        .action-bar {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+            margin-bottom: 1rem;
+        }
+        /* Fix details/summary styling */
+        details summary {
+            display: list-item;
+            list-style: disclosure-closed inside;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        details summary::after {
+            display: none;
+        }
+        details[open] summary {
+            list-style-type: disclosure-open;
+            margin-bottom: 0.5rem;
+        }
+        /* Worker cards */
+        .worker-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        .worker-card {
+            border: 1px solid var(--pico-muted-border-color);
+            border-radius: var(--pico-border-radius);
+            padding: 1rem;
+            background: var(--pico-card-background-color);
+        }
+        .worker-card h4 {
+            margin: 0 0 0.75rem 0;
+            font-size: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .worker-card .card-section {
+            margin-bottom: 0.75rem;
+        }
+        .worker-card .card-section:last-child {
+            margin-bottom: 0;
+        }
+        .worker-card .section-label {
+            font-size: 0.75rem;
+            color: var(--pico-muted-color);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.25rem;
+        }
+        .worker-card .workers-row {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .worker-card .worker-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+            flex-shrink: 0;
+        }
+        .worker-card .dot-idle { background: #22c55e; }
+        .worker-card .dot-busy { background: #3b82f6; }
+        .worker-card .dot-online { background: #22c55e; }
+        .worker-card .dot-offline { background: #ef4444; }
+        .worker-card .dot-stuck { background: #ef4444; }
+        .worker-card .queued-count {
+            font-size: 1rem;
+            font-weight: 500;
+        }
+        .worker-card .worker-row {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.25rem 0;
+            min-height: 1.375rem;
+        }
+        .worker-card .worker-row.dots-only {
+            padding-top: 0.45rem;
+            padding-bottom: 0.45rem;
+        }
+        .worker-card .worker-name {
+            font-size: 0.875rem;
+        }
+        .worker-card .worker-job {
+            font-size: 0.8rem;
+            color: var(--pico-muted-color);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 120px;
+            margin-left: auto;
+        }
+        .worker-card .worker-job a {
+            color: var(--pico-primary);
+        }
+        .worker-card .worker-progress {
+            font-size: 0.75rem;
+            color: var(--pico-muted-color);
+            font-family: monospace;
+        }
+        .worker-card .muted {
+            color: var(--pico-muted-color);
+            font-size: 0.8rem;
+        }
+        #theme-toggle svg {
+            vertical-align: middle;
+            position: relative;
+            top: -1px;
+        }
+    </style>
+</head>
+<body>
+    <div class="admin-layout">
+        <aside class="admin-sidebar">
+            <nav>
+                <a href="/" class="back-link">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+                    Back to App
+                </a>
+                <h4>Admin</h4>
+                <ul>
+                    <li><a href="/admin" {% if request.url.path == '/admin' %}class="active"{% endif %}>Status</a></li>
+                    <li><a href="/admin/queue" {% if request.url.path == '/admin/queue' %}class="active"{% endif %}>Queue</a></li>
+                    <li><a href="/admin/settings" {% if request.url.path == '/admin/settings' %}class="active"{% endif %}>Settings</a></li>
+                </ul>
+                <h4>Resources</h4>
+                <ul>
+                    <li><a href="/docs" target="_blank">API Docs</a></li>
+                </ul>
+            </nav>
+        </aside>
+
+        <main class="admin-content">
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+
+    <!-- Toast notification container -->
+    <div id="toast-container" class="toast-container" style="position: fixed; top: 1rem; right: 1rem; z-index: 9999; display: flex; flex-direction: column; gap: 0.5rem; max-width: 400px;"></div>
+
+    <!-- Confirm dialog -->
+    <dialog id="confirmDialog">
+        <article>
+            <header>
+                <button aria-label="Close" rel="prev" onclick="this.closest('dialog').close()"></button>
+                <h3 id="confirmDialogTitle">Confirm</h3>
+            </header>
+            <p id="confirmDialogMessage"></p>
+            <footer style="display: flex; gap: 0.5rem; justify-content: flex-end;">
+                <button type="button" class="secondary" onclick="resolveConfirm(false)">Cancel</button>
+                <button type="button" id="confirmDialogBtn" onclick="resolveConfirm(true)">Confirm</button>
+            </footer>
+        </article>
+    </dialog>
+
+    <!-- Prompt dialog -->
+    <dialog id="promptDialog">
+        <article>
+            <header>
+                <button aria-label="Close" rel="prev" onclick="this.closest('dialog').close()"></button>
+                <h3 id="promptDialogTitle">Input</h3>
+            </header>
+            <label>
+                <span id="promptDialogMessage"></span>
+                <input type="text" id="promptDialogInput" autocomplete="off">
+            </label>
+            <footer style="display: flex; gap: 0.5rem; justify-content: flex-end;">
+                <button type="button" class="secondary" onclick="resolvePrompt(null)">Cancel</button>
+                <button type="button" onclick="resolvePrompt(document.getElementById('promptDialogInput').value)">OK</button>
+            </footer>
+        </article>
+    </dialog>
+
+    <script>
+        // Toast notification system
+        function showToast(message, type = 'info', duration = 4000) {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `toast toast-${type}`;
+            toast.style.cssText = `
+                padding: 1rem 1.25rem;
+                border-radius: 0.5rem;
+                box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+                display: flex;
+                align-items: flex-start;
+                gap: 0.75rem;
+                animation: toast-in 0.3s ease-out;
+                cursor: pointer;
+                background: ${type === 'success' ? 'color-mix(in srgb, #22c55e 15%, var(--pico-card-background-color))' : type === 'error' ? 'color-mix(in srgb, #ef4444 15%, var(--pico-card-background-color))' : 'color-mix(in srgb, var(--pico-primary) 15%, var(--pico-card-background-color))'};
+                border: 1px solid ${type === 'success' ? '#22c55e' : type === 'error' ? '#ef4444' : 'var(--pico-primary)'};
+                color: var(--pico-color);
+            `;
+
+            const icons = { success: '\u2713', error: '\u2717', info: '\u2139' };
+
+            toast.innerHTML = `
+                <span style="font-size: 1.25rem; line-height: 1; flex-shrink: 0;">${icons[type] || icons.info}</span>
+                <span style="flex: 1; font-size: 0.9rem; line-height: 1.4;">${message}</span>
+                <button style="background: none; border: none; font-size: 1.25rem; cursor: pointer; padding: 0; margin: 0; width: auto; line-height: 1; color: var(--pico-muted-color); flex-shrink: 0;" onclick="dismissToast(this.parentElement)">\u00d7</button>
+            `;
+
+            container.appendChild(toast);
+
+            toast.addEventListener('click', (e) => {
+                if (!e.target.closest('button')) dismissToast(toast);
+            });
+
+            const timeout = type === 'error' ? Math.max(duration, 6000) : duration;
+            setTimeout(() => dismissToast(toast), timeout);
+        }
+
+        function dismissToast(toast) {
+            if (!toast || toast.style.opacity === '0') return;
+            toast.style.opacity = '0';
+            toast.style.transform = 'translateX(100%)';
+            setTimeout(() => toast.remove(), 300);
+        }
+
+        function showSuccess(message) { showToast(message, 'success'); }
+        function showError(message) { showToast(message, 'error'); }
+        function showInfo(message) { showToast(message, 'info'); }
+
+        // Confirm dialog system
+        let confirmResolver = null;
+        function showConfirm(message, title = 'Confirm', buttonText = 'Confirm') {
+            return new Promise((resolve) => {
+                confirmResolver = resolve;
+                document.getElementById('confirmDialogTitle').textContent = title;
+                document.getElementById('confirmDialogMessage').textContent = message;
+                document.getElementById('confirmDialogBtn').textContent = buttonText;
+                document.getElementById('confirmDialog').showModal();
+            });
+        }
+        function resolveConfirm(value) {
+            document.getElementById('confirmDialog').close();
+            if (confirmResolver) {
+                confirmResolver(value);
+                confirmResolver = null;
+            }
+        }
+        document.getElementById('confirmDialog').addEventListener('close', () => {
+            if (confirmResolver) {
+                confirmResolver(false);
+                confirmResolver = null;
+            }
+        });
+
+        // Prompt dialog system
+        let promptResolver = null;
+        function showPrompt(message, defaultValue = '', title = 'Input') {
+            return new Promise((resolve) => {
+                promptResolver = resolve;
+                document.getElementById('promptDialogTitle').textContent = title;
+                document.getElementById('promptDialogMessage').textContent = message;
+                document.getElementById('promptDialogInput').value = defaultValue;
+                document.getElementById('promptDialog').showModal();
+                document.getElementById('promptDialogInput').focus();
+            });
+        }
+        function resolvePrompt(value) {
+            document.getElementById('promptDialog').close();
+            if (promptResolver) {
+                promptResolver(value);
+                promptResolver = null;
+            }
+        }
+        document.getElementById('promptDialog').addEventListener('close', () => {
+            if (promptResolver) {
+                promptResolver(null);
+                promptResolver = null;
+            }
+        });
+
+        // Theme toggle functionality
+        function toggleTheme() {
+            const html = document.documentElement;
+            const current = html.getAttribute('data-theme');
+            let next;
+            if (current === 'dark') {
+                next = 'light';
+            } else if (current === 'light') {
+                next = '';
+            } else {
+                next = 'dark';
+            }
+            if (next) {
+                html.setAttribute('data-theme', next);
+                localStorage.setItem('theme', next);
+            } else {
+                html.removeAttribute('data-theme');
+                localStorage.removeItem('theme');
+            }
+        }
+        // Restore saved theme on load
+        (function() {
+            const saved = localStorage.getItem('theme');
+            if (saved) {
+                document.documentElement.setAttribute('data-theme', saved);
+            }
+        })();
+    </script>
+
+    {% block scripts %}{% endblock %}
+</body>
+</html>
