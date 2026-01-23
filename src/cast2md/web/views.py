@@ -364,7 +364,7 @@ def episode_detail(
 
 @router.get("/status", response_class=HTMLResponse)
 def status_page(request: Request):
-    """Status page showing episodes by status."""
+    """Status page - high-level dashboard with worker cards."""
     with get_db() as conn:
         episode_repo = EpisodeRepository(conn)
         feed_repo = FeedRepository(conn)
@@ -374,33 +374,12 @@ def status_page(request: Request):
         status_counts = episode_repo.count_by_status()
         feeds = feed_repo.get_all()
 
-        # Get recent episodes for each active status
-        pending = episode_repo.get_by_status(EpisodeStatus.NEW, limit=10)
-        downloading = episode_repo.get_by_status(EpisodeStatus.DOWNLOADING, limit=10)
-        downloaded = episode_repo.get_by_status(EpisodeStatus.AUDIO_READY, limit=10)
-        transcribing = episode_repo.get_by_status(EpisodeStatus.TRANSCRIBING, limit=10)
-        failed = episode_repo.get_by_status(EpisodeStatus.FAILED, limit=10)
-
-        # Get queued jobs
-        queued_downloads = job_repo.get_queued_jobs(JobType.DOWNLOAD, limit=10)
-        queued_transcriptions = job_repo.get_queued_jobs(JobType.TRANSCRIBE, limit=10)
+        # Get running jobs for worker status display
         running_downloads = job_repo.get_running_jobs(JobType.DOWNLOAD)
         running_transcriptions = job_repo.get_running_jobs(JobType.TRANSCRIBE)
         running_transcript_downloads = job_repo.get_running_jobs(JobType.TRANSCRIPT_DOWNLOAD)
 
-        # Get episode info for queued jobs
-        queued_download_episodes = []
-        for job in queued_downloads:
-            ep = episode_repo.get_by_id(job.episode_id)
-            if ep:
-                queued_download_episodes.append({"job": job, "episode": ep})
-
-        queued_transcribe_episodes = []
-        for job in queued_transcriptions:
-            ep = episode_repo.get_by_id(job.episode_id)
-            if ep:
-                queued_transcribe_episodes.append({"job": job, "episode": ep})
-
+        # Get episode info for running jobs
         running_download_episodes = []
         for job in running_downloads:
             ep = episode_repo.get_by_id(job.episode_id)
@@ -419,40 +398,21 @@ def status_page(request: Request):
             if ep:
                 running_transcript_download_episodes.append({"job": job, "episode": ep})
 
-        # Filter out episodes that have queued/running download jobs from "pending" list
-        running_download_episode_ids = {job.episode_id for job in running_downloads}
-        queued_download_episode_ids = {job.episode_id for job in queued_downloads}
-        pending = [
-            ep for ep in pending
-            if ep.id not in running_download_episode_ids
-            and ep.id not in queued_download_episode_ids
-        ]
-
-        # Filter out episodes that have running transcription jobs from "downloaded" list
-        running_transcribe_episode_ids = {job.episode_id for job in running_transcriptions}
-        queued_transcribe_episode_ids = {job.episode_id for job in queued_transcriptions}
-        downloaded = [
-            ep for ep in downloaded
-            if ep.id not in running_transcribe_episode_ids
-            and ep.id not in queued_transcribe_episode_ids
-        ]
-
-        # Get all remote nodes for the unified workers table
+        # Get all remote nodes
         nodes = node_repo.get_all()
 
-    # Get worker status
+    # Get worker status from manager
     worker_manager = get_worker_manager()
     queue_status = worker_manager.get_status()
 
-    # Build unified workers list
-    workers = []
-
-    # Track which jobs have been assigned to workers
+    # Build worker groups for card display
+    # Track assigned jobs to detect orphans
     assigned_download_job_ids = set()
     assigned_transcribe_job_ids = set()
     assigned_transcript_download_job_ids = set()
 
-    # Add server download workers (audio)
+    # Audio Download card
+    download_workers = []
     download_job_index = 0
     for i in range(queue_status["download_workers"]):
         job = None
@@ -464,59 +424,56 @@ def status_page(request: Request):
             assigned_download_job_ids.add(job.id)
             download_job_index += 1
 
-        workers.append({
-            "name": f"Audio Download {i+1}",
-            "type": "download",
+        download_workers.append({
             "status": "busy" if job else "idle",
             "job": job,
             "episode": episode,
-            "progress": None,  # Downloads don't track progress (indeterminate)
         })
 
-    # Add server transcript download workers (as a single summary row)
+    # Check for orphaned download jobs
+    orphaned_downloads = []
+    for item in running_download_episodes:
+        if item["job"].id not in assigned_download_job_ids:
+            orphaned_downloads.append({
+                "status": "stuck",
+                "job": item["job"],
+                "episode": item["episode"],
+            })
+
+    # Transcript Fetch card
     active_tdl_count = len(running_transcript_download_episodes)
     total_tdl_workers = queue_status["transcript_download_workers"]
-
-    # Mark all running TDL jobs as assigned
     for item in running_transcript_download_episodes:
         assigned_transcript_download_job_ids.add(item["job"].id)
 
-    workers.append({
-        "name": "Transcript Fetch",
-        "type": "transcript_download_summary",
-        "status": "busy" if active_tdl_count > 0 else "idle",
-        "active_count": active_tdl_count,
-        "total_count": total_tdl_workers,
-        "job": None,
-        "episode": None,
-        "progress": None,
-    })
+    # Check for orphaned transcript download jobs
+    orphaned_transcript_downloads = []
+    for item in running_transcript_download_episodes:
+        if item["job"].id not in assigned_transcript_download_job_ids:
+            orphaned_transcript_downloads.append({
+                "status": "stuck",
+                "job": item["job"],
+                "episode": item["episode"],
+            })
 
-    # Add server transcription worker
-    server_tx_job = None
-    server_tx_episode = None
+    # Transcription card - server worker
+    server_worker = {"status": "idle", "job": None, "episode": None, "progress": None}
     for item in running_transcribe_episodes:
-        # Jobs with assigned_node_id=None or 'local' belong to the server worker
         node_id = item["job"].assigned_node_id
         if not node_id or node_id == "local":
-            server_tx_job = item["job"]
-            server_tx_episode = item["episode"]
-            assigned_transcribe_job_ids.add(server_tx_job.id)
+            server_worker = {
+                "status": "busy",
+                "job": item["job"],
+                "episode": item["episode"],
+                "progress": item["job"].progress_percent,
+            }
+            assigned_transcribe_job_ids.add(item["job"].id)
             break
 
-    workers.append({
-        "name": "Transcription",
-        "type": "transcription",
-        "status": "busy" if server_tx_job else "idle",
-        "job": server_tx_job,
-        "episode": server_tx_episode,
-        "progress": server_tx_job.progress_percent if server_tx_job else None,
-    })
-
-    # Add remote nodes (only if distributed transcription is enabled)
+    # Transcription card - remote nodes
+    remote_nodes = []
     if queue_status.get("distributed_enabled"):
         for node in nodes:
-            # Find if this node has a running job
             node_job = None
             node_episode = None
             for item in running_transcribe_episodes:
@@ -526,52 +483,49 @@ def status_page(request: Request):
                     assigned_transcribe_job_ids.add(node_job.id)
                     break
 
-            # MLX backend doesn't support streaming progress
-            # "auto" on Apple Silicon uses MLX, so treat both as non-streaming
             is_mlx = node.whisper_backend in ("mlx", "auto")
-            workers.append({
+            remote_nodes.append({
                 "name": node.name,
-                "type": "transcription",
                 "status": node.status.value,
                 "job": node_job,
                 "episode": node_episode,
                 "progress": None if is_mlx else (node_job.progress_percent if node_job else None),
-                "last_heartbeat": node.last_heartbeat,
             })
 
-    # Add orphaned running jobs (jobs marked running but not assigned to any active worker)
-    for item in running_download_episodes:
-        if item["job"].id not in assigned_download_job_ids:
-            workers.append({
-                "name": "Orphaned",
-                "type": "download",
-                "status": "stuck",
-                "job": item["job"],
-                "episode": item["episode"],
-                "progress": None,
-            })
-
-    for item in running_transcript_download_episodes:
-        if item["job"].id not in assigned_transcript_download_job_ids:
-            workers.append({
-                "name": "Orphaned",
-                "type": "transcript_download",
-                "status": "stuck",
-                "job": item["job"],
-                "episode": item["episode"],
-                "progress": None,
-            })
-
+    # Check for orphaned transcription jobs
+    orphaned_transcriptions = []
     for item in running_transcribe_episodes:
         if item["job"].id not in assigned_transcribe_job_ids:
-            workers.append({
-                "name": "Orphaned",
-                "type": "transcription",
+            orphaned_transcriptions.append({
                 "status": "stuck",
                 "job": item["job"],
                 "episode": item["episode"],
                 "progress": item["job"].progress_percent,
             })
+
+    # Build worker_groups structure for template
+    worker_groups = {
+        "download": {
+            "title": "Audio Download",
+            "workers": download_workers + orphaned_downloads,
+            "queued": queue_status["download_queue"]["queued"],
+        },
+        "transcript_fetch": {
+            "title": "Transcript Fetch",
+            "active_count": active_tdl_count,
+            "total_count": total_tdl_workers,
+            "queued": queue_status["transcript_download_queue"]["queued"],
+            "orphaned": orphaned_transcript_downloads,
+        },
+        "transcription": {
+            "title": "Transcription",
+            "server": server_worker,
+            "nodes": remote_nodes,
+            "orphaned": orphaned_transcriptions,
+            "queued": queue_status["transcribe_queue"]["queued"],
+            "distributed_enabled": queue_status.get("distributed_enabled", False),
+        },
+    }
 
     return templates.TemplateResponse(
         "status.html",
@@ -579,17 +533,8 @@ def status_page(request: Request):
             "request": request,
             "status_counts": status_counts,
             "feed_count": len(feeds),
-            "pending": pending,
-            "downloading": downloading,
-            "downloaded": downloaded,
-            "transcribing": transcribing,
-            "failed": failed,
             "queue_status": queue_status,
-            "queued_downloads": queued_download_episodes,
-            "queued_transcriptions": queued_transcribe_episodes,
-            "running_downloads": running_download_episodes,
-            "running_transcriptions": running_transcribe_episodes,
-            "workers": workers,
+            "worker_groups": worker_groups,
         },
     )
 

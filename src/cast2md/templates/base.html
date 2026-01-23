@@ -676,6 +676,95 @@
             list-style-type: disclosure-open;
             margin-bottom: 0.5rem;
         }
+        /* Worker cards */
+        .worker-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        .worker-card {
+            border: 1px solid var(--pico-muted-border-color);
+            border-radius: var(--pico-border-radius);
+            padding: 1rem;
+            background: var(--pico-card-background-color);
+        }
+        .worker-card h4 {
+            margin: 0 0 0.75rem 0;
+            font-size: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .worker-card .card-section {
+            margin-bottom: 0.75rem;
+        }
+        .worker-card .card-section:last-child {
+            margin-bottom: 0;
+        }
+        .worker-card .section-label {
+            font-size: 0.75rem;
+            color: var(--pico-muted-color);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.25rem;
+        }
+        .worker-card .workers-row {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .worker-card .worker-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+            flex-shrink: 0;
+        }
+        .worker-card .dot-idle { background: #22c55e; }
+        .worker-card .dot-busy { background: #3b82f6; }
+        .worker-card .dot-online { background: #22c55e; }
+        .worker-card .dot-offline { background: #ef4444; }
+        .worker-card .dot-stuck { background: #ef4444; }
+        .worker-card .divider {
+            border-top: 1px solid var(--pico-muted-border-color);
+            margin: 0.75rem 0;
+        }
+        .worker-card .queued-count {
+            font-size: 1.25rem;
+            font-weight: 600;
+        }
+        .worker-card .node-row {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.25rem 0;
+        }
+        .worker-card .node-name {
+            flex: 1;
+            font-size: 0.875rem;
+        }
+        .worker-card .node-status {
+            font-size: 0.75rem;
+            color: var(--pico-muted-color);
+        }
+        .worker-card .worker-info {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        .worker-card .worker-job {
+            font-size: 0.875rem;
+            color: var(--pico-muted-color);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 180px;
+        }
+        .worker-card .worker-job a {
+            color: var(--pico-primary);
+        }
     </style>
 </head>
 <body>
