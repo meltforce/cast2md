@@ -205,7 +205,18 @@
             <td style="white-space: nowrap;">{{ episode.published_at.strftime('%Y-%m-%d') if episode.published_at else 'Unknown' }}</td>
             <td style="white-space: nowrap;">
                 {% set status = 'queued' if (episode.id in queued_episode_ids and episode.status.value == 'new') else episode.status.value %}
-                <span class="progress-dots" data-status="{{ status }}" title="{{ status|title }}">
+                {% set tooltips = {
+                    'new': 'Ready to process',
+                    'queued': 'Job queued, waiting to start',
+                    'awaiting_transcript': 'Checking for external transcript, will retry',
+                    'needs_audio': 'No external transcript - audio download required',
+                    'downloading': 'Downloading audio...',
+                    'audio_ready': 'Audio ready, waiting for transcription',
+                    'transcribing': 'Transcribing with Whisper...',
+                    'completed': 'Transcript available',
+                    'failed': 'Processing failed'
+                } %}
+                <span class="progress-dots" data-status="{{ status }}" title="{{ tooltips.get(status, status) }}">
                     {% if status == 'new' %}
                     <span class="dot dot-empty">○</span><span class="dot dot-empty">○</span><span class="dot dot-empty">○</span><span class="dot dot-empty">○</span>
                     {% elif status == 'queued' %}
