@@ -421,6 +421,10 @@ def fail_job(
 
     The node calls this if transcription fails.
     """
+    import logging
+
+    logger = logging.getLogger(__name__)
+
     with get_db() as conn:
         job_repo = JobRepository(conn)
         node_repo = TranscriberNodeRepository(conn)
@@ -436,6 +440,14 @@ def fail_job(
 
         if job.assigned_node_id != node.id:
             raise HTTPException(status_code=403, detail="Job not assigned to this node")
+
+        # Log the failure with details
+        episode = episode_repo.get_by_id(job.episode_id)
+        episode_title = episode.title if episode else f"episode {job.episode_id}"
+        logger.warning(
+            f"Job {job_id} failed on node '{node.name}': {request.error_message} "
+            f"(episode: {episode_title}, attempt {job.attempts + 1}/{job.max_attempts})"
+        )
 
         # Update episode status
         from cast2md.db.models import EpisodeStatus

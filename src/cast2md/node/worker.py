@@ -249,15 +249,21 @@ class TranscriberNodeWorker:
                 temp_path = Path(temp_dir)
 
                 # Download audio
-                audio_path = self._download_audio(audio_url, temp_path)
+                audio_path, download_error = self._download_audio(audio_url, temp_path)
+                if download_error:
+                    self._fail_job(job_id, f"Failed to download audio: {download_error}")
+                    return
                 if not audio_path:
-                    self._fail_job(job_id, "Failed to download audio")
+                    self._fail_job(job_id, "Download returned no path")
                     return
 
                 # Transcribe
-                transcript = self._transcribe(audio_path, job_id)
+                transcript, error = self._transcribe(audio_path, job_id)
+                if error:
+                    self._fail_job(job_id, f"Transcription failed: {error}")
+                    return
                 if not transcript:
-                    self._fail_job(job_id, "Transcription failed")
+                    self._fail_job(job_id, "Transcription returned empty result")
                     return
 
                 # Upload result
@@ -271,7 +277,7 @@ class TranscriberNodeWorker:
             self._current_episode_title = None
             self._job_start_time = None
 
-    def _download_audio(self, audio_url: str, temp_dir: Path) -> Optional[Path]:
+    def _download_audio(self, audio_url: str, temp_dir: Path) -> tuple[Optional[Path], Optional[str]]:
         """Download audio file from server.
 
         Args:
@@ -279,7 +285,7 @@ class TranscriberNodeWorker:
             temp_dir: Directory to save audio to.
 
         Returns:
-            Path to downloaded file, or None on failure.
+            Tuple of (path to downloaded file, error message). One will be None.
         """
         logger.info(f"Downloading audio from {audio_url}")
 
@@ -287,8 +293,9 @@ class TranscriberNodeWorker:
             # Stream download to handle large files
             with self._client.stream("GET", audio_url) as response:
                 if response.status_code != 200:
-                    logger.error(f"Download failed: {response.status_code}")
-                    return None
+                    error = f"HTTP {response.status_code}"
+                    logger.error(f"Download failed: {error}")
+                    return None, error
 
                 # Get filename from content-disposition or use default
                 filename = "audio.mp3"
@@ -304,13 +311,14 @@ class TranscriberNodeWorker:
                         f.write(chunk)
 
             logger.info(f"Downloaded to {audio_path} ({audio_path.stat().st_size} bytes)")
-            return audio_path
+            return audio_path, None
 
         except httpx.RequestError as e:
-            logger.error(f"Download error: {e}")
-            return None
+            error = f"{type(e).__name__}: {e}"
+            logger.error(f"Download error: {error}")
+            return None, error
 
-    def _transcribe(self, audio_path: Path, job_id: int) -> Optional[str]:
+    def _transcribe(self, audio_path: Path, job_id: int) -> tuple[Optional[str], Optional[str]]:
         """Transcribe audio file.
 
         Args:
@@ -318,7 +326,7 @@ class TranscriberNodeWorker:
             job_id: Job ID for progress reporting.
 
         Returns:
-            Transcript text, or None on failure.
+            Tuple of (transcript text, error message). One will be None.
         """
         logger.info(f"Transcribing {audio_path}")
 
@@ -342,11 +350,14 @@ class TranscriberNodeWorker:
                 progress_callback=progress_callback,
             )
             logger.info(f"Transcription complete ({len(transcript)} chars)")
-            return transcript
+            return transcript, None
 
         except Exception as e:
-            logger.error(f"Transcription error: {e}")
-            return None
+            import traceback
+            error_detail = f"{type(e).__name__}: {e}"
+            logger.error(f"Transcription error: {error_detail}")
+            logger.debug(f"Traceback:\n{traceback.format_exc()}")
+            return None, error_detail
 
     def _report_progress(self, job_id: int, progress: int):
         """Report progress to server.
