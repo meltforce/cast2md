@@ -22,7 +22,7 @@ classifiers = [
 ]
 dependencies = [
     "feedparser>=6.0.0",
-    "httpx>=0.26.0",
+    "httpx[socks]>=0.26.0",
     "faster-whisper>=1.0.0",
     "pydantic-settings>=2.0.0",
     "python-dotenv>=1.0.0",
@@ -50,7 +50,7 @@ mlx = [
 # Minimal node-only installation (~80-120 MB vs ~600 MB full install)
 # Install with: pip install --no-deps cast2md && pip install cast2md[node]
 node = [
-    "httpx>=0.26.0",
+    "httpx[socks]>=0.26.0",
     "faster-whisper>=1.0.0",
     "pydantic-settings>=2.0.0",
     "python-dotenv>=1.0.0",
