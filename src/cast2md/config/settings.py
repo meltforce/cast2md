@@ -42,7 +42,8 @@ class Settings(BaseSettings):
     stuck_threshold_hours: int = 2  # Jobs running longer than this are considered stuck
 
     # Transcript discovery
-    transcript_unavailable_age_days: int = 90  # Episodes older than this without external URLs marked unavailable
+    transcript_unavailable_age_days: int = 14  # Episodes older than this without external URLs marked unavailable
+    transcript_retry_days: int = 14  # How long to retry external transcript downloads before giving up
 
     # HTTP client settings
     user_agent: str = "cast2md/0.1.0 (Podcast Transcription Service)"

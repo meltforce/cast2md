@@ -204,8 +204,8 @@ Related settings that affect state transitions:
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| `transcript_unavailable_age_days` | 90 | Episodes older than this without external URLs are marked `needs_audio` immediately |
-| `transcript_retry_days` | 7 | How long to retry external transcript downloads before giving up |
+| `transcript_unavailable_age_days` | 14 | Episodes older than this without external URLs are marked `needs_audio` immediately during discovery |
+| `transcript_retry_days` | 14 | How long to retry external transcript downloads before giving up (episodes in `awaiting_transcript` state) |
 
 ## API Status Endpoint
 
