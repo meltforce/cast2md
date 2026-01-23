@@ -794,7 +794,8 @@ def transcript_search_page(
             total_pages = max(1, (total + per_page - 1) // per_page)
         else:
             # No query - show recent transcripts for empty state
-            recent_transcripts = episode_repo.get_recent_transcribed_episodes(limit=3)
+            # Fetch enough cards for horizontal scroll on large screens
+            recent_transcripts = episode_repo.get_recent_transcribed_episodes(limit=10)
 
     return templates.TemplateResponse(
         "search.html",
