@@ -10,35 +10,39 @@
     </hgroup>
 </div>
 
-<div class="stats-grid">
-    <div class="stat-card">
-        <h3>{{ feed_count }}</h3>
-        <p>Feeds</p>
+<!-- Stats Grid -->
+<article>
+    <div class="stats-grid" style="margin-bottom: 0;">
+        <div class="stat-card">
+            <h3>{{ feed_count }}</h3>
+            <p>Feeds</p>
+        </div>
+        <div class="stat-card">
+            <h3>{{ status_counts.get('new', 0) }}</h3>
+            <p>New</p>
+        </div>
+        <div class="stat-card">
+            <h3>{{ queue_status.download_queue.queued + queue_status.transcribe_queue.queued + queue_status.transcript_download_queue.queued }}</h3>
+            <p>Queued</p>
+        </div>
+        <div class="stat-card">
+            <h3>{{ queue_status.download_queue.running + queue_status.transcribe_queue.running + queue_status.transcript_download_queue.running }}</h3>
+            <p>Running</p>
+        </div>
+        <div class="stat-card">
+            <h3>{{ status_counts.get('completed', 0) }}</h3>
+            <p>Completed</p>
+        </div>
+        <div class="stat-card">
+            <h3>{{ status_counts.get('failed', 0) }}</h3>
+            <p>Failed</p>
+        </div>
     </div>
-    <div class="stat-card">
-        <h3>{{ status_counts.get('new', 0) }}</h3>
-        <p>New</p>
-    </div>
-    <div class="stat-card">
-        <h3>{{ queue_status.download_queue.queued + queue_status.transcribe_queue.queued + queue_status.transcript_download_queue.queued }}</h3>
-        <p>Queued</p>
-    </div>
-    <div class="stat-card">
-        <h3>{{ queue_status.download_queue.running + queue_status.transcribe_queue.running + queue_status.transcript_download_queue.running }}</h3>
-        <p>Running</p>
-    </div>
-    <div class="stat-card">
-        <h3>{{ status_counts.get('completed', 0) }}</h3>
-        <p>Completed</p>
-    </div>
-    <div class="stat-card">
-        <h3>{{ status_counts.get('failed', 0) }}</h3>
-        <p>Failed</p>
-    </div>
-</div>
+</article>
 
 <!-- Worker Cards -->
-<div class="worker-cards">
+<article>
+<div class="worker-cards" style="margin-bottom: 0;">
     <!-- Audio Download Card -->
     <div class="worker-card">
         <h4>{{ worker_groups.download.title }}</h4>
@@ -177,10 +181,10 @@
         {% endif %}
     </div>
 </div>
-
-<p style="color: var(--pico-muted-color); text-align: center;">
+<p style="color: var(--pico-muted-color); text-align: center; margin-bottom: 0;">
     For detailed job management, see the <a href="/admin/queue">Queue</a> page.
 </p>
+</article>
 {% endblock %}
 
 {% block scripts %}

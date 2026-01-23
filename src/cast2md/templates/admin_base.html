@@ -8,11 +8,25 @@
     <style>
         :root {
             --pico-font-size: 16px;
-            --sidebar-width: 200px;
+            --sidebar-width: 180px;
+        }
+        body {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        nav.top-nav {
+            margin-bottom: 0;
+        }
+        #theme-toggle svg,
+        #admin-link svg {
+            vertical-align: middle;
+            position: relative;
+            top: -1px;
         }
         .admin-layout {
             display: flex;
-            min-height: calc(100vh - 4rem);
+            flex: 1;
         }
         .admin-sidebar {
             width: var(--sidebar-width);
@@ -26,8 +40,8 @@
         }
         .admin-sidebar ul {
             list-style: none;
-            padding: 0;
-            margin: 0;
+            padding: 0 !important;
+            margin: 0 !important;
         }
         .admin-sidebar li {
             margin-bottom: 0.25rem;
@@ -64,18 +78,8 @@
             text-transform: uppercase;
             letter-spacing: 0.05em;
             color: var(--pico-muted-color);
-            margin: 1rem 0 0.5rem 0;
+            margin: 1.5rem 0 0.5rem 0;
             padding-left: 0.75rem;
-        }
-        .admin-sidebar .sidebar-logo {
-            font-weight: bold;
-            font-size: 1.1rem;
-            margin-bottom: 1rem;
-            padding-left: 0.75rem;
-        }
-        .admin-sidebar .sidebar-logo a {
-            text-decoration: none;
-            color: var(--pico-color);
         }
         .admin-content {
             flex: 1;
@@ -336,14 +340,30 @@
             position: relative;
             top: -1px;
         }
+        footer.admin-footer {
+            text-align: center;
+            padding: 1rem;
+            padding-bottom: 1.5rem;
+            color: var(--pico-muted-color);
+        }
     </style>
 </head>
 <body>
+    <nav class="container top-nav">
+        <ul>
+            <li><strong><a href="/">cast2md</a></strong></li>
+            <li><a href="/feeds">Feeds</a></li>
+        </ul>
+        <ul>
+            <li><a href="/admin" title="Admin" id="admin-link"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></a></li>
+            <li><a href="#" onclick="toggleTheme(); return false;" title="Toggle theme" id="theme-toggle"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 0 20z" fill="currentColor"/></svg></a></li>
+        </ul>
+    </nav>
+
     <div class="admin-layout">
         <aside class="admin-sidebar">
             <nav>
-                <div class="sidebar-logo"><a href="/">cast2md</a></div>
-                <a href="/" class="back-link">
+                <a href="/search" class="back-link">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
                     Back to App
                 </a>
@@ -364,6 +384,10 @@
             {% block content %}{% endblock %}
         </main>
     </div>
+
+    <footer class="admin-footer">
+        <small>cast2md - Podcast Transcription Service</small>
+    </footer>
 
     <!-- Toast notification container -->
     <div id="toast-container" class="toast-container" style="position: fixed; top: 1rem; right: 1rem; z-index: 9999; display: flex; flex-direction: column; gap: 0.5rem; max-width: 400px;"></div>
@@ -520,12 +544,31 @@
                 html.removeAttribute('data-theme');
                 localStorage.removeItem('theme');
             }
+            updateThemeIcon();
+        }
+        function updateThemeIcon() {
+            const html = document.documentElement;
+            const current = html.getAttribute('data-theme');
+            const icon = document.getElementById('theme-toggle');
+            if (icon) {
+                const sunIcon = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>';
+                const moonIcon = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
+                const autoIcon = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 0 20z" fill="currentColor"/></svg>';
+                if (current === 'dark') icon.innerHTML = moonIcon;
+                else if (current === 'light') icon.innerHTML = sunIcon;
+                else icon.innerHTML = autoIcon;
+            }
         }
         // Restore saved theme on load
         (function() {
             const saved = localStorage.getItem('theme');
             if (saved) {
                 document.documentElement.setAttribute('data-theme', saved);
+            }
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', updateThemeIcon);
+            } else {
+                updateThemeIcon();
             }
         })();
     </script>
