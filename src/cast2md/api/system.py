@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from cast2md.config.settings import get_settings
+from cast2md.db.config import get_db_config
 from cast2md.db.connection import get_db
 from cast2md.db.models import EpisodeStatus
 from cast2md.db.repository import EpisodeRepository, FeedRepository
@@ -43,6 +44,7 @@ class SystemStatus(BaseModel):
 def get_status():
     """Get system status."""
     settings = get_settings()
+    db_url = get_db_config().effective_url
 
     with get_db() as conn:
         feed_repo = FeedRepository(conn)
@@ -78,7 +80,7 @@ def get_status():
         whisper_model=settings.whisper_model,
         whisper_device=settings.whisper_device,
         storage_path=str(settings.storage_path),
-        database_url=settings.database_url.split("@")[-1] if "@" in settings.database_url else settings.database_url,
+        database_url=db_url.split("@")[-1] if "@" in db_url else db_url,
     )
 
 
