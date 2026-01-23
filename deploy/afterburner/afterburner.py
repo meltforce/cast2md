@@ -36,7 +36,7 @@ class Config:
     cloud_type: str = "COMMUNITY"
     poll_interval: int = 30
     empty_queue_wait: int = 60
-    mode: str = "wheel"  # "wheel" or "github"
+    mode: str = "github"  # "github" (default) or "wheel"
     github_repo: str = "meltforce/cast2md"
 
     @classmethod
@@ -60,7 +60,7 @@ class Config:
             server_url=server_url,
             ts_hostname=os.environ.get("TS_HOSTNAME", "runpod-afterburner"),
             gpu_type=os.environ.get("RUNPOD_GPU_TYPE", cls.gpu_type),
-            mode=os.environ.get("AFTERBURNER_MODE", "wheel"),
+            mode=os.environ.get("AFTERBURNER_MODE", "github"),
         )
 
 
