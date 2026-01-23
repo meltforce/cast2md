@@ -133,20 +133,23 @@
     {% if recent_transcripts %}
     <section>
         <h2 style="font-size: 1.25rem; margin-bottom: 1rem;">Latest Transcripts</h2>
-        <div class="transcript-card-grid">
+        <div class="transcript-card-scroll">
             {% for episode, feed_title, image_url in recent_transcripts %}
-            <a href="/episodes/{{ episode.id }}" class="transcript-card">
-                <div class="card-artwork">
+            <a href="/episodes/{{ episode.id }}" class="transcript-card-square">
+                <div class="card-artwork-square">
                     {% if image_url %}
                     <img src="{{ image_url }}" alt="" loading="lazy">
                     {% else %}
                     <div class="no-artwork-placeholder">🎤</div>
                     {% endif %}
                 </div>
-                <div class="card-content">
-                    <p class="card-title">{{ episode.title }}</p>
-                    <p class="card-feed">{{ feed_title }}</p>
-                    <p class="card-date">{{ episode.updated_at|timeago }}</p>
+                <div class="card-content-square">
+                    <p class="card-title-square">{{ episode.title }}</p>
+                    <p class="card-feed-square">{{ feed_title }}</p>
+                    {% if episode.description %}
+                    <p class="card-description">{{ episode.description|strip_html|truncate(120, True, '...') }}</p>
+                    {% endif %}
+                    <p class="card-date-square">{{ episode.updated_at|timeago }}</p>
                 </div>
             </a>
             {% endfor %}
