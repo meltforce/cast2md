@@ -384,6 +384,10 @@ def feed_detail(
 def episode_detail(
     request: Request,
     episode_id: int,
+    # Back navigation params
+    back: str | None = None,  # "search", "feed", or None
+    back_url: str | None = None,  # Full URL to return to (for search with query)
+    # Legacy feed back params (for backwards compatibility)
     q: str | None = None,
     status: str | None = None,
     per_page: int = 25,
@@ -419,6 +423,27 @@ def episode_detail(
     settings = get_settings()
     current_model = settings.whisper_model
 
+    # Build back link info
+    back_label = f"Back to {feed.display_title}"
+    back_href = f"/feeds/{feed.id}"
+
+    if back == "search":
+        back_label = "Back to Search"
+        back_href = back_url if back_url else "/search"
+    elif back == "feed" or q or status or page != 1:
+        # Build feed URL with params
+        back_params = []
+        if q:
+            back_params.append(f"q={q}")
+        if status:
+            back_params.append(f"status={status}")
+        if per_page != 25:
+            back_params.append(f"per_page={per_page}")
+        if page != 1:
+            back_params.append(f"page={page}")
+        if back_params:
+            back_href = f"/feeds/{feed.id}?{'&'.join(back_params)}"
+
     return templates.TemplateResponse(
         "episode_detail.html",
         {
@@ -427,10 +452,8 @@ def episode_detail(
             "feed": feed,
             "transcript_content": transcript_content,
             "current_model": current_model,
-            "back_query": q,
-            "back_status": status,
-            "back_per_page": per_page,
-            "back_page": page,
+            "back_label": back_label,
+            "back_href": back_href,
         },
     )
 
