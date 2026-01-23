@@ -105,6 +105,35 @@
             opacity: 1;
             visibility: visible;
         }
+        /* Generic CSS tooltip */
+        .css-tooltip {
+            position: relative;
+            cursor: help;
+        }
+        .css-tooltip::after {
+            content: attr(title);
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 0.4rem 0.6rem;
+            background: var(--pico-card-background-color, #1a1a2e);
+            color: var(--pico-color, #fff);
+            font-size: 0.75rem;
+            font-family: var(--pico-font-family);
+            border-radius: 4px;
+            white-space: nowrap;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.15s, visibility 0.15s;
+            z-index: 1000;
+            pointer-events: none;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+        }
+        .css-tooltip:hover::after {
+            opacity: 1;
+            visibility: visible;
+        }
         /* Mobile responsive navigation */
         @media (max-width: 600px) {
             nav.container {
@@ -154,15 +183,11 @@
             display: flex;
             gap: 0.5rem;
             align-items: center;
+            min-height: 2.25rem;
         }
         .actions button, .actions a {
             padding: 0.25rem 0.5rem;
             font-size: 0.875rem;
-        }
-        .actions-spacer {
-            display: inline-block;
-            height: 1.75rem;
-            width: 1px;
         }
         pre.transcript {
             white-space: pre-wrap;

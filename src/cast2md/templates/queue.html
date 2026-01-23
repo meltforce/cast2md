@@ -17,7 +17,7 @@
             <option value="failed" {% if current_filter == 'failed' %}selected{% endif %}>Failed</option>
             <option value="completed" {% if current_filter == 'completed' %}selected{% endif %}>Completed</option>
         </select>
-        <button class="outline secondary" onclick="cleanupCompleted()">Cleanup Old Jobs</button>
+        <button class="secondary" onclick="cleanupCompleted()">Cleanup Old Jobs</button>
     </div>
 </div>
 
@@ -99,15 +99,15 @@
             </td>
             <td>
                 {% if item.job.job_type.value == 'download' %}
-                <span title="Download Audio">DL</span>
+                <span class="css-tooltip" title="Audio Download">DL</span>
                 {% elif item.job.job_type.value == 'transcribe' %}
-                <span title="Transcribe (Whisper)">TX</span>
+                <span class="css-tooltip" title="Transcription (Whisper)">TX</span>
                 {% elif item.job.job_type.value == 'transcript_download' %}
-                <span title="Transcript Download">TDL</span>
+                <span class="css-tooltip" title="Transcript Fetch">TF</span>
                 {% elif item.job.job_type.value == 'embed' %}
-                <span title="Generate Embeddings">EMB</span>
+                <span class="css-tooltip" title="Embedding">EMB</span>
                 {% else %}
-                <span title="{{ item.job.job_type.value }}">{{ item.job.job_type.value[:3]|upper }}</span>
+                <span class="css-tooltip" title="{{ item.job.job_type.value }}">{{ item.job.job_type.value[:3]|upper }}</span>
                 {% endif %}
             </td>
             <td>
@@ -140,30 +140,22 @@
             </td>
             <td>{{ item.job.attempts }} / {{ item.job.max_attempts }}</td>
             <td>{{ item.job.priority }}</td>
-            <td class="actions">
-                {% if item.job.status.value == 'queued' %}
-                <button class="outline secondary" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;"
-                        onclick="cancelJob({{ item.job.id }})">Cancel</button>
-                {% endif %}
-
-                {% if item.job.status.value == 'running' %}
-                <button class="outline" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;"
-                        onclick="resetJob({{ item.job.id }})">Reset</button>
-                {% endif %}
-
-                {% if item.job.status.value == 'failed' %}
-                <button class="outline" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;"
-                        onclick="retryJob({{ item.job.id }})">Retry</button>
-                {% endif %}
-
-                <button class="outline secondary" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;"
-                        onclick="deleteJob({{ item.job.id }})" title="Delete job">Del</button>
-
-                {% if item.job.error_message %}
-                <button class="outline secondary" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;"
-                        onclick="showJobError({{ item.job.id }}, `{{ item.job.error_message | replace('`', '\\`') | replace('\n', '\\n') }}`)"
-                        title="View error">Err</button>
-                {% endif %}
+            <td>
+                <div class="actions">
+                    {% if item.job.status.value == 'queued' %}
+                    <button class="outline secondary" onclick="cancelJob({{ item.job.id }})">Cancel</button>
+                    {% endif %}
+                    {% if item.job.status.value == 'running' %}
+                    <button class="outline" onclick="resetJob({{ item.job.id }})">Reset</button>
+                    {% endif %}
+                    {% if item.job.status.value == 'failed' %}
+                    <button class="outline" onclick="retryJob({{ item.job.id }})">Retry</button>
+                    {% endif %}
+                    <button class="outline secondary" onclick="deleteJob({{ item.job.id }})" title="Delete job">Del</button>
+                    {% if item.job.error_message %}
+                    <button class="outline secondary" onclick="showJobError({{ item.job.id }}, `{{ item.job.error_message | replace('`', '\\`') | replace('\n', '\\n') }}`)" title="View error">Err</button>
+                    {% endif %}
+                </div>
             </td>
         </tr>
         {% endfor %}
