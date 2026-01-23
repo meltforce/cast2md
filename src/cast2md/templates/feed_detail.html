@@ -41,7 +41,7 @@
         <span class="match-semantic" style="padding: 0.125rem 0.375rem; border-radius: 3px; font-size: 0.75rem;">Pocket Casts</span> {{ transcript_stats.pocketcasts }}
     {% endif %}
     {% if transcript_stats.whisper_only > 0 %}
-        <span style="padding: 0.125rem 0.375rem; border-radius: 3px; font-size: 0.75rem; background: var(--muted-border-color);">Whisper only</span> {{ transcript_stats.whisper_only }}
+        <span class="match-whisper" style="padding: 0.125rem 0.375rem; border-radius: 3px; font-size: 0.75rem;">Whisper</span> {{ transcript_stats.whisper_only }}
     {% endif %}
     {% if transcript_stats.podcast20 == 0 and transcript_stats.pocketcasts == 0 %}
         No external transcripts available (Whisper required for all episodes)
