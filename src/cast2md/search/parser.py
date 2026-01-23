@@ -98,14 +98,18 @@ def merge_word_level_segments(
 ) -> list[TranscriptSegment]:
     """Merge word-level segments into phrase-level segments.
 
-    External transcript sources (especially Pocket Casts) often provide word-level
-    timestamps where each word is a separate cue. This function merges consecutive
-    short segments into natural phrases.
+    Transcripts (both external and Whisper) can have word-level timestamps
+    where each word is a separate cue. This function merges consecutive
+    short segments into natural phrases while preserving long segments.
+
+    Handles mixed transcripts where some portions are phrase-level and
+    others are word-level.
 
     Merging stops when:
     - The phrase reaches min_phrase_chars and ends with punctuation
     - The phrase reaches max_phrase_chars
     - There's a pause (gap) of pause_threshold seconds between segments
+    - The next segment is already long enough (>= min_phrase_chars)
 
     Args:
         segments: List of transcript segments (potentially word-level).
@@ -119,12 +123,6 @@ def merge_word_level_segments(
     if not segments:
         return []
 
-    # Check if segments need merging (average text length < 15 chars suggests word-level)
-    avg_len = sum(len(s.text) for s in segments) / len(segments)
-    if avg_len > 15:
-        # Segments are already phrase-level, no merging needed
-        return segments
-
     merged = []
     current_texts: list[str] = []
     current_start = segments[0].start
@@ -134,6 +132,8 @@ def merge_word_level_segments(
         text = seg.text.strip()
         if not text:
             continue
+
+        seg_len = len(text)
 
         # Check if we should start a new phrase
         start_new = False
@@ -154,6 +154,10 @@ def merge_word_level_segments(
                 last_text = current_texts[-1] if current_texts else ""
                 if last_text and last_text[-1] in ".!?":
                     start_new = True
+
+            # If the incoming segment is already long, save current and start fresh
+            if seg_len >= min_phrase_chars and current_len >= min_phrase_chars:
+                start_new = True
 
         if start_new and current_texts:
             # Save the current phrase
