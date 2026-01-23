@@ -6,7 +6,7 @@
 <div class="page-header">
     <hgroup>
         <h1>System Status</h1>
-        <p>Overview of episode processing</p>
+        <p>Worker overview and queue status</p>
     </hgroup>
     <div class="header-actions">
         <button onclick="queueAllPending()">Queue All Pending</button>
@@ -24,11 +24,11 @@
         <p>New</p>
     </div>
     <div class="stat-card">
-        <h3>{{ queue_status.download_queue.queued + queue_status.transcribe_queue.queued }}</h3>
+        <h3>{{ queue_status.download_queue.queued + queue_status.transcribe_queue.queued + queue_status.transcript_download_queue.queued }}</h3>
         <p>Queued</p>
     </div>
     <div class="stat-card">
-        <h3>{{ queue_status.download_queue.running + queue_status.transcribe_queue.running }}</h3>
+        <h3>{{ queue_status.download_queue.running + queue_status.transcribe_queue.running + queue_status.transcript_download_queue.running }}</h3>
         <p>Running</p>
     </div>
     <div class="stat-card">
@@ -41,293 +41,166 @@
     </div>
 </div>
 
-<!-- Active Workers -->
-<article>
-    <header>
-        <h3>Active Workers
+<!-- Worker Cards -->
+<div class="worker-cards">
+    <!-- Audio Download Card -->
+    <div class="worker-card">
+        <h4>
+            {{ worker_groups.download.title }}
             {% if queue_status.running %}
             <span class="status-badge status-completed">Running</span>
             {% else %}
             <span class="status-badge status-failed">Stopped</span>
             {% endif %}
-        </h3>
-    </header>
-    <table>
-        <thead>
-            <tr>
-                <th>Worker</th>
-                <th>Status</th>
-                <th>Current Job</th>
-                <th>Progress</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for worker in workers %}
-            <tr>
-                <td>{{ worker.name }}</td>
-                <td>
-                    {% if worker.status == 'busy' %}
-                    <span class="status-badge status-downloading">busy</span>
-                    {% elif worker.status == 'online' %}
-                    <span class="status-badge status-completed">online</span>
-                    {% elif worker.status == 'offline' %}
-                    <span class="status-badge status-failed">offline</span>
-                    {% elif worker.status == 'stuck' %}
-                    <span class="status-badge status-failed">stuck</span>
-                    {% else %}
-                    <span class="status-badge status-new">idle</span>
+        </h4>
+
+        <div class="card-section">
+            <div class="section-label">Workers</div>
+            <div class="workers-row">
+                {% for worker in worker_groups.download.workers %}
+                <div class="worker-info">
+                    <span class="worker-dot dot-{{ worker.status }}"></span>
+                    {% if worker.episode %}
+                    <span class="worker-job">
+                        <a href="/episodes/{{ worker.episode.id }}">{{ worker.episode.title[:25] }}{% if worker.episode.title|length > 25 %}...{% endif %}</a>
+                    </span>
                     {% endif %}
-                </td>
-                <td>
-                    {% if worker.type == 'transcript_download_summary' %}
-                    {{ worker.active_count }}/{{ worker.total_count }} active
-                    {% elif worker.episode %}
-                    <a href="/episodes/{{ worker.episode.id }}">{{ worker.episode.title[:40] }}{% if worker.episode.title|length > 40 %}...{% endif %}</a>
-                    {% else %}
-                    -
-                    {% endif %}
-                </td>
-                <td>
-                    {% if worker.type == 'transcript_download_summary' %}
-                    -
-                    {% elif worker.status == 'stuck' %}
-                    <span style="color: var(--pico-del-color);">needs cancellation</span>
-                    {% elif worker.progress is not none %}
-                    <div class="progress-container">
-                        <progress value="{{ worker.progress }}" max="100"></progress>
-                        <small class="progress-text">{{ worker.progress }}%</small>
-                        {% if worker.job and worker.job.started_at %}
-                            {% if worker.progress > 0 %}
-                        <small class="remaining" data-started="{{ worker.job.started_at.isoformat() }}Z" data-progress="{{ worker.progress }}"></small>
-                            {% else %}
-                        <small class="elapsed" data-started="{{ worker.job.started_at.isoformat() }}Z"></small>
-                            {% endif %}
-                        {% endif %}
-                    </div>
-                    {% elif worker.status == 'busy' %}
-                    <div class="progress-container">
-                        <progress class="indeterminate"></progress>
-                        {% if worker.job and worker.job.started_at %}
-                        <small class="elapsed" data-started="{{ worker.job.started_at.isoformat() }}Z"></small>
-                        {% endif %}
-                    </div>
-                    {% else %}
-                    -
-                    {% endif %}
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-</article>
+                </div>
+                {% endfor %}
+                {% if not worker_groups.download.workers %}
+                <span style="color: var(--pico-muted-color);">No workers</span>
+                {% endif %}
+            </div>
+        </div>
 
-{% if queued_downloads %}
-<article>
-    <header><h3>Download Queue ({{ queued_downloads|length }})</h3></header>
-    <table>
-        <thead>
-            <tr><th>Episode</th><th style="width: 12rem;">Actions</th></tr>
-        </thead>
-        <tbody>
-            {% for item in queued_downloads %}
-            <tr>
-                <td><a href="/episodes/{{ item.episode.id }}">{{ item.episode.title }}</a></td>
-                <td><div class="actions"><button class="outline secondary" onclick="cancelJob({{ item.job.id }})">Cancel</button></div></td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-</article>
-{% endif %}
+        <div class="card-section">
+            <div class="section-label">Queued</div>
+            <div class="queued-count">{{ worker_groups.download.queued }}</div>
+        </div>
+    </div>
 
-{% if queued_transcriptions %}
-<article>
-    <header><h3>Transcription Queue ({{ queued_transcriptions|length }})</h3></header>
-    <table>
-        <thead>
-            <tr><th>Episode</th><th style="width: 12rem;">Actions</th></tr>
-        </thead>
-        <tbody>
-            {% for item in queued_transcriptions %}
-            <tr>
-                <td><a href="/episodes/{{ item.episode.id }}">{{ item.episode.title }}</a></td>
-                <td><div class="actions"><button class="outline secondary" onclick="cancelJob({{ item.job.id }})">Cancel</button></div></td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-</article>
-{% endif %}
+    <!-- Transcript Fetch Card -->
+    <div class="worker-card">
+        <h4>
+            {{ worker_groups.transcript_fetch.title }}
+            {% if queue_status.running %}
+            <span class="status-badge status-completed">Running</span>
+            {% else %}
+            <span class="status-badge status-failed">Stopped</span>
+            {% endif %}
+        </h4>
 
-{% if downloaded %}
-<article>
-    <header><h3>Ready for Transcription ({{ downloaded|length }})</h3></header>
-    <table>
-        <thead>
-            <tr><th>Episode</th><th style="width: 12rem;">Actions</th></tr>
-        </thead>
-        <tbody>
-            {% for ep in downloaded %}
-            <tr>
-                <td><a href="/episodes/{{ ep.id }}">{{ ep.title }}</a></td>
-                <td><div class="actions"><button class="outline" onclick="queueTranscribe({{ ep.id }})">Queue Transcription</button></div></td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-</article>
-{% endif %}
+        <div class="card-section">
+            <div class="section-label">Workers</div>
+            <div class="workers-row">
+                <span>{{ worker_groups.transcript_fetch.active_count }}/{{ worker_groups.transcript_fetch.total_count }} active</span>
+            </div>
+        </div>
 
-{% if failed %}
-<article>
-    <header><h3>Failed ({{ failed|length }})</h3></header>
-    <table>
-        <thead>
-            <tr><th>Episode</th><th>Error</th><th style="width: 12rem;">Actions</th></tr>
-        </thead>
-        <tbody>
-            {% for ep in failed %}
-            <tr>
-                <td><a href="/episodes/{{ ep.id }}">{{ ep.title }}</a></td>
-                <td class="truncate">{{ ep.error_message or 'Unknown error' }}</td>
-                <td><div class="actions"><button class="outline secondary" onclick="queueProcess({{ ep.id }})">Retry</button></div></td>
-            </tr>
+        {% if worker_groups.transcript_fetch.orphaned %}
+        <div class="card-section">
+            <div class="section-label">Stuck Jobs</div>
+            {% for item in worker_groups.transcript_fetch.orphaned %}
+            <div class="node-row">
+                <span class="worker-dot dot-stuck"></span>
+                <span class="node-name">{{ item.episode.title[:30] }}...</span>
+            </div>
             {% endfor %}
-        </tbody>
-    </table>
-</article>
-{% endif %}
+        </div>
+        {% endif %}
 
-{% if pending %}
-<article>
-    <header><h3>Pending Download (showing {{ pending|length }})</h3></header>
-    <table>
-        <thead>
-            <tr><th>Episode</th><th style="width: 12rem;">Actions</th></tr>
-        </thead>
-        <tbody>
-            {% for ep in pending %}
-            <tr>
-                <td><a href="/episodes/{{ ep.id }}">{{ ep.title }}</a></td>
-                <td><div class="actions"><button class="outline" onclick="queueProcess({{ ep.id }})">Queue Download</button></div></td>
-            </tr>
+        <div class="card-section">
+            <div class="section-label">Queued</div>
+            <div class="queued-count">{{ worker_groups.transcript_fetch.queued }}</div>
+        </div>
+    </div>
+
+    <!-- Transcription Card -->
+    <div class="worker-card">
+        <h4>
+            {{ worker_groups.transcription.title }}
+            {% if queue_status.running %}
+            <span class="status-badge status-completed">Running</span>
+            {% else %}
+            <span class="status-badge status-failed">Stopped</span>
+            {% endif %}
+        </h4>
+
+        <!-- Server worker -->
+        <div class="card-section">
+            <div class="section-label">Server</div>
+            <div class="node-row">
+                <span class="worker-dot dot-{{ worker_groups.transcription.server.status }}"></span>
+                <span class="node-name">Local</span>
+                {% if worker_groups.transcription.server.episode %}
+                <span class="worker-job">
+                    <a href="/episodes/{{ worker_groups.transcription.server.episode.id }}">{{ worker_groups.transcription.server.episode.title[:20] }}...</a>
+                </span>
+                {% if worker_groups.transcription.server.progress is not none %}
+                <span class="node-status">{{ worker_groups.transcription.server.progress }}%</span>
+                {% endif %}
+                {% else %}
+                <span class="node-status">idle</span>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Remote nodes -->
+        {% if worker_groups.transcription.distributed_enabled and worker_groups.transcription.nodes %}
+        <div class="divider"></div>
+        <div class="card-section">
+            <div class="section-label">Remote Nodes</div>
+            {% for node in worker_groups.transcription.nodes %}
+            <div class="node-row">
+                <span class="worker-dot dot-{{ node.status }}"></span>
+                <span class="node-name">{{ node.name }}</span>
+                {% if node.episode %}
+                <span class="worker-job">
+                    <a href="/episodes/{{ node.episode.id }}">{{ node.episode.title[:15] }}...</a>
+                </span>
+                {% if node.progress is not none %}
+                <span class="node-status">{{ node.progress }}%</span>
+                {% endif %}
+                {% else %}
+                <span class="node-status">{{ node.status }}</span>
+                {% endif %}
+            </div>
             {% endfor %}
-        </tbody>
-    </table>
-</article>
-{% endif %}
+        </div>
+        {% endif %}
+
+        <!-- Orphaned/stuck jobs -->
+        {% if worker_groups.transcription.orphaned %}
+        <div class="divider"></div>
+        <div class="card-section">
+            <div class="section-label">Stuck Jobs</div>
+            {% for item in worker_groups.transcription.orphaned %}
+            <div class="node-row">
+                <span class="worker-dot dot-stuck"></span>
+                <span class="node-name">{{ item.episode.title[:25] }}...</span>
+                {% if item.progress is not none %}
+                <span class="node-status">{{ item.progress }}%</span>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <div class="divider"></div>
+        <div class="card-section">
+            <div class="section-label">Queued</div>
+            <div class="queued-count">{{ worker_groups.transcription.queued }}</div>
+        </div>
+    </div>
+</div>
+
+<p style="color: var(--pico-muted-color); text-align: center;">
+    For detailed job management, see the <a href="/queue">Queue</a> page.
+</p>
 {% endblock %}
 
 {% block scripts %}
 <script>
-// Format time duration
-function formatDuration(seconds) {
-    const h = Math.floor(seconds / 3600);
-    const m = Math.floor((seconds % 3600) / 60);
-    const s = Math.floor(seconds % 60);
-    if (h > 0) return `${h}h ${m}m`;
-    if (m > 0) return `${m}m ${s}s`;
-    return `${s}s`;
-}
-
-function updateElapsedTimes() {
-    // Update elapsed time for indeterminate progress
-    document.querySelectorAll('.elapsed').forEach(el => {
-        const started = new Date(el.dataset.started);
-        const elapsed = (Date.now() - started.getTime()) / 1000;
-        el.textContent = formatDuration(elapsed);
-    });
-
-    // Update remaining time for jobs with progress
-    document.querySelectorAll('.remaining').forEach(el => {
-        const started = new Date(el.dataset.started);
-        const progress = parseFloat(el.dataset.progress);
-        if (progress > 0) {
-            const elapsed = (Date.now() - started.getTime()) / 1000;
-            const totalEstimate = elapsed / (progress / 100);
-            const remaining = totalEstimate - elapsed;
-            if (remaining > 0) {
-                el.textContent = '~' + formatDuration(remaining) + ' left';
-            } else {
-                el.textContent = 'finishing...';
-            }
-        }
-    });
-}
-
-updateElapsedTimes();
-setInterval(updateElapsedTimes, 1000);
-
-// Convert UTC timestamps to local time
-function updateLocalTimes() {
-    document.querySelectorAll('.local-time').forEach(el => {
-        const utc = el.dataset.utc;
-        if (utc) {
-            const date = new Date(utc + (utc.endsWith('Z') ? '' : 'Z'));
-            const now = new Date();
-            const diff = Math.floor((now - date) / 1000);
-            if (diff < 60) {
-                el.textContent = `${diff}s ago`;
-            } else if (diff < 3600) {
-                el.textContent = `${Math.floor(diff / 60)}m ago`;
-            } else {
-                el.textContent = date.toLocaleTimeString();
-            }
-        }
-    });
-}
-updateLocalTimes();
-setInterval(updateLocalTimes, 5000);
-
-async function queueProcess(episodeId) {
-    try {
-        const response = await fetch(`/api/queue/episodes/${episodeId}/process`, {method: 'POST'});
-        const data = await response.json();
-
-        if (response.ok) {
-            window.location.reload();
-        } else {
-            showError(data.detail);
-        }
-    } catch (error) {
-        showError(error.message);
-    }
-}
-
-async function queueTranscribe(episodeId) {
-    try {
-        const response = await fetch(`/api/queue/episodes/${episodeId}/transcribe`, {method: 'POST'});
-        const data = await response.json();
-
-        if (response.ok) {
-            window.location.reload();
-        } else {
-            showError(data.detail);
-        }
-    } catch (error) {
-        showError(error.message);
-    }
-}
-
-async function cancelJob(jobId) {
-    if (!confirm('Cancel this job?')) {
-        return;
-    }
-
-    try {
-        const response = await fetch(`/api/queue/${jobId}`, {method: 'DELETE'});
-        const data = await response.json();
-
-        if (response.ok) {
-            window.location.reload();
-        } else {
-            showError(data.detail);
-        }
-    } catch (error) {
-        showError(error.message);
-    }
-}
-
 async function queueAllPending() {
     if (!confirm('Queue all new episodes for processing?')) {
         return;
@@ -369,7 +242,7 @@ async function cancelAllQueued() {
 }
 
 // Auto-refresh every 10 seconds if there are running jobs
-{% if running_downloads or running_transcriptions or queued_downloads or queued_transcriptions %}
+{% if queue_status.download_queue.running or queue_status.transcribe_queue.running or queue_status.transcript_download_queue.running %}
 setTimeout(() => window.location.reload(), 10000);
 {% endif %}
 </script>
