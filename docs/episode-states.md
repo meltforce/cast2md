@@ -78,15 +78,16 @@ Waiting for external transcript to become available. Common when Pocket Casts ha
 
 **Entry conditions:**
 - External provider returned a temporary error (403, 429, etc.)
-- Episode is less than 7 days old
+- No external transcript URL found yet, but episode is recent
+- Episode is less than `transcript_retry_days` old (default: 14 days)
 
 **What happens:**
-- System schedules automatic retry (daily for up to 7 days)
+- System schedules automatic retry (daily)
 - Retry jobs run hourly to check due episodes
 
 **Transitions to:**
 - `completed` - External transcript found on retry
-- `needs_audio` - Episode aged out (> 7 days) without finding transcript
+- `needs_audio` - Episode aged out without finding transcript
 - `downloading` - User manually queued audio download
 
 ### NEEDS_AUDIO
@@ -94,8 +95,8 @@ Waiting for external transcript to become available. Common when Pocket Casts ha
 No external transcript is available. Audio must be downloaded for Whisper transcription.
 
 **Entry conditions:**
-- Episode is old (> 90 days) with no external transcript URL
-- Episode waited 7+ days in `awaiting_transcript` without success
+- Episode is older than `transcript_retry_days` with no external transcript URL
+- Episode waited in `awaiting_transcript` past the retry threshold
 - External providers confirmed no transcript exists
 
 **What happens:**
