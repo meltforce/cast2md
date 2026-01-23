@@ -92,7 +92,7 @@ def render_transcript_html(content: str) -> str:
     """
     from html import escape
 
-    from cast2md.search.parser import parse_transcript_segments
+    from cast2md.search.parser import merge_word_level_segments, parse_transcript_segments
 
     segments = parse_transcript_segments(content)
     html_parts = []
@@ -109,6 +109,9 @@ def render_transcript_html(content: str) -> str:
         meta_match = re.search(r'^\*(.+)\*$', header, re.MULTILINE)
         if meta_match:
             html_parts.append(f'<p class="transcript-meta">{escape(meta_match.group(1))}</p>')
+
+    # Merge word-level segments into phrases for better readability
+    segments = merge_word_level_segments(segments)
 
     if segments:
         # Render with timestamps
