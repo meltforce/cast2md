@@ -746,6 +746,72 @@ def admin_queue_page(request: Request, status: str | None = None):
     )
 
 
+@router.get("/admin/runpod", response_class=HTMLResponse)
+def admin_runpod_page(request: Request):
+    """Admin RunPod management page."""
+    from cast2md.config.settings import get_settings
+    from cast2md.services.runpod_service import get_runpod_service
+
+    settings = get_settings()
+    service = get_runpod_service()
+
+    # Get RunPod status
+    runpod_status = {
+        "available": service.is_available(),
+        "enabled": service.is_enabled(),
+        "can_create": False,
+        "can_create_reason": "",
+        "max_pods": settings.runpod_max_pods,
+        "active_pods": [],
+        "setup_states": [],
+    }
+
+    if service.is_available():
+        can_create, reason = service.can_create_pod()
+        runpod_status["can_create"] = can_create
+        runpod_status["can_create_reason"] = reason
+        runpod_status["active_pods"] = [
+            {
+                "id": p.id,
+                "name": p.name,
+                "status": p.status,
+                "gpu_type": p.gpu_type,
+                "created_at": p.created_at,
+            }
+            for p in service.list_pods()
+        ]
+        runpod_status["setup_states"] = [
+            {
+                "instance_id": s.instance_id,
+                "pod_id": s.pod_id,
+                "pod_name": s.pod_name,
+                "ts_hostname": s.ts_hostname,
+                "node_name": s.node_name,
+                "gpu_type": s.gpu_type,
+                "phase": s.phase.value,
+                "message": s.message,
+                "error": s.error,
+                "host_ip": s.host_ip,
+            }
+            for s in service.get_setup_states()
+        ]
+
+    # Get transcribe queue count
+    with get_db() as conn:
+        job_repo = JobRepository(conn)
+        transcribe_queued = job_repo.count_by_status().get("queued", 0)
+
+    return templates.TemplateResponse(
+        "runpod.html",
+        {
+            "request": request,
+            "runpod_status": runpod_status,
+            "settings": settings,
+            "transcribe_queued": transcribe_queued,
+        },
+    )
+
+
 @router.get("/search", response_class=HTMLResponse)
 def transcript_search_page(
     request: Request,
