@@ -36,6 +36,7 @@ dependencies = [
     "sentence-transformers>=2.2.0",
     "psycopg2-binary>=2.9.0",
     "pgvector>=0.2.0",
+    "runpod>=1.6.0",
 ]
 
 [project.optional-dependencies]
@@ -62,10 +63,6 @@ node = [
 # Add MLX support for Apple Silicon nodes
 node-mlx = [
     "mlx-whisper>=0.4.0",
-]
-# RunPod integration for on-demand GPU workers
-runpod = [
-    "runpod>=1.6.0",
 ]
 
 [project.scripts]
