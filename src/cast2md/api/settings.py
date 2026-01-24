@@ -16,6 +16,12 @@ from cast2md.notifications.ntfy import send_notification, NotificationType
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
 
+def _is_runpod_available() -> bool:
+    """Check if RunPod is available (API key configured)."""
+    settings = get_settings()
+    return bool(settings.runpod_api_key and settings.runpod_ts_auth_key)
+
+
 def _get_configurable_settings() -> dict:
     """Get configurable settings with dynamic model options."""
     # Get whisper models from database
@@ -27,12 +33,15 @@ def _get_configurable_settings() -> dict:
 
     model_options = [m.id for m in models]
 
+    # Check if RunPod is available
+    runpod_available = _is_runpod_available()
+
     # Order matters for UI layout (2 items per row)
     # Row 1: Whisper Model, Whisper Backend
     # Row 2: Download Workers (single)
     # Row 3: Storage Path, Temp Download Path
     # Row 4+: Notification settings
-    return {
+    settings = {
         "whisper_model": {
             "type": "select",
             "label": "Whisper Model",
@@ -125,6 +134,62 @@ def _get_configurable_settings() -> dict:
             "description": "ISO country code for iTunes search (e.g., de, us, gb)",
         },
     }
+
+    # Only add RunPod settings if API key is configured
+    if runpod_available:
+        settings.update({
+            "runpod_enabled": {
+                "type": "bool",
+                "label": "Enable RunPod",
+                "description": "Master switch for RunPod GPU workers",
+                "full_width": True,
+                "section": "runpod",
+            },
+            "runpod_max_pods": {
+                "type": "int",
+                "label": "Max Pods",
+                "description": "Maximum concurrent GPU pods",
+                "min": 1,
+                "max": 10,
+                "section": "runpod",
+            },
+            "runpod_auto_scale": {
+                "type": "bool",
+                "label": "Auto-scale",
+                "description": "Automatically start pods when queue grows",
+                "section": "runpod",
+            },
+            "runpod_scale_threshold": {
+                "type": "int",
+                "label": "Scale Threshold",
+                "description": "Start pods when queue exceeds this count",
+                "min": 1,
+                "max": 100,
+                "section": "runpod",
+            },
+            "runpod_gpu_type": {
+                "type": "select",
+                "label": "GPU Type",
+                "description": "Preferred GPU for pods (falls back to available)",
+                "options": [
+                    "NVIDIA GeForce RTX 4090",
+                    "NVIDIA GeForce RTX 3090",
+                    "NVIDIA RTX A4000",
+                    "NVIDIA RTX A5000",
+                    "NVIDIA GeForce RTX 4080",
+                ],
+                "section": "runpod",
+            },
+            "runpod_whisper_model": {
+                "type": "select",
+                "label": "Pod Whisper Model",
+                "description": "Whisper model for GPU pods",
+                "options": ["large-v3-turbo", "large-v3", "large-v2", "medium", "small"],
+                "section": "runpod",
+            },
+        })
+
+    return settings
 
 
 class SettingsResponse(BaseModel):

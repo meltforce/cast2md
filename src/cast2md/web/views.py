@@ -749,11 +749,17 @@ def admin_queue_page(request: Request, status: str | None = None):
 @router.get("/admin/runpod", response_class=HTMLResponse)
 def admin_runpod_page(request: Request):
     """Admin RunPod management page."""
-    from cast2md.config.settings import get_settings
+    from cast2md.config.settings import get_settings, reload_settings
     from cast2md.services.runpod_service import get_runpod_service
 
+    # Reload settings to pick up any runtime changes
+    reload_settings()
     settings = get_settings()
     service = get_runpod_service()
+
+    # Get effective server URL/IP (auto-derived from Tailscale if not configured)
+    effective_server_url = service.get_effective_server_url()
+    effective_server_ip = service.get_effective_server_ip()
 
     # Get RunPod status
     runpod_status = {
@@ -764,6 +770,8 @@ def admin_runpod_page(request: Request):
         "max_pods": settings.runpod_max_pods,
         "active_pods": [],
         "setup_states": [],
+        "server_url": effective_server_url,
+        "server_ip": effective_server_ip,
     }
 
     if service.is_available():
