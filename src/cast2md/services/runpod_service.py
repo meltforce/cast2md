@@ -259,10 +259,35 @@ tail -f /dev/null
             logger.error(f"Failed to list RunPod pods: {e}")
             return []
 
-    def get_available_gpus(self) -> list[dict]:
-        """Get available GPU types from RunPod API.
+    # GPUs suitable for Whisper transcription (good price/performance, sufficient VRAM)
+    # Excludes datacenter-class GPUs (A100, H100, MI300X) that are overkill
+    ALLOWED_GPU_PREFIXES = [
+        "NVIDIA GeForce RTX 4090",
+        "NVIDIA GeForce RTX 4080",
+        "NVIDIA GeForce RTX 3090",
+        "NVIDIA GeForce RTX 3080",
+        "NVIDIA RTX A4000",
+        "NVIDIA RTX A4500",
+        "NVIDIA RTX A5000",
+        "NVIDIA RTX A6000",
+        "NVIDIA L4",
+        "NVIDIA L40",
+        "NVIDIA RTX 4000",
+        "NVIDIA RTX 5000",
+        "NVIDIA RTX 6000",
+    ]
 
-        Returns list of dicts with id, display_name, memory_gb.
+    # Maximum hourly price to show (filters out expensive options)
+    MAX_GPU_PRICE = 1.00  # $/hr
+
+    # Minimum VRAM for Whisper large-v3
+    MIN_GPU_VRAM = 16  # GB
+
+    def get_available_gpus(self) -> list[dict]:
+        """Get available GPU types from RunPod API with pricing.
+
+        Returns list of dicts with id, display_name, memory_gb, price_hr.
+        Filtered to reasonable GPUs for transcription, sorted by price.
         """
         if not self.is_available():
             return []
@@ -271,23 +296,40 @@ tail -f /dev/null
         try:
             gpus = runpod.get_gpus()
             result = []
+
             for gpu in gpus:
                 gpu_id = gpu.get("id", "")
                 display_name = gpu.get("displayName", gpu_id)
-                memory_mb = gpu.get("memoryInGb", 0)
+                memory_gb = gpu.get("memoryInGb", 0)
 
-                # Filter for commonly used GPUs (skip exotic/expensive ones)
-                if not gpu_id:
+                # Skip if not in allowed list
+                if not any(gpu_id.startswith(prefix) for prefix in self.ALLOWED_GPU_PREFIXES):
+                    continue
+
+                # Skip if insufficient VRAM
+                if memory_gb < self.MIN_GPU_VRAM:
+                    continue
+
+                # Fetch detailed info including pricing
+                try:
+                    gpu_detail = runpod.get_gpu(gpu_id)
+                    price_hr = gpu_detail.get("communityPrice") if gpu_detail else None
+                except Exception:
+                    price_hr = None
+
+                # Skip if price exceeds threshold (or unknown)
+                if price_hr is None or price_hr > self.MAX_GPU_PRICE:
                     continue
 
                 result.append({
                     "id": gpu_id,
                     "display_name": display_name,
-                    "memory_gb": memory_mb if memory_mb else None,
+                    "memory_gb": memory_gb if memory_gb else None,
+                    "price_hr": price_hr,
                 })
 
-            # Sort by memory (descending) then name
-            result.sort(key=lambda x: (-(x.get("memory_gb") or 0), x["display_name"]))
+            # Sort by price ascending (cheapest first for fallback)
+            result.sort(key=lambda x: (x.get("price_hr") or 999, x["display_name"]))
             return result
         except Exception as e:
             logger.error(f"Failed to get RunPod GPU types: {e}")
