@@ -158,11 +158,11 @@
             <select id="setting-gpu-type" name="runpod_gpu_type">
                 {% for gpu in gpu_types %}
                 <option value="{{ gpu.id }}" {% if gpu.id == settings.runpod_gpu_type %}selected{% endif %}>
-                    {{ gpu.display_name }}{% if gpu.memory_gb %} ({{ gpu.memory_gb }}GB){% endif %}
+                    {{ gpu.display_name }}{% if gpu.memory_gb %} ({{ gpu.memory_gb }}GB){% endif %}{% if gpu.price_hr %} - ${{ "%.2f"|format(gpu.price_hr) }}/hr{% endif %}
                 </option>
                 {% endfor %}
             </select>
-            <small>Preferred GPU for pods</small>
+            <small>Sorted by price - fallback uses next cheapest available</small>
         </label>
         <label>
             Whisper Model
@@ -215,11 +215,11 @@
             <select id="setting-gpu-type" name="runpod_gpu_type">
                 {% for gpu in gpu_types %}
                 <option value="{{ gpu.id }}" {% if gpu.id == settings.runpod_gpu_type %}selected{% endif %}>
-                    {{ gpu.display_name }}{% if gpu.memory_gb %} ({{ gpu.memory_gb }}GB){% endif %}
+                    {{ gpu.display_name }}{% if gpu.memory_gb %} ({{ gpu.memory_gb }}GB){% endif %}{% if gpu.price_hr %} - ${{ "%.2f"|format(gpu.price_hr) }}/hr{% endif %}
                 </option>
                 {% endfor %}
             </select>
-            <small>Preferred GPU for pods</small>
+            <small>Sorted by price - fallback uses next cheapest available</small>
         </label>
         <label>
             Whisper Model
