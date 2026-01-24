@@ -1,0 +1,290 @@
+{% extends "admin_base.html" %}
+
+{% block title %}RunPod - Admin - cast2md{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <hgroup>
+        <h1>RunPod GPU Workers</h1>
+        <p>On-demand GPU transcription pods</p>
+    </hgroup>
+</div>
+
+<!-- Status Overview -->
+<article>
+    <div class="stats-grid" style="margin-bottom: 0;">
+        <div class="stat-card">
+            <h3>{% if runpod_status.available %}<span style="color: #22c55e;">Available</span>{% else %}<span style="color: var(--pico-muted-color);">Not Configured</span>{% endif %}</h3>
+            <p>API Status</p>
+        </div>
+        <div class="stat-card">
+            <h3>{% if runpod_status.enabled %}<span style="color: #22c55e;">Enabled</span>{% else %}<span style="color: var(--pico-muted-color);">Disabled</span>{% endif %}</h3>
+            <p>Feature</p>
+        </div>
+        <div class="stat-card">
+            <h3>{{ runpod_status.active_pods | length }}</h3>
+            <p>Active Pods</p>
+        </div>
+        <div class="stat-card">
+            <h3>{{ runpod_status.setup_states | length }}</h3>
+            <p>Starting</p>
+        </div>
+        <div class="stat-card">
+            <h3>{{ runpod_status.max_pods }}</h3>
+            <p>Max Pods</p>
+        </div>
+        <div class="stat-card">
+            <h3>{{ transcribe_queued }}</h3>
+            <p>Queued Jobs</p>
+        </div>
+    </div>
+</article>
+
+{% if not runpod_status.available %}
+<!-- Not Configured Message -->
+<article>
+    <h4>RunPod Not Configured</h4>
+    <p>To enable RunPod GPU workers, set the following environment variables on the server:</p>
+    <pre><code>RUNPOD_API_KEY=...           # Your RunPod API key
+RUNPOD_TS_AUTH_KEY=...       # Tailscale auth key for pods
+RUNPOD_SERVER_URL=https://your-server.ts.net
+RUNPOD_SERVER_IP=100.x.x.x   # Tailscale IP of this server</code></pre>
+    <p>Then enable in settings or set <code>RUNPOD_ENABLED=true</code>.</p>
+</article>
+{% else %}
+
+<!-- Actions -->
+<article>
+    <div style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
+        <button id="start-pod-btn" {% if not runpod_status.can_create %}disabled{% endif %}>
+            Start New Pod
+        </button>
+        <button id="terminate-all-btn" class="secondary" {% if not runpod_status.active_pods and not runpod_status.setup_states %}disabled{% endif %}>
+            Terminate All
+        </button>
+        {% if not runpod_status.can_create and runpod_status.can_create_reason %}
+        <span style="color: var(--pico-muted-color); font-size: 0.875rem;">{{ runpod_status.can_create_reason }}</span>
+        {% endif %}
+    </div>
+</article>
+
+<!-- Active Pods -->
+{% if runpod_status.active_pods or runpod_status.setup_states %}
+<article>
+    <h4>Pods</h4>
+    <table>
+        <thead>
+            <tr>
+                <th>Name / Instance</th>
+                <th>Status</th>
+                <th>GPU</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for state in runpod_status.setup_states %}
+            <tr>
+                <td>
+                    <strong>{{ state.pod_name or state.instance_id }}</strong>
+                    <br><small style="color: var(--pico-muted-color);">{{ state.ts_hostname }}</small>
+                </td>
+                <td>
+                    <span class="status-badge status-{{ state.phase }}">{{ state.phase }}</span>
+                    {% if state.message %}
+                    <br><small style="color: var(--pico-muted-color);">{{ state.message }}</small>
+                    {% endif %}
+                    {% if state.error %}
+                    <br><small style="color: #ef4444;">{{ state.error }}</small>
+                    {% endif %}
+                </td>
+                <td>{{ state.gpu_type or '-' }}</td>
+                <td>
+                    {% if state.pod_id %}
+                    <button class="secondary outline small terminate-btn" data-pod-id="{{ state.pod_id }}">Terminate</button>
+                    {% else %}
+                    -
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+            {% for pod in runpod_status.active_pods %}
+            <tr>
+                <td>
+                    <strong>{{ pod.name }}</strong>
+                    <br><small style="color: var(--pico-muted-color);">{{ pod.id }}</small>
+                </td>
+                <td>
+                    <span class="status-badge status-{{ pod.status | lower }}">{{ pod.status }}</span>
+                </td>
+                <td>{{ pod.gpu_type }}</td>
+                <td>
+                    <button class="secondary outline small terminate-btn" data-pod-id="{{ pod.id }}">Terminate</button>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</article>
+{% else %}
+<article>
+    <p style="text-align: center; color: var(--pico-muted-color);">No active pods. Click "Start New Pod" to create one.</p>
+</article>
+{% endif %}
+
+<!-- Configuration Info -->
+<article>
+    <h4>Configuration</h4>
+    <div class="grid">
+        <div>
+            <strong>GPU Type:</strong> {{ settings.runpod_gpu_type }}<br>
+            <strong>Whisper Model:</strong> {{ settings.runpod_whisper_model }}<br>
+            <strong>Max Pods:</strong> {{ settings.runpod_max_pods }}
+        </div>
+        <div>
+            <strong>Auto-scale:</strong> {% if settings.runpod_auto_scale %}Enabled (threshold: {{ settings.runpod_scale_threshold }}){% else %}Disabled{% endif %}<br>
+            <strong>Server URL:</strong> {{ settings.runpod_server_url or 'Not set' }}<br>
+            <strong>Server IP:</strong> {{ settings.runpod_server_ip or 'Not set' }}
+        </div>
+    </div>
+</article>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<style>
+    .status-creating, .status-starting, .status-connecting, .status-installing {
+        background: color-mix(in srgb, var(--pico-primary) 15%, transparent);
+        color: var(--pico-primary);
+        border: 1px solid color-mix(in srgb, var(--pico-primary) 40%, transparent);
+    }
+    .status-ready, .status-running {
+        background: color-mix(in srgb, #22c55e 15%, transparent);
+        color: #22c55e;
+        border: 1px solid color-mix(in srgb, #22c55e 40%, transparent);
+    }
+    .status-failed, .status-exited, .status-error {
+        background: color-mix(in srgb, #ef4444 15%, transparent);
+        color: #ef4444;
+        border: 1px solid color-mix(in srgb, #ef4444 40%, transparent);
+    }
+    button.small {
+        padding: 0.25rem 0.5rem;
+        font-size: 0.75rem;
+    }
+</style>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const startBtn = document.getElementById('start-pod-btn');
+    const terminateAllBtn = document.getElementById('terminate-all-btn');
+
+    // Start pod
+    if (startBtn) {
+        startBtn.addEventListener('click', async function() {
+            if (!confirm('Start a new RunPod GPU worker?')) return;
+
+            startBtn.disabled = true;
+            startBtn.setAttribute('aria-busy', 'true');
+
+            try {
+                const response = await fetch('/api/runpod/pods', { method: 'POST' });
+                const data = await response.json();
+
+                if (response.ok) {
+                    showToast('Pod creation started: ' + data.instance_id, 'success');
+                    setTimeout(() => window.location.reload(), 2000);
+                } else {
+                    showToast('Error: ' + data.detail, 'error');
+                    startBtn.disabled = false;
+                    startBtn.removeAttribute('aria-busy');
+                }
+            } catch (err) {
+                showToast('Error: ' + err.message, 'error');
+                startBtn.disabled = false;
+                startBtn.removeAttribute('aria-busy');
+            }
+        });
+    }
+
+    // Terminate all
+    if (terminateAllBtn) {
+        terminateAllBtn.addEventListener('click', async function() {
+            if (!confirm('Terminate ALL running RunPod workers?')) return;
+
+            terminateAllBtn.disabled = true;
+            terminateAllBtn.setAttribute('aria-busy', 'true');
+
+            try {
+                const response = await fetch('/api/runpod/pods', { method: 'DELETE' });
+                const data = await response.json();
+
+                if (response.ok) {
+                    showToast(data.message, 'success');
+                    setTimeout(() => window.location.reload(), 1000);
+                } else {
+                    showToast('Error: ' + data.detail, 'error');
+                    terminateAllBtn.disabled = false;
+                    terminateAllBtn.removeAttribute('aria-busy');
+                }
+            } catch (err) {
+                showToast('Error: ' + err.message, 'error');
+                terminateAllBtn.disabled = false;
+                terminateAllBtn.removeAttribute('aria-busy');
+            }
+        });
+    }
+
+    // Individual terminate buttons
+    document.querySelectorAll('.terminate-btn').forEach(btn => {
+        btn.addEventListener('click', async function() {
+            const podId = this.dataset.podId;
+            if (!confirm('Terminate this pod?')) return;
+
+            this.disabled = true;
+            this.setAttribute('aria-busy', 'true');
+
+            try {
+                const response = await fetch('/api/runpod/pods/' + podId, { method: 'DELETE' });
+                const data = await response.json();
+
+                if (response.ok) {
+                    showToast('Pod terminated', 'success');
+                    setTimeout(() => window.location.reload(), 1000);
+                } else {
+                    showToast('Error: ' + data.detail, 'error');
+                    this.disabled = false;
+                    this.removeAttribute('aria-busy');
+                }
+            } catch (err) {
+                showToast('Error: ' + err.message, 'error');
+                this.disabled = false;
+                this.removeAttribute('aria-busy');
+            }
+        });
+    });
+
+    // Toast helper
+    function showToast(message, type) {
+        const container = document.getElementById('toast-container');
+        if (!container) return;
+
+        const toast = document.createElement('div');
+        toast.className = 'toast toast-' + type;
+        toast.style.cssText = 'padding: 0.75rem 1rem; background: var(--pico-card-background-color); border: 1px solid var(--pico-muted-border-color); border-radius: 0.25rem; box-shadow: 0 4px 6px rgba(0,0,0,0.1);';
+        if (type === 'error') {
+            toast.style.borderColor = '#ef4444';
+        } else if (type === 'success') {
+            toast.style.borderColor = '#22c55e';
+        }
+        toast.textContent = message;
+        container.appendChild(toast);
+
+        setTimeout(() => toast.remove(), 5000);
+    }
+
+    // Auto-refresh if pods are starting
+    {% if runpod_status.setup_states %}
+    setTimeout(() => window.location.reload(), 5000);
+    {% endif %}
+});
+</script>
+{% endblock %}
