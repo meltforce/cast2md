@@ -194,6 +194,91 @@ def get_queue_status():
     )
 
 
+# Performance stats endpoint (must be before /{job_id} routes)
+
+
+class TimeWindowStats(BaseModel):
+    """Stats for a time window."""
+
+    jobs_completed: int
+    audio_minutes_processed: int
+    total_processing_seconds: int
+    avg_processing_seconds: int
+    throughput_ratio: float  # audio minutes / wall-clock minutes
+
+
+class NodeStats(BaseModel):
+    """Stats for a single node."""
+
+    node_id: str
+    node_name: str
+    jobs_completed: int
+    avg_processing_seconds: int
+
+
+class PerformanceStatsResponse(BaseModel):
+    """Response for performance stats."""
+
+    last_hour: TimeWindowStats
+    last_24h: TimeWindowStats
+    by_node_24h: list[NodeStats]
+
+
+@router.get("/stats", response_model=PerformanceStatsResponse)
+def get_performance_stats():
+    """Get performance statistics for completed transcription jobs.
+
+    Returns throughput metrics for the last hour and last 24 hours,
+    including jobs completed, audio processed, and processing speed.
+    """
+    with get_db() as conn:
+        job_repo = JobRepository(conn)
+
+        # Last hour stats
+        hour_stats = job_repo.get_completed_jobs_stats(hours=1, job_type=JobType.TRANSCRIBE)
+        hour_audio = job_repo.get_audio_minutes_processed(hours=1)
+
+        # Last 24h stats
+        day_stats = job_repo.get_completed_jobs_stats(hours=24, job_type=JobType.TRANSCRIBE)
+        day_audio = job_repo.get_audio_minutes_processed(hours=24)
+
+        # By node (24h)
+        node_stats = job_repo.get_stats_by_node(hours=24)
+
+    def calc_throughput(audio_minutes: int, processing_seconds: int) -> float:
+        """Calculate throughput ratio (audio time / wall-clock time)."""
+        if processing_seconds <= 0:
+            return 0.0
+        wall_clock_minutes = processing_seconds / 60
+        return round(audio_minutes / wall_clock_minutes, 1) if wall_clock_minutes > 0 else 0.0
+
+    return PerformanceStatsResponse(
+        last_hour=TimeWindowStats(
+            jobs_completed=hour_stats["count"],
+            audio_minutes_processed=hour_audio,
+            total_processing_seconds=hour_stats["total_duration_seconds"],
+            avg_processing_seconds=hour_stats["avg_duration_seconds"],
+            throughput_ratio=calc_throughput(hour_audio, hour_stats["total_duration_seconds"]),
+        ),
+        last_24h=TimeWindowStats(
+            jobs_completed=day_stats["count"],
+            audio_minutes_processed=day_audio,
+            total_processing_seconds=day_stats["total_duration_seconds"],
+            avg_processing_seconds=day_stats["avg_duration_seconds"],
+            throughput_ratio=calc_throughput(day_audio, day_stats["total_duration_seconds"]),
+        ),
+        by_node_24h=[
+            NodeStats(
+                node_id=n["node_id"],
+                node_name=n["node_name"],
+                jobs_completed=n["count"],
+                avg_processing_seconds=n["avg_duration_seconds"],
+            )
+            for n in node_stats
+        ],
+    )
+
+
 @router.post("/episodes/{episode_id}/transcript-download", response_model=MessageResponse)
 def queue_transcript_download(episode_id: int, request: QueueEpisodeRequest | None = None):
     """Queue an episode for transcript download from external providers.
@@ -1201,88 +1286,3 @@ def force_transcript_retry(episode_id: int, request: QueueEpisodeRequest | None 
         )
 
     return MessageResponse(message="Transcript download retry queued", job_id=job.id)
-
-
-# Performance stats endpoints
-
-
-class TimeWindowStats(BaseModel):
-    """Stats for a time window."""
-
-    jobs_completed: int
-    audio_minutes_processed: int
-    total_processing_seconds: int
-    avg_processing_seconds: int
-    throughput_ratio: float  # audio minutes / wall-clock minutes
-
-
-class NodeStats(BaseModel):
-    """Stats for a single node."""
-
-    node_id: str
-    node_name: str
-    jobs_completed: int
-    avg_processing_seconds: int
-
-
-class PerformanceStatsResponse(BaseModel):
-    """Response for performance stats."""
-
-    last_hour: TimeWindowStats
-    last_24h: TimeWindowStats
-    by_node_24h: list[NodeStats]
-
-
-@router.get("/stats", response_model=PerformanceStatsResponse)
-def get_performance_stats():
-    """Get performance statistics for completed transcription jobs.
-
-    Returns throughput metrics for the last hour and last 24 hours,
-    including jobs completed, audio processed, and processing speed.
-    """
-    with get_db() as conn:
-        job_repo = JobRepository(conn)
-
-        # Last hour stats
-        hour_stats = job_repo.get_completed_jobs_stats(hours=1, job_type=JobType.TRANSCRIBE)
-        hour_audio = job_repo.get_audio_minutes_processed(hours=1)
-
-        # Last 24h stats
-        day_stats = job_repo.get_completed_jobs_stats(hours=24, job_type=JobType.TRANSCRIBE)
-        day_audio = job_repo.get_audio_minutes_processed(hours=24)
-
-        # By node (24h)
-        node_stats = job_repo.get_stats_by_node(hours=24)
-
-    def calc_throughput(audio_minutes: int, processing_seconds: int) -> float:
-        """Calculate throughput ratio (audio time / wall-clock time)."""
-        if processing_seconds <= 0:
-            return 0.0
-        wall_clock_minutes = processing_seconds / 60
-        return round(audio_minutes / wall_clock_minutes, 1) if wall_clock_minutes > 0 else 0.0
-
-    return PerformanceStatsResponse(
-        last_hour=TimeWindowStats(
-            jobs_completed=hour_stats["count"],
-            audio_minutes_processed=hour_audio,
-            total_processing_seconds=hour_stats["total_duration_seconds"],
-            avg_processing_seconds=hour_stats["avg_duration_seconds"],
-            throughput_ratio=calc_throughput(hour_audio, hour_stats["total_duration_seconds"]),
-        ),
-        last_24h=TimeWindowStats(
-            jobs_completed=day_stats["count"],
-            audio_minutes_processed=day_audio,
-            total_processing_seconds=day_stats["total_duration_seconds"],
-            avg_processing_seconds=day_stats["avg_duration_seconds"],
-            throughput_ratio=calc_throughput(day_audio, day_stats["total_duration_seconds"]),
-        ),
-        by_node_24h=[
-            NodeStats(
-                node_id=n["node_id"],
-                node_name=n["node_name"],
-                jobs_completed=n["count"],
-                avg_processing_seconds=n["avg_duration_seconds"],
-            )
-            for n in node_stats
-        ],
-    )
