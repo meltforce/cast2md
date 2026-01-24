@@ -2,6 +2,8 @@
 
 Podcast transcription service - download episodes via RSS and transcribe with Whisper. Automatically downloads publisher-provided transcripts when available (Podcasting 2.0) or fetches auto-generated transcripts from Pocket Casts.
 
+> **Note**: This is a personal project under active development. I'm sharing it in case others find it useful, but I'm not currently providing support or reviewing pull requests.
+
 ## Features
 
 - **iTunes URL Support**: Add podcasts via Apple Podcasts URLs (automatically resolves to RSS)
