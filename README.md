@@ -14,6 +14,13 @@ Podcast transcription service - download episodes via RSS and transcribe with Wh
 - **REST API**: Full API for integration with other tools
 - **MCP Server**: Claude integration via Model Context Protocol
 
+## Prerequisites
+
+- **Python 3.11+**
+- **PostgreSQL** - Database backend
+- **ffmpeg** - Audio preprocessing
+- **[Tailscale](https://tailscale.com/)** - Required for distributed transcription
+
 ## Installation
 
 ### Docker
@@ -46,16 +53,16 @@ uv run cast2md serve
 
 ## Configuration
 
-Create a `.env` file:
+Create a `.env` file (see `.env.example`):
 
 ```env
-DATABASE_PATH=./data/cast2md.db
-STORAGE_PATH=./data/media
+DATABASE_URL=postgresql://cast2md:password@localhost:5432/cast2md
+STORAGE_PATH=./data/podcasts
 TEMP_DOWNLOAD_PATH=./data/temp
 
 # Whisper settings
-WHISPER_MODEL=medium          # tiny, base, small, medium, large-v3
-WHISPER_DEVICE=cpu            # cpu or cuda
+WHISPER_MODEL=base            # tiny, base, small, medium, large-v3
+WHISPER_DEVICE=auto           # cpu, cuda, auto
 WHISPER_COMPUTE_TYPE=int8     # int8, float16, float32
 ```
 
