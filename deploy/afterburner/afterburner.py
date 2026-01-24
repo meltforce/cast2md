@@ -117,6 +117,8 @@ class Config:
     ntfy_topic: str | None = None
     # Safety limits
     max_runtime: int | None = None  # Max runtime in seconds (None = unlimited)
+    # Whisper model for transcription
+    whisper_model: str = "large-v3-turbo"
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -153,6 +155,7 @@ class Config:
             ntfy_server=os.environ.get("NTFY_SERVER"),
             ntfy_topic=os.environ.get("NTFY_TOPIC"),
             max_runtime=max_runtime,
+            whisper_model=os.environ.get("WHISPER_MODEL", "large-v3-turbo"),
         )
 
 
@@ -679,7 +682,8 @@ def setup_pod_via_ssh(config: Config, host_ip: str) -> None:
 
     # Start node worker in background (use HTTP proxy for Tailscale traffic)
     run_ssh(
-        "http_proxy=http://localhost:1055 "
+        f"http_proxy=http://localhost:1055 "
+        f"WHISPER_MODEL={config.whisper_model} "
         "nohup cast2md node start > /tmp/cast2md-node.log 2>&1 &",
         "Starting node worker"
     )

@@ -387,11 +387,15 @@ class TranscriberNodeWorker:
             transcript: Transcript text.
         """
         logger.info(f"Completing job {job_id}")
+        settings = get_settings()
 
         try:
             response = self._client.post(
                 f"/api/nodes/jobs/{job_id}/complete",
-                json={"transcript_text": transcript},
+                json={
+                    "transcript_text": transcript,
+                    "whisper_model": settings.whisper_model,
+                },
                 timeout=60.0,  # Longer timeout for large transcripts
             )
 

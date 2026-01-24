@@ -108,6 +108,7 @@ class JobCompleteRequest(BaseModel):
     """Request to mark a job as complete."""
 
     transcript_text: str
+    whisper_model: str | None = None
 
 
 class JobFailRequest(BaseModel):
@@ -392,8 +393,12 @@ def complete_job(
         )
         transcript_path.write_text(request.transcript_text, encoding="utf-8")
 
-        # Update episode
-        episode_repo.update_transcript_path(episode.id, str(transcript_path))
+        # Update episode with transcript path and model info
+        episode_repo.update_transcript_path_and_model(
+            episode.id,
+            str(transcript_path),
+            request.whisper_model or "unknown"
+        )
         episode_repo.update_status(episode.id, EpisodeStatus.COMPLETED)
 
         # Index transcript for search
