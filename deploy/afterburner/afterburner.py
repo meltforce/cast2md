@@ -503,8 +503,8 @@ def estimate_cost(start_time: datetime, gpu_type: str) -> tuple[float, str]:
 def setup_pod_via_ssh(config: Config, host_ip: str) -> None:
     """Install cast2md and dependencies on the pod via SSH."""
 
-    def run_ssh(cmd: str, description: str) -> str:
-        """Run SSH command with logging."""
+    def run_ssh(cmd: str, description: str, timeout: int = 300) -> str:
+        """Run SSH command with logging and timeout."""
         log(f"{description}...")
         ssh_cmd = [
             "ssh",
@@ -513,8 +513,11 @@ def setup_pod_via_ssh(config: Config, host_ip: str) -> None:
             f"root@{host_ip}",
             cmd
         ]
-        log(f"Running: {cmd}", "DEBUG")
-        result = subprocess.run(ssh_cmd, capture_output=True, text=True)
+        try:
+            result = subprocess.run(ssh_cmd, capture_output=True, text=True, timeout=timeout)
+        except subprocess.TimeoutExpired:
+            log(f"Command timed out after {timeout}s", "ERROR")
+            raise RuntimeError(f"SSH command timed out: {description}")
         if result.returncode != 0:
             log(f"Command failed: {result.stderr}", "ERROR")
             raise RuntimeError(f"SSH command failed: {description}")
@@ -526,7 +529,7 @@ def setup_pod_via_ssh(config: Config, host_ip: str) -> None:
         return result.stdout.strip()
 
     # Add server to /etc/hosts (MagicDNS workaround)
-    server_host = config.server_url.replace("https://", "").split("/")[0]
+    server_host = config.server_url.replace("https://", "").replace("http://", "").split("/")[0]
     run_ssh(
         f"echo '{config.server_ip} {server_host}' >> /etc/hosts",
         f"Adding {server_host} -> {config.server_ip} to /etc/hosts"
@@ -538,19 +541,24 @@ def setup_pod_via_ssh(config: Config, host_ip: str) -> None:
         "Installing ffmpeg"
     )
 
-    # Install cast2md from GitHub
+    # Install cast2md from GitHub (longer timeout for pip install)
     run_ssh(
-        f"pip install 'cast2md[node] @ git+https://github.com/{config.github_repo}.git' 2>&1 | tail -5",
-        f"Installing cast2md from {config.github_repo}"
+        f"pip install --no-cache-dir 'cast2md[node] @ git+https://github.com/{config.github_repo}.git'",
+        f"Installing cast2md from {config.github_repo}",
+        timeout=600  # 10 minutes for pip install
     )
 
     # Verify installation
     version = run_ssh("cast2md --version", "Verifying cast2md installation")
     log(f"Installed: {version}")
 
-    # Convert HTTPS URL to HTTP:8000 for internal Tailscale traffic
+    # Convert URL to HTTP:8000 for internal Tailscale traffic
     # (The HTTP proxy only supports plain HTTP, not HTTPS CONNECT)
-    internal_server_url = config.server_url.replace("https://", "http://")
+    internal_server_url = config.server_url
+    if internal_server_url.startswith("https://"):
+        internal_server_url = "http://" + internal_server_url[8:]
+    elif not internal_server_url.startswith("http://"):
+        internal_server_url = "http://" + internal_server_url
     if ":8000" not in internal_server_url:
         internal_server_url = internal_server_url.rstrip("/") + ":8000"
 
@@ -569,32 +577,6 @@ def setup_pod_via_ssh(config: Config, host_ip: str) -> None:
     )
 
     log("Pod setup complete!")
-
-
-def tailscale_ssh_cmd(hostname: str, cmd: str, check: bool = True, retries: int = 1) -> str:
-    """Run a command on the pod via Tailscale SSH."""
-    ssh_cmd = ["ssh", "-o", "StrictHostKeyChecking=no", "-o", "ConnectTimeout=10", f"root@{hostname}", cmd]
-    log(f"SSH command: {' '.join(ssh_cmd)}", "DEBUG")
-
-    for attempt in range(retries):
-        result = subprocess.run(
-            ssh_cmd,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        log(f"SSH result: returncode={result.returncode}, stdout={result.stdout[:200] if result.stdout else ''!r}, stderr={result.stderr[:200] if result.stderr else ''!r}", "DEBUG")
-        if result.returncode == 0:
-            return result.stdout.strip()
-        if attempt < retries - 1:
-            log(f"SSH failed (attempt {attempt + 1}/{retries}): {result.stderr.strip()}", "DEBUG")
-            time.sleep(5)
-        else:
-            log(f"SSH error: {result.stderr.strip()}", "ERROR")
-
-    if check:
-        raise subprocess.CalledProcessError(result.returncode, result.args, result.stdout, result.stderr)
-    return result.stdout.strip()
 
 
 def main():
@@ -722,12 +704,23 @@ def main():
         if args.test:
             # Try SSH
             log("Testing SSH...")
-            result = tailscale_ssh_cmd(host_ip, "echo 'SSH works!' && hostname", retries=3)
-            log(f"SSH output: {result}")
-            log("Test successful!")
+            ssh_result = subprocess.run(
+                ["ssh", "-o", "StrictHostKeyChecking=no", "-o", "ConnectTimeout=10",
+                 f"root@{host_ip}", "echo 'SSH works!' && hostname"],
+                capture_output=True, text=True, timeout=30
+            )
+            if ssh_result.returncode == 0:
+                log(f"SSH output: {ssh_result.stdout.strip()}")
+                log("Test successful!")
+            else:
+                log(f"SSH failed: {ssh_result.stderr.strip()}", "ERROR")
+                sys.exit(1)
 
-        log("Press Enter to exit (pod will keep running)...")
-        input()
+        log("Pod will keep running. Press Enter to exit...")
+        try:
+            input()
+        except EOFError:
+            pass  # Running non-interactively
         return
 
     if existing_pods:
@@ -768,7 +761,7 @@ def main():
             log("Press Enter to terminate the pod (or Ctrl+C to keep it running)...")
             try:
                 input()
-            except KeyboardInterrupt:
+            except (KeyboardInterrupt, EOFError):
                 log("Keeping pod alive", "WARN")
                 args.keep_alive = True
             return
