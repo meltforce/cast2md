@@ -40,6 +40,36 @@ def poll_all_feeds():
     logger.info(f"Feed poll complete. Total new episodes: {total_new}, queued: {total_queued}")
 
 
+def check_auto_scale():
+    """Check if we should auto-scale RunPod workers based on queue depth."""
+    from cast2md.services.runpod_service import get_runpod_service
+
+    service = get_runpod_service()
+
+    # Skip if not available or auto-scale disabled
+    if not service.is_available() or not service.settings.runpod_auto_scale:
+        return
+
+    # Get transcription queue depth
+    with get_db() as conn:
+        job_repo = JobRepository(conn)
+        counts = job_repo.count_by_status(JobType.TRANSCRIBE)
+        queue_depth = counts.get("queued", 0)
+
+    # Check if we should scale
+    pods_to_start = service.should_auto_scale(queue_depth)
+
+    if pods_to_start > 0:
+        logger.info(f"Auto-scale: queue depth {queue_depth}, starting {pods_to_start} pod(s)")
+        for _ in range(pods_to_start):
+            try:
+                instance_id = service.create_pod_async()
+                logger.info(f"Auto-scale: started pod {instance_id}")
+            except RuntimeError as e:
+                logger.warning(f"Auto-scale: failed to start pod: {e}")
+                break  # Stop trying if we hit limits
+
+
 def retry_pending_transcripts():
     """Retry transcript downloads for episodes that are due.
 
@@ -138,6 +168,16 @@ def start_scheduler(interval_minutes: int = 60):
         replace_existing=True,
         # Don't run immediately - let feed polling complete first
         next_run_time=datetime.now() + timedelta(minutes=5),
+    )
+
+    # Add auto-scale check (runs every minute)
+    scheduler.add_job(
+        check_auto_scale,
+        trigger=IntervalTrigger(minutes=1),
+        id="check_auto_scale",
+        name="Check RunPod auto-scale",
+        replace_existing=True,
+        next_run_time=datetime.now() + timedelta(seconds=30),
     )
 
     scheduler.start()
