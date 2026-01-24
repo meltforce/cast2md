@@ -212,6 +212,7 @@ class GpuTypeInfo(BaseModel):
     id: str
     display_name: str
     memory_gb: int | None = None
+    price_hr: float | None = None
 
 
 class GpuTypesResponse(BaseModel):
@@ -221,16 +222,13 @@ class GpuTypesResponse(BaseModel):
     source: str  # "api" or "fallback"
 
 
-# Default fallback GPU types (used when API is unavailable)
+# Default fallback GPU types (used when API is unavailable - no pricing)
 FALLBACK_GPU_TYPES = [
     GpuTypeInfo(id="NVIDIA GeForce RTX 4090", display_name="RTX 4090", memory_gb=24),
     GpuTypeInfo(id="NVIDIA GeForce RTX 3090", display_name="RTX 3090", memory_gb=24),
     GpuTypeInfo(id="NVIDIA RTX A4000", display_name="RTX A4000", memory_gb=16),
-    GpuTypeInfo(id="NVIDIA RTX A5000", display_name="RTX A5000", memory_gb=24),
     GpuTypeInfo(id="NVIDIA GeForce RTX 4080", display_name="RTX 4080", memory_gb=16),
-    GpuTypeInfo(id="NVIDIA RTX A6000", display_name="RTX A6000", memory_gb=48),
     GpuTypeInfo(id="NVIDIA L4", display_name="L4", memory_gb=24),
-    GpuTypeInfo(id="NVIDIA L40", display_name="L40", memory_gb=48),
 ]
 
 
