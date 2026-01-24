@@ -778,6 +778,8 @@ def admin_runpod_page(request: Request):
         can_create, reason = service.can_create_pod()
         runpod_status["can_create"] = can_create
         runpod_status["can_create_reason"] = reason
+        active_pods = service.list_pods()
+        active_pod_ids = {p.id for p in active_pods}
         runpod_status["active_pods"] = [
             {
                 "id": p.id,
@@ -786,8 +788,9 @@ def admin_runpod_page(request: Request):
                 "gpu_type": p.gpu_type,
                 "created_at": p.created_at,
             }
-            for p in service.list_pods()
+            for p in active_pods
         ]
+        # Filter setup_states to exclude those already shown as active pods
         runpod_status["setup_states"] = [
             {
                 "instance_id": s.instance_id,
@@ -802,6 +805,7 @@ def admin_runpod_page(request: Request):
                 "host_ip": s.host_ip,
             }
             for s in service.get_setup_states()
+            if s.pod_id is None or s.pod_id not in active_pod_ids
         ]
 
     # Get transcribe queue count (only transcription jobs - what GPU workers handle)
