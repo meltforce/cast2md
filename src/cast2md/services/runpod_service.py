@@ -672,7 +672,7 @@ tail -f /dev/null
 
                     # Verify SSH connectivity using Tailscale SSH
                     ssh_result = subprocess.run(
-                        ["tailscale", "ssh", "", f"root@{ip}", "exit", "0"],
+                        ["tailscale", "ssh", f"root@{ip}", "exit", "0"],
                         capture_output=True,
                         timeout=15,
                     )
@@ -688,7 +688,7 @@ tail -f /dev/null
 
         def run_ssh(cmd: str, description: str, timeout: int = 300) -> str:
             # Use Tailscale SSH (pods don't have regular sshd)
-            ssh_cmd = ["tailscale", "ssh", "", f"root@{host_ip}", cmd]
+            ssh_cmd = ["tailscale", "ssh", f"root@{host_ip}", cmd]
             try:
                 result = subprocess.run(ssh_cmd, capture_output=True, text=True, timeout=timeout)
             except subprocess.TimeoutExpired:
