@@ -103,7 +103,7 @@ def _check_available():
     if not service.is_available():
         raise HTTPException(
             status_code=503,
-            detail="RunPod not configured. Set RUNPOD_API_KEY and RUNPOD_TS_AUTH_KEY environment variables.",
+            detail="RunPod not configured. Set RUNPOD_API_KEY environment variable.",
         )
     return service
 

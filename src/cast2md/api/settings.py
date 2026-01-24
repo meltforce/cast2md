@@ -19,7 +19,7 @@ router = APIRouter(prefix="/api/settings", tags=["settings"])
 def _is_runpod_available() -> bool:
     """Check if RunPod is available (API key configured)."""
     settings = get_settings()
-    return bool(settings.runpod_api_key and settings.runpod_ts_auth_key)
+    return bool(settings.runpod_api_key)
 
 
 def _get_runpod_gpu_options() -> list[str]:
