@@ -838,6 +838,10 @@ def admin_runpod_page(request: Request):
             {"id": "NVIDIA L4", "display_name": "L4", "memory_gb": 24, "price_hr": None},
         ]
 
+    # Get pod run history and stats
+    pod_runs = service.get_pod_runs(limit=10) if service.is_available() else []
+    pod_run_stats = service.get_pod_run_stats(days=30) if service.is_available() else {}
+
     return templates.TemplateResponse(
         "runpod.html",
         {
@@ -846,6 +850,8 @@ def admin_runpod_page(request: Request):
             "settings": settings,
             "transcribe_queued": transcribe_queued,
             "gpu_types": gpu_types,
+            "pod_runs": pod_runs,
+            "pod_run_stats": pod_run_stats,
         },
     )
 

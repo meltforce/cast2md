@@ -2390,3 +2390,131 @@ class TranscriberNodeRepository:
             (NodeStatus.OFFLINE.value, threshold),
         )
         return [TranscriberNode.from_row(row) for row in cursor.fetchall()]
+
+
+class PodRunRepository:
+    """Repository for RunPod pod run history."""
+
+    def __init__(self, conn: Any):
+        self.conn = conn
+
+    def create(
+        self,
+        instance_id: str,
+        pod_id: str | None,
+        pod_name: str,
+        gpu_type: str,
+        gpu_price_hr: float | None,
+        started_at: datetime,
+    ) -> int:
+        """Create a new pod run record. Returns the ID."""
+        cursor = execute(
+            self.conn,
+            """
+            INSERT INTO pod_runs (instance_id, pod_id, pod_name, gpu_type, gpu_price_hr, started_at, status)
+            VALUES (%s, %s, %s, %s, %s, %s, 'running')
+            RETURNING id
+            """,
+            (instance_id, pod_id, pod_name, gpu_type, gpu_price_hr, started_at.isoformat()),
+        )
+        self.conn.commit()
+        row = cursor.fetchone()
+        return row[0] if row else 0
+
+    def end_run(self, pod_id: str, jobs_completed: int = 0) -> None:
+        """Mark a pod run as ended."""
+        now = datetime.now().isoformat()
+        execute(
+            self.conn,
+            """
+            UPDATE pod_runs
+            SET ended_at = %s, jobs_completed = %s, status = 'completed'
+            WHERE pod_id = %s AND status = 'running'
+            """,
+            (now, jobs_completed, pod_id),
+        )
+        self.conn.commit()
+
+    def get_recent(self, limit: int = 20) -> list[dict]:
+        """Get recent pod runs with computed cost."""
+        cursor = execute(
+            self.conn,
+            """
+            SELECT
+                id, instance_id, pod_id, pod_name, gpu_type, gpu_price_hr,
+                started_at, ended_at, jobs_completed, status,
+                CASE
+                    WHEN ended_at IS NOT NULL AND gpu_price_hr IS NOT NULL THEN
+                        ROUND((EXTRACT(EPOCH FROM (ended_at - started_at)) / 3600 * gpu_price_hr)::numeric, 2)
+                    ELSE NULL
+                END as cost
+            FROM pod_runs
+            ORDER BY started_at DESC
+            LIMIT %s
+            """,
+            (limit,),
+        )
+        columns = [desc[0] for desc in cursor.description]
+        return [dict(zip(columns, row)) for row in cursor.fetchall()]
+
+    def get_stats(self, days: int = 30) -> dict:
+        """Get aggregate stats for pod runs."""
+        cursor = execute(
+            self.conn,
+            """
+            SELECT
+                COUNT(*) as total_runs,
+                COALESCE(SUM(jobs_completed), 0) as total_jobs,
+                ROUND(COALESCE(SUM(
+                    CASE WHEN ended_at IS NOT NULL AND gpu_price_hr IS NOT NULL THEN
+                        EXTRACT(EPOCH FROM (ended_at - started_at)) / 3600 * gpu_price_hr
+                    ELSE 0 END
+                ), 0)::numeric, 2) as total_cost,
+                ROUND(COALESCE(SUM(
+                    CASE WHEN ended_at IS NOT NULL THEN
+                        EXTRACT(EPOCH FROM (ended_at - started_at)) / 3600
+                    ELSE 0 END
+                ), 0)::numeric, 1) as total_hours
+            FROM pod_runs
+            WHERE started_at > NOW() - INTERVAL '%s days'
+            """,
+            (days,),
+        )
+        row = cursor.fetchone()
+        if row:
+            return {
+                "total_runs": row[0],
+                "total_jobs": row[1],
+                "total_cost": float(row[2]) if row[2] else 0,
+                "total_hours": float(row[3]) if row[3] else 0,
+            }
+        return {"total_runs": 0, "total_jobs": 0, "total_cost": 0, "total_hours": 0}
+
+    def mark_orphaned_as_ended(self, active_pod_ids: set[str]) -> int:
+        """Mark running pod runs as ended if their pod is no longer active.
+
+        Returns count of runs marked as ended.
+        """
+        if not active_pod_ids:
+            # No active pods - mark all running as ended
+            cursor = execute(
+                self.conn,
+                """
+                UPDATE pod_runs
+                SET ended_at = NOW(), status = 'completed'
+                WHERE status = 'running'
+                """,
+            )
+        else:
+            # Mark those not in active list
+            cursor = execute(
+                self.conn,
+                """
+                UPDATE pod_runs
+                SET ended_at = NOW(), status = 'completed'
+                WHERE status = 'running' AND pod_id NOT IN %s
+                """,
+                (tuple(active_pod_ids),),
+            )
+        self.conn.commit()
+        return cursor.rowcount

@@ -21,6 +21,29 @@ MIGRATIONS: list[dict] = [
             "ALTER TABLE episode ALTER COLUMN status SET DEFAULT 'new'",
         ],
     },
+    {
+        "version": 12,
+        "description": "Add pod_runs table for RunPod cost tracking",
+        "sql": [
+            """
+            CREATE TABLE IF NOT EXISTS pod_runs (
+                id SERIAL PRIMARY KEY,
+                instance_id TEXT NOT NULL,
+                pod_id TEXT,
+                pod_name TEXT NOT NULL,
+                gpu_type TEXT NOT NULL,
+                gpu_price_hr REAL,
+                started_at TIMESTAMP NOT NULL,
+                ended_at TIMESTAMP,
+                jobs_completed INTEGER DEFAULT 0,
+                status TEXT NOT NULL DEFAULT 'running',
+                created_at TIMESTAMP NOT NULL DEFAULT NOW()
+            )
+            """,
+            "CREATE INDEX IF NOT EXISTS idx_pod_runs_status ON pod_runs(status)",
+            "CREATE INDEX IF NOT EXISTS idx_pod_runs_started_at ON pod_runs(started_at)",
+        ],
+    },
 ]
 
 
