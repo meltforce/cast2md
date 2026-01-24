@@ -327,7 +327,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Start pod
     if (startBtn) {
         startBtn.addEventListener('click', async function() {
-            if (!confirm('Start a new RunPod GPU worker?')) return;
+            if (!await showConfirm('Start a new RunPod GPU worker?', 'Start Pod', 'Start')) return;
 
             startBtn.disabled = true;
             startBtn.setAttribute('aria-busy', 'true');
@@ -355,7 +355,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Terminate all
     if (terminateAllBtn) {
         terminateAllBtn.addEventListener('click', async function() {
-            if (!confirm('Terminate ALL running RunPod workers?')) return;
+            if (!await showConfirm('Terminate ALL running RunPod workers?', 'Terminate All', 'Terminate')) return;
 
             terminateAllBtn.disabled = true;
             terminateAllBtn.setAttribute('aria-busy', 'true');
@@ -384,7 +384,7 @@ document.addEventListener('DOMContentLoaded', function() {
     document.querySelectorAll('.terminate-btn').forEach(btn => {
         btn.addEventListener('click', async function() {
             const podId = this.dataset.podId;
-            if (!confirm('Terminate this pod?')) return;
+            if (!await showConfirm('Terminate this pod?', 'Terminate Pod', 'Terminate')) return;
 
             this.disabled = true;
             this.setAttribute('aria-busy', 'true');
