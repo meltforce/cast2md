@@ -796,10 +796,10 @@ def admin_runpod_page(request: Request):
             for s in service.get_setup_states()
         ]
 
-    # Get transcribe queue count
+    # Get transcribe queue count (only transcription jobs - what GPU workers handle)
     with get_db() as conn:
         job_repo = JobRepository(conn)
-        transcribe_queued = job_repo.count_by_status().get("queued", 0)
+        transcribe_queued = job_repo.count_by_status(JobType.TRANSCRIBE).get("queued", 0)
 
     return templates.TemplateResponse(
         "runpod.html",
