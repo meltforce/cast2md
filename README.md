@@ -19,7 +19,6 @@ Podcast transcription service - download episodes via RSS and transcribe with Wh
 - **Python 3.11+**
 - **PostgreSQL** - Database backend
 - **ffmpeg** - Audio preprocessing
-- **[Tailscale](https://tailscale.com/)** - Required for distributed transcription
 
 ## Installation
 

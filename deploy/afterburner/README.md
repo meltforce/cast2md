@@ -36,6 +36,9 @@ The script uses a **two-phase approach**:
 
 ## Prerequisites
 
+- **[Tailscale](https://tailscale.com/)** - VPN mesh for secure pod-to-server communication
+- **[RunPod](https://runpod.io)** account with API key
+
 ### 1. RunPod Account
 
 1. Create account at [runpod.io](https://runpod.io)
