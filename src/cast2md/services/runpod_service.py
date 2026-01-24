@@ -670,11 +670,11 @@ tail -f /dev/null
                     if ip == "?":
                         continue
 
-                    # Verify SSH connectivity
+                    # Verify SSH connectivity using Tailscale SSH
                     ssh_result = subprocess.run(
-                        ["ssh", "-o", "StrictHostKeyChecking=no", "-o", "ConnectTimeout=5", "-o", "BatchMode=yes", f"root@{ip}", "exit 0"],
+                        ["tailscale", "ssh", "--accept-risk=lose-ssh", f"root@{ip}", "exit", "0"],
                         capture_output=True,
-                        timeout=10,
+                        timeout=15,
                     )
                     if ssh_result.returncode == 0:
                         return ip
@@ -684,10 +684,11 @@ tail -f /dev/null
         return None
 
     def _setup_pod_via_ssh(self, host_ip: str, node_name: str) -> None:
-        """Install cast2md and dependencies on the pod via SSH."""
+        """Install cast2md and dependencies on the pod via Tailscale SSH."""
 
         def run_ssh(cmd: str, description: str, timeout: int = 300) -> str:
-            ssh_cmd = ["ssh", "-o", "StrictHostKeyChecking=no", "-o", "ConnectTimeout=30", f"root@{host_ip}", cmd]
+            # Use Tailscale SSH (pods don't have regular sshd)
+            ssh_cmd = ["tailscale", "ssh", "--accept-risk=lose-ssh", f"root@{host_ip}", cmd]
             try:
                 result = subprocess.run(ssh_cmd, capture_output=True, text=True, timeout=timeout)
             except subprocess.TimeoutExpired:
