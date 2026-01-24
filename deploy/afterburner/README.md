@@ -194,6 +194,38 @@ python deploy/afterburner/afterburner.py --use-existing --test
 | `TS_HOSTNAME` | No | `runpod-afterburner` | Hostname on Tailscale |
 | `RUNPOD_GPU_TYPE` | No | `NVIDIA GeForce RTX 4090` | GPU type to use |
 | `GITHUB_REPO` | No | `meltforce/cast2md` | GitHub repo to install from |
+| `NTFY_SERVER` | No | - | ntfy server URL (e.g., `https://ntfy.sh`) |
+| `NTFY_TOPIC` | No | - | ntfy topic for notifications |
+| `AFTERBURNER_MAX_RUNTIME` | No | - | Max runtime in seconds (safety limit) |
+
+## Notifications
+
+Afterburner can send notifications via [ntfy](https://ntfy.sh) at key events:
+
+- **Pod Created**: When the GPU pod starts
+- **Worker Ready**: When setup is complete and processing begins
+- **Complete**: When queue is empty and pod terminates (includes runtime and cost)
+- **Error**: On failures (high priority)
+- **Max Runtime**: When the runtime limit is exceeded
+
+To enable notifications:
+
+```bash
+export NTFY_SERVER=https://ntfy.sh
+export NTFY_TOPIC=your-afterburner-topic
+```
+
+Then subscribe on your phone or desktop: `ntfy subscribe your-afterburner-topic`
+
+## Safety Limits
+
+To prevent runaway costs, you can set a maximum runtime:
+
+```bash
+export AFTERBURNER_MAX_RUNTIME=3600  # 1 hour max
+```
+
+The pod will be terminated when the limit is reached, even if jobs are still queued.
 
 ## Cost Estimate
 

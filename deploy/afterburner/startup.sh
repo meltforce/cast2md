@@ -28,13 +28,20 @@ tailscaled --tun=userspace-networking --state=/var/lib/tailscale/tailscaled.stat
 
 # Wait for tailscaled to be ready
 echo "Waiting for tailscaled socket..."
+SOCKET_READY=false
 for i in {1..30}; do
     if [ -S /var/run/tailscale/tailscaled.sock ]; then
         echo "tailscaled ready"
+        SOCKET_READY=true
         break
     fi
     sleep 1
 done
+
+if [ "$SOCKET_READY" != "true" ]; then
+    echo "ERROR: tailscaled socket not ready after 30s"
+    exit 1
+fi
 
 echo "Connecting to Tailscale as $TS_HOSTNAME..."
 tailscale up --auth-key="$TS_AUTH_KEY" --hostname="$TS_HOSTNAME" --ssh --accept-dns
