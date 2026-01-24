@@ -137,10 +137,13 @@ tail -f /dev/null
         return get_settings()
 
     def is_available(self) -> bool:
-        """Check if RunPod feature is available (library + both tokens present)."""
+        """Check if RunPod feature is available (library + API key present).
+
+        Note: Tailscale auth key is stored in RunPod Secrets, not on server.
+        """
         if not RUNPOD_AVAILABLE:
             return False
-        return bool(self.settings.runpod_api_key and self.settings.runpod_ts_auth_key)
+        return bool(self.settings.runpod_api_key)
 
     def get_server_tailscale_info(self) -> tuple[str | None, str | None]:
         """Get this server's Tailscale hostname and IP.
@@ -208,7 +211,7 @@ tail -f /dev/null
             Tuple of (can_create, reason)
         """
         if not self.is_available():
-            return False, "RunPod not configured (missing API key or Tailscale auth key)"
+            return False, "RunPod not configured (missing API key)"
         if not self.settings.runpod_enabled:
             return False, "RunPod not enabled"
 

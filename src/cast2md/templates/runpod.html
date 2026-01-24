@@ -14,10 +14,9 @@
 <!-- Not Configured Message -->
 <article>
     <h4>RunPod Not Configured</h4>
-    <p>To enable RunPod GPU workers, set the following environment variables on the server:</p>
-    <pre><code>RUNPOD_API_KEY=...           # Your RunPod API key
-RUNPOD_TS_AUTH_KEY=...       # Tailscale auth key for pods</code></pre>
-    <p>Server URL and IP are automatically detected from Tailscale.</p>
+    <p>To enable RunPod GPU workers, set your API key:</p>
+    <pre><code>RUNPOD_API_KEY=...   # From https://runpod.io/console/user/settings</code></pre>
+    <p>Server URL/IP are auto-detected. Tailscale auth key should be stored in <a href="https://www.runpod.io/console/user/secrets" target="_blank">RunPod Secrets</a> as <code>ts_auth_key</code>.</p>
     <p style="margin-top: 1rem;">
         <a href="https://console.runpod.io/deploy" target="_blank" rel="noopener">Open RunPod Console</a>
     </p>
