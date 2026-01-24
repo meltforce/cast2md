@@ -567,22 +567,41 @@ def get_running_pods(config: Config) -> list[dict]:
     return [p for p in pods if p.get("name") == "cast2md-afterburner"]
 
 
+def get_gpu_hourly_rate(gpu_type: str) -> float | None:
+    """Fetch live GPU pricing from RunPod API.
+
+    Returns the community cloud hourly rate, or None if unavailable.
+    """
+    try:
+        gpu_info = runpod.get_gpu(gpu_type)
+        if gpu_info and "communityPrice" in gpu_info:
+            return float(gpu_info["communityPrice"])
+    except Exception as e:
+        log(f"Failed to fetch live GPU pricing: {e}", "DEBUG")
+    return None
+
+
 def estimate_cost(start_time: datetime, gpu_type: str) -> tuple[float, str]:
-    """Estimate the cost based on runtime."""
-    # Approximate hourly rates for common GPUs (RunPod community cloud, Jan 2025)
-    rates = {
-        "NVIDIA GeForce RTX 4090": 0.34,
-        "NVIDIA GeForce RTX 4080": 0.28,
-        "NVIDIA GeForce RTX 3090": 0.22,
-        "NVIDIA RTX A4000": 0.16,
-        "NVIDIA RTX A5000": 0.22,
-        "NVIDIA A40": 0.39,
-        "NVIDIA A100 80GB PCIe": 1.19,
-    }
+    """Estimate the cost based on runtime using live pricing when available."""
+    # Try to get live pricing first
+    rate = get_gpu_hourly_rate(gpu_type)
+
+    # Fallback to cached rates if API fails
+    if rate is None:
+        fallback_rates = {
+            "NVIDIA GeForce RTX 4090": 0.34,
+            "NVIDIA GeForce RTX 4080": 0.28,
+            "NVIDIA GeForce RTX 3090": 0.22,
+            "NVIDIA RTX A4000": 0.16,
+            "NVIDIA RTX A5000": 0.22,
+            "NVIDIA A40": 0.39,
+            "NVIDIA A100 80GB PCIe": 1.19,
+        }
+        rate = fallback_rates.get(gpu_type, 0.40)
+        log(f"Using fallback rate for {gpu_type}: ${rate}/hr", "DEBUG")
 
     runtime = datetime.now() - start_time
     hours = runtime.total_seconds() / 3600
-    rate = rates.get(gpu_type, 0.40)  # Default rate if unknown
     cost = hours * rate
 
     runtime_str = str(runtime).split(".")[0]  # Remove microseconds
