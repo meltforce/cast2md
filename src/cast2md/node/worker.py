@@ -57,6 +57,14 @@ class TranscriberNodeWorker:
         self._current_episode_title: Optional[str] = None
         self._job_start_time: Optional[float] = None
 
+        # Prefetch state
+        self._prefetch_job: Optional[dict] = None
+        self._prefetch_audio_path: Optional[Path] = None
+        self._prefetch_temp_dir: Optional[tempfile.TemporaryDirectory] = None
+        self._prefetch_lock = threading.Lock()
+        self._prefetch_thread: Optional[threading.Thread] = None
+        self._transcribing = threading.Event()  # Signal when transcription starts
+
     @property
     def config(self) -> NodeConfig:
         """Get the node configuration."""
@@ -108,6 +116,15 @@ class TranscriberNodeWorker:
         self._poll_thread.start()
         logger.info("Started job poll thread")
 
+        # Start prefetch thread
+        self._prefetch_thread = threading.Thread(
+            target=self._prefetch_loop,
+            name="node-prefetch",
+            daemon=True,
+        )
+        self._prefetch_thread.start()
+        logger.info("Started prefetch thread")
+
     def stop(self, timeout: float = 30.0):
         """Stop the worker gracefully."""
         if not self._running:
@@ -124,13 +141,19 @@ class TranscriberNodeWorker:
             except Exception as e:
                 logger.warning(f"Failed to release job on shutdown: {e}")
 
+        # Release prefetched job if any
+        self._release_prefetch_job()
+
         if self._heartbeat_thread:
-            self._heartbeat_thread.join(timeout=timeout / 2)
+            self._heartbeat_thread.join(timeout=timeout / 3)
         if self._poll_thread:
-            self._poll_thread.join(timeout=timeout / 2)
+            self._poll_thread.join(timeout=timeout / 3)
+        if self._prefetch_thread:
+            self._prefetch_thread.join(timeout=timeout / 3)
 
         self._heartbeat_thread = None
         self._poll_thread = None
+        self._prefetch_thread = None
         self._client.close()
         logger.info("Worker stopped")
 
@@ -153,6 +176,27 @@ class TranscriberNodeWorker:
             logger.warning(f"Failed to release job: {e}")
         finally:
             self._current_job_id = None
+
+    def _release_prefetch_job(self):
+        """Release prefetched job back to queue."""
+        with self._prefetch_lock:
+            if not self._prefetch_job:
+                return
+            job_id = self._prefetch_job.get("job_id")
+
+        if job_id:
+            logger.info(f"Releasing prefetched job {job_id}")
+            try:
+                self._client.post(f"/api/nodes/jobs/{job_id}/release", timeout=5.0)
+            except Exception as e:
+                logger.warning(f"Failed to release prefetch job: {e}")
+
+        with self._prefetch_lock:
+            self._prefetch_job = None
+            self._prefetch_audio_path = None
+            if self._prefetch_temp_dir:
+                self._prefetch_temp_dir.cleanup()
+                self._prefetch_temp_dir = None
 
     def run(self):
         """Run the worker (blocking)."""
@@ -193,15 +237,82 @@ class TranscriberNodeWorker:
         """Poll for jobs and process them."""
         while not self._stop_event.is_set():
             try:
-                job = self._claim_job()
-                if job:
-                    self._process_job(job)
+                # Check for prefetched job first
+                job = None
+                prefetch_audio = None
+                prefetch_temp = None
+
+                with self._prefetch_lock:
+                    if self._prefetch_job and self._prefetch_audio_path:
+                        job = self._prefetch_job
+                        prefetch_audio = self._prefetch_audio_path
+                        prefetch_temp = self._prefetch_temp_dir
+                        self._prefetch_job = None
+                        self._prefetch_audio_path = None
+                        self._prefetch_temp_dir = None
+
+                if job and prefetch_audio and prefetch_temp:
+                    logger.info(f"Using prefetched job {job['job_id']}")
+                    self._process_prefetched_job(job, prefetch_audio, prefetch_temp)
                 else:
-                    # No job available, wait before polling again
-                    self._stop_event.wait(timeout=self._poll_interval)
+                    job = self._claim_job()
+                    if job:
+                        self._process_job(job)
+                    else:
+                        # No job available, wait before polling again
+                        self._stop_event.wait(timeout=self._poll_interval)
             except Exception as e:
                 logger.error(f"Poll loop error: {e}")
                 self._stop_event.wait(timeout=self._poll_interval)
+
+    def _prefetch_loop(self):
+        """Prefetch next job's audio while current job is transcribing."""
+        while not self._stop_event.is_set():
+            # Wait for transcription to start
+            self._transcribing.wait(timeout=1.0)
+            if self._stop_event.is_set():
+                break
+            if not self._transcribing.is_set():
+                continue
+
+            # Check if we already have a prefetch
+            with self._prefetch_lock:
+                if self._prefetch_job is not None:
+                    self._transcribing.clear()
+                    continue
+
+            # Try to claim and download next job
+            try:
+                job = self._claim_job()
+                if not job:
+                    self._transcribing.clear()
+                    continue
+
+                logger.info(f"Prefetching job {job['job_id']}: {job.get('episode_title', 'Unknown')}")
+
+                # Create temp dir for prefetch
+                temp_dir = tempfile.TemporaryDirectory()
+                audio_path, error = self._download_audio(job["audio_url"], Path(temp_dir.name))
+
+                if error or not audio_path:
+                    logger.warning(f"Prefetch download failed: {error}")
+                    # Release the job we claimed
+                    try:
+                        self._client.post(f"/api/nodes/jobs/{job['job_id']}/release", timeout=5.0)
+                    except Exception:
+                        pass
+                    temp_dir.cleanup()
+                else:
+                    with self._prefetch_lock:
+                        self._prefetch_job = job
+                        self._prefetch_audio_path = audio_path
+                        self._prefetch_temp_dir = temp_dir
+                    logger.info(f"Prefetch ready: {job['job_id']}")
+
+            except Exception as e:
+                logger.warning(f"Prefetch error: {e}")
+
+            self._transcribing.clear()
 
     def _claim_job(self) -> Optional[dict]:
         """Try to claim a job from the server.
@@ -257,8 +368,15 @@ class TranscriberNodeWorker:
                     self._fail_job(job_id, "Download returned no path")
                     return
 
+                # Signal that transcription is starting (for prefetch)
+                self._transcribing.set()
+
                 # Transcribe
                 transcript, error = self._transcribe(audio_path, job_id)
+
+                # Clear transcribing signal
+                self._transcribing.clear()
+
                 if error:
                     self._fail_job(job_id, f"Transcription failed: {error}")
                     return
@@ -276,6 +394,51 @@ class TranscriberNodeWorker:
             self._current_job_id = None
             self._current_episode_title = None
             self._job_start_time = None
+
+    def _process_prefetched_job(
+        self, job: dict, audio_path: Path, temp_dir: tempfile.TemporaryDirectory
+    ):
+        """Process a prefetched job (audio already downloaded).
+
+        Args:
+            job: Job info from claim response.
+            audio_path: Path to already-downloaded audio file.
+            temp_dir: Temp directory containing the audio (will be cleaned up).
+        """
+        job_id = job["job_id"]
+        episode_title = job.get("episode_title", "Unknown")
+
+        self._current_job_id = job_id
+        self._current_episode_title = episode_title
+        self._job_start_time = time.time()
+
+        try:
+            logger.info(f"Processing prefetched job {job_id}: {episode_title}")
+
+            # Signal transcription starting (for next prefetch)
+            self._transcribing.set()
+
+            transcript, error = self._transcribe(audio_path, job_id)
+
+            self._transcribing.clear()
+
+            if error:
+                self._fail_job(job_id, f"Transcription failed: {error}")
+                return
+            if not transcript:
+                self._fail_job(job_id, "Transcription returned empty result")
+                return
+
+            self._complete_job(job_id, transcript)
+
+        except Exception as e:
+            logger.error(f"Job {job_id} failed: {e}")
+            self._fail_job(job_id, str(e))
+        finally:
+            self._current_job_id = None
+            self._current_episode_title = None
+            self._job_start_time = None
+            temp_dir.cleanup()
 
     def _download_audio(self, audio_url: str, temp_dir: Path) -> tuple[Optional[Path], Optional[str]]:
         """Download audio file from server.
