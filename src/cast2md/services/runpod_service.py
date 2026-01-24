@@ -16,7 +16,7 @@ from urllib.parse import urlparse
 
 import httpx
 
-from cast2md.config.settings import Settings, get_settings
+from cast2md.config.settings import Settings, get_settings, reload_settings
 
 logger = logging.getLogger(__name__)
 
@@ -123,16 +123,79 @@ tail -f /dev/null
 '''
 
     def __init__(self, settings: Settings | None = None):
-        self.settings = settings or get_settings()
+        self._initial_settings = settings
         self._setup_states: dict[str, PodSetupState] = {}
         self._lock = threading.Lock()
         self._template_id: str | None = None
+
+    @property
+    def settings(self) -> Settings:
+        """Get current settings (reloaded for runtime changes)."""
+        if self._initial_settings:
+            return self._initial_settings
+        reload_settings()
+        return get_settings()
 
     def is_available(self) -> bool:
         """Check if RunPod feature is available (library + both tokens present)."""
         if not RUNPOD_AVAILABLE:
             return False
         return bool(self.settings.runpod_api_key and self.settings.runpod_ts_auth_key)
+
+    def get_server_tailscale_info(self) -> tuple[str | None, str | None]:
+        """Get this server's Tailscale hostname and IP.
+
+        Returns (hostname, ip) or (None, None) if not available.
+        """
+        try:
+            result = subprocess.run(
+                ["tailscale", "status", "--json"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            if result.returncode != 0:
+                return None, None
+
+            status = json.loads(result.stdout)
+            self_status = status.get("Self", {})
+
+            # Get hostname (e.g., "cast2md" from "cast2md.leo-royal.ts.net")
+            dns_name = self_status.get("DNSName", "")
+            hostname = dns_name.rstrip(".") if dns_name else None
+
+            # Get Tailscale IP
+            ips = self_status.get("TailscaleIPs", [])
+            ip = ips[0] if ips else None
+
+            return hostname, ip
+        except Exception as e:
+            logger.warning(f"Failed to get Tailscale info: {e}")
+            return None, None
+
+    def get_effective_server_url(self) -> str | None:
+        """Get the server URL for pods to connect to.
+
+        Uses configured value if set, otherwise auto-derives from Tailscale.
+        """
+        if self.settings.runpod_server_url:
+            return self.settings.runpod_server_url
+
+        hostname, _ = self.get_server_tailscale_info()
+        if hostname:
+            return f"https://{hostname}"
+        return None
+
+    def get_effective_server_ip(self) -> str | None:
+        """Get the server IP for pods to use.
+
+        Uses configured value if set, otherwise auto-derives from Tailscale.
+        """
+        if self.settings.runpod_server_ip:
+            return self.settings.runpod_server_ip
+
+        _, ip = self.get_server_tailscale_info()
+        return ip
 
     def is_enabled(self) -> bool:
         """Check if RunPod is enabled and configured."""
@@ -148,14 +211,18 @@ tail -f /dev/null
             return False, "RunPod not configured (missing API key or Tailscale auth key)"
         if not self.settings.runpod_enabled:
             return False, "RunPod not enabled"
-        if not self.settings.runpod_server_url or not self.settings.runpod_server_ip:
-            return False, "RunPod server URL or IP not configured"
+
+        server_url = self.get_effective_server_url()
+        server_ip = self.get_effective_server_ip()
+
+        if not server_url or not server_ip:
+            return False, "Server not on Tailscale (cannot derive URL/IP)"
 
         # Validate server IP
         try:
-            ipaddress.ip_address(self.settings.runpod_server_ip)
+            ipaddress.ip_address(server_ip)
         except ValueError:
-            return False, f"Invalid server IP: {self.settings.runpod_server_ip}"
+            return False, f"Invalid server IP: {server_ip}"
 
         current = len(self.list_pods())
         creating = len([s for s in self._setup_states.values() if s.phase not in (PodSetupPhase.READY, PodSetupPhase.FAILED)])
@@ -469,10 +536,12 @@ tail -f /dev/null
             return result.stdout.strip()
 
         settings = self.settings
+        server_url = self.get_effective_server_url()
+        server_ip = self.get_effective_server_ip()
 
         # Add server to /etc/hosts
-        server_host = settings.runpod_server_url.replace("https://", "").replace("http://", "").split("/")[0]
-        run_ssh(f"echo '{settings.runpod_server_ip} {server_host}' >> /etc/hosts", "Adding server to /etc/hosts")
+        server_host = server_url.replace("https://", "").replace("http://", "").split("/")[0]
+        run_ssh(f"echo '{server_ip} {server_host}' >> /etc/hosts", "Adding server to /etc/hosts")
 
         # Install ffmpeg
         run_ssh("apt-get update -qq && apt-get install -y -qq ffmpeg > /dev/null 2>&1", "Installing ffmpeg")
@@ -485,7 +554,7 @@ tail -f /dev/null
         )
 
         # Convert URL to HTTP:8000 for internal Tailscale traffic
-        internal_url = settings.runpod_server_url
+        internal_url = server_url
         if internal_url.startswith("https://"):
             internal_url = "http://" + internal_url[8:]
         elif not internal_url.startswith("http://"):

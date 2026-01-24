@@ -10,17 +10,51 @@
     </hgroup>
 </div>
 
-<!-- Status Overview -->
+{% if not runpod_status.available %}
+<!-- Not Configured Message -->
+<article>
+    <h4>RunPod Not Configured</h4>
+    <p>To enable RunPod GPU workers, set the following environment variables on the server:</p>
+    <pre><code>RUNPOD_API_KEY=...           # Your RunPod API key
+RUNPOD_TS_AUTH_KEY=...       # Tailscale auth key for pods</code></pre>
+    <p>Server URL and IP are automatically detected from Tailscale.</p>
+    <p style="margin-top: 1rem;">
+        <a href="https://console.runpod.io/deploy" target="_blank" rel="noopener">Open RunPod Console</a>
+    </p>
+</article>
+{% else %}
+
+<!-- Master Switch -->
+<article>
+    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+        <div>
+            <label style="display: flex; align-items: center; gap: 0.75rem; margin: 0; cursor: pointer;">
+                <input type="checkbox" id="runpod-enabled-toggle" role="switch" {% if runpod_status.enabled %}checked{% endif %}>
+                <span style="font-weight: 600;">RunPod Enabled</span>
+            </label>
+            <small style="color: var(--pico-muted-color); display: block; margin-top: 0.25rem;">
+                {% if runpod_status.enabled %}
+                GPU workers can be started manually or via auto-scale
+                {% else %}
+                Enable to use RunPod GPU workers for transcription
+                {% endif %}
+            </small>
+        </div>
+        <div style="display: flex; gap: 0.5rem; align-items: center;">
+            <a href="https://console.runpod.io/deploy" target="_blank" rel="noopener" class="secondary outline" role="button" style="font-size: 0.875rem;">
+                RunPod Console
+            </a>
+            <a href="/admin/settings" class="secondary outline" role="button" style="font-size: 0.875rem;">
+                Settings
+            </a>
+        </div>
+    </div>
+</article>
+
+{% if runpod_status.enabled %}
+<!-- Status Overview (only when enabled) -->
 <article>
     <div class="stats-grid" style="margin-bottom: 0;">
-        <div class="stat-card">
-            <h3>{% if runpod_status.available %}<span style="color: #22c55e;">Available</span>{% else %}<span style="color: var(--pico-muted-color);">Not Configured</span>{% endif %}</h3>
-            <p>API Status</p>
-        </div>
-        <div class="stat-card">
-            <h3>{% if runpod_status.enabled %}<span style="color: #22c55e;">Enabled</span>{% else %}<span style="color: var(--pico-muted-color);">Disabled</span>{% endif %}</h3>
-            <p>Feature</p>
-        </div>
         <div class="stat-card">
             <h3>{{ runpod_status.active_pods | length }}</h3>
             <p>Active Pods</p>
@@ -34,24 +68,11 @@
             <p>Max Pods</p>
         </div>
         <div class="stat-card">
-            <h3>{{ transcribe_queued }}</h3>
-            <p>Queued Jobs</p>
+            <h3>{{ transcribe_queued }}{% if settings.runpod_auto_scale %} / {{ settings.runpod_scale_threshold }}{% endif %}</h3>
+            <p>{% if settings.runpod_auto_scale %}Queue / Threshold{% else %}Queued Jobs{% endif %}</p>
         </div>
     </div>
 </article>
-
-{% if not runpod_status.available %}
-<!-- Not Configured Message -->
-<article>
-    <h4>RunPod Not Configured</h4>
-    <p>To enable RunPod GPU workers, set the following environment variables on the server:</p>
-    <pre><code>RUNPOD_API_KEY=...           # Your RunPod API key
-RUNPOD_TS_AUTH_KEY=...       # Tailscale auth key for pods
-RUNPOD_SERVER_URL=https://your-server.ts.net
-RUNPOD_SERVER_IP=100.x.x.x   # Tailscale IP of this server</code></pre>
-    <p>Then enable in settings or set <code>RUNPOD_ENABLED=true</code>.</p>
-</article>
-{% else %}
 
 <!-- Actions -->
 <article>
@@ -142,11 +163,25 @@ RUNPOD_SERVER_IP=100.x.x.x   # Tailscale IP of this server</code></pre>
         </div>
         <div>
             <strong>Auto-scale:</strong> {% if settings.runpod_auto_scale %}Enabled (threshold: {{ settings.runpod_scale_threshold }}){% else %}Disabled{% endif %}<br>
-            <strong>Server URL:</strong> {{ settings.runpod_server_url or 'Not set' }}<br>
-            <strong>Server IP:</strong> {{ settings.runpod_server_ip or 'Not set' }}
+            <strong>Server:</strong> {{ runpod_status.server_url or 'Not detected' }}<br>
+            <strong>IP:</strong> {{ runpod_status.server_ip or 'Not detected' }}
         </div>
     </div>
 </article>
+
+{% else %}
+<!-- Disabled state - show basic info -->
+<article style="opacity: 0.6;">
+    <p style="text-align: center; color: var(--pico-muted-color);">
+        RunPod is disabled. Enable it above to manage GPU workers.
+    </p>
+    <div style="text-align: center; margin-top: 1rem;">
+        <strong>Configured:</strong> GPU {{ settings.runpod_gpu_type }} | Model {{ settings.runpod_whisper_model }} | Max {{ settings.runpod_max_pods }} pods
+        {% if settings.runpod_auto_scale %} | Auto-scale at {{ settings.runpod_scale_threshold }} jobs{% endif %}
+    </div>
+</article>
+{% endif %}
+
 {% endif %}
 {% endblock %}
 
@@ -174,6 +209,37 @@ RUNPOD_SERVER_IP=100.x.x.x   # Tailscale IP of this server</code></pre>
 </style>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    // Master switch toggle
+    const enabledToggle = document.getElementById('runpod-enabled-toggle');
+    if (enabledToggle) {
+        enabledToggle.addEventListener('change', async function() {
+            const enabled = this.checked;
+            this.disabled = true;
+
+            try {
+                const response = await fetch('/api/settings', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ settings: { runpod_enabled: enabled ? 'true' : 'false' } })
+                });
+
+                if (response.ok) {
+                    // Reload page to show updated state
+                    window.location.reload();
+                } else {
+                    const data = await response.json();
+                    showToast('Error: ' + (data.detail || 'Failed to update'), 'error');
+                    this.checked = !enabled;
+                    this.disabled = false;
+                }
+            } catch (err) {
+                showToast('Error: ' + err.message, 'error');
+                this.checked = !enabled;
+                this.disabled = false;
+            }
+        });
+    }
+
     const startBtn = document.getElementById('start-pod-btn');
     const terminateAllBtn = document.getElementById('terminate-all-btn');
 
