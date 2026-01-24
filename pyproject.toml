@@ -63,6 +63,10 @@ node = [
 node-mlx = [
     "mlx-whisper>=0.4.0",
 ]
+# RunPod integration for on-demand GPU workers
+runpod = [
+    "runpod>=1.6.0",
+]
 
 [project.scripts]
 cast2md = "cast2md.cli:cli"
