@@ -61,6 +61,28 @@ class Settings(BaseSettings):
     node_heartbeat_timeout_seconds: int = 60
     remote_job_timeout_hours: int = 2
 
+    # RunPod configuration (requires both tokens to be enabled)
+    runpod_enabled: bool = False  # Master switch - must be True to use RunPod
+    runpod_max_pods: int = 3  # Maximum concurrent pods
+    runpod_auto_scale: bool = False  # Auto-start pods when queue grows
+    runpod_scale_threshold: int = 10  # Start pod when queue > this
+    runpod_pods_per_threshold: int = 1  # Pods to start per threshold crossed
+
+    # RunPod credentials (from env only - not stored in DB)
+    runpod_api_key: str = ""  # RunPod API key
+    runpod_ts_auth_key: str = ""  # Tailscale auth key for pods
+
+    # RunPod pod configuration
+    runpod_gpu_type: str = "NVIDIA GeForce RTX 4090"
+    runpod_whisper_model: str = "large-v3-turbo"
+    runpod_image_name: str = "runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04"
+    runpod_ts_hostname: str = "runpod-afterburner"  # Base hostname (instance ID appended)
+    runpod_github_repo: str = "meltforce/cast2md"
+
+    # Server connection (for pods to register)
+    runpod_server_url: str = ""  # e.g., https://cast2md.example.ts.net
+    runpod_server_ip: str = ""  # Tailscale IP (MagicDNS not available in pods)
+
     def ensure_directories(self) -> None:
         """Create required directories if they don't exist."""
         self.storage_path.mkdir(parents=True, exist_ok=True)
@@ -70,11 +92,12 @@ class Settings(BaseSettings):
 # Cached settings instance
 _settings: Settings | None = None
 
-# Node-specific settings - these are empty for the server.
-# The server uses DB settings for everything (configurable via UI).
-# Remote nodes are separate installations with their own .env files
-# and don't share this Settings class.
-NODE_SPECIFIC_SETTINGS = frozenset()
+# Node-specific settings - these come from env file only (not stored in DB).
+# This includes sensitive credentials that shouldn't be in the database.
+NODE_SPECIFIC_SETTINGS = frozenset({
+    "runpod_api_key",
+    "runpod_ts_auth_key",
+})
 
 # Default values for comparison (to detect env file overrides)
 _DEFAULTS = {
@@ -94,6 +117,21 @@ _DEFAULTS = {
     "distributed_transcription_enabled": False,
     "node_heartbeat_timeout_seconds": 60,
     "remote_job_timeout_hours": 2,
+    # RunPod settings
+    "runpod_enabled": False,
+    "runpod_max_pods": 3,
+    "runpod_auto_scale": False,
+    "runpod_scale_threshold": 10,
+    "runpod_pods_per_threshold": 1,
+    "runpod_api_key": "",
+    "runpod_ts_auth_key": "",
+    "runpod_gpu_type": "NVIDIA GeForce RTX 4090",
+    "runpod_whisper_model": "large-v3-turbo",
+    "runpod_image_name": "runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04",
+    "runpod_ts_hostname": "runpod-afterburner",
+    "runpod_github_repo": "meltforce/cast2md",
+    "runpod_server_url": "",
+    "runpod_server_ip": "",
 }
 
 

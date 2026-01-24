@@ -15,6 +15,7 @@ from cast2md.api.feeds import router as feeds_router
 from cast2md.api.itunes import router as itunes_router
 from cast2md.api.nodes import router as nodes_router
 from cast2md.api.queue import router as queue_router
+from cast2md.api.runpod import router as runpod_router
 from cast2md.api.search import router as search_router
 from cast2md.api.settings import router as settings_router
 from cast2md.api.system import router as system_router
@@ -180,6 +181,7 @@ app.include_router(episodes_router)
 app.include_router(itunes_router)
 app.include_router(nodes_router)
 app.include_router(queue_router)
+app.include_router(runpod_router)
 app.include_router(search_router)
 app.include_router(settings_router)
 app.include_router(system_router)

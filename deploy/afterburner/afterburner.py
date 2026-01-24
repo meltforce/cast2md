@@ -9,6 +9,9 @@ Spins up a GPU pod on RunPod using a custom template that automatically:
 
 The pod auto-terminates when the queue is empty.
 
+Supports parallel execution - multiple instances can run simultaneously,
+each with a unique instance ID (e.g., "a3f2") for Tailscale hostname and node name.
+
 Prerequisites:
 1. Create RunPod secret named "ts_auth_key" with your Tailscale auth key
 2. Set RUNPOD_API_KEY environment variable
@@ -17,12 +20,14 @@ Usage:
     python deploy/afterburner/afterburner.py
     python deploy/afterburner/afterburner.py --dry-run
     python deploy/afterburner/afterburner.py --test
+    python deploy/afterburner/afterburner.py --terminate-all
 """
 
 import argparse
 import ipaddress
 import json
 import os
+import secrets
 import subprocess
 import sys
 import time
@@ -303,8 +308,19 @@ def ensure_template(config: Config, recreate: bool = False) -> str:
             return template_id
 
 
-def create_pod(config: Config, template_id: str) -> tuple[dict, str]:
+def create_pod(
+    config: Config,
+    template_id: str,
+    pod_name: str = "cast2md-afterburner",
+    env_overrides: dict | None = None,
+) -> tuple[dict, str]:
     """Create a RunPod pod using the template, trying fallback GPU types if needed.
+
+    Args:
+        config: Afterburner configuration
+        template_id: RunPod template ID
+        pod_name: Name for the pod (supports unique suffixes for parallel execution)
+        env_overrides: Environment variable overrides (e.g., {"TS_HOSTNAME": "unique-name"})
 
     Returns:
         Tuple of (pod dict, gpu_type used)
@@ -321,15 +337,19 @@ def create_pod(config: Config, template_id: str) -> tuple[dict, str]:
     for gpu_type in gpu_types:
         log(f"Trying to create pod with {gpu_type}...")
         try:
-            pod = runpod.create_pod(
-                name="cast2md-afterburner",
-                template_id=template_id,
-                gpu_type_id=gpu_type,
-                cloud_type=config.cloud_type,
-                start_ssh=True,
-                support_public_ip=True,
-            )
-            log(f"Created pod: {pod['id']} with {gpu_type}")
+            create_kwargs = {
+                "name": pod_name,
+                "template_id": template_id,
+                "gpu_type_id": gpu_type,
+                "cloud_type": config.cloud_type,
+                "start_ssh": True,
+                "support_public_ip": True,
+            }
+            if env_overrides:
+                create_kwargs["env"] = env_overrides
+
+            pod = runpod.create_pod(**create_kwargs)
+            log(f"Created pod: {pod['id']} ({pod_name}) with {gpu_type}")
             return pod, gpu_type
         except Exception as e:
             error_msg = str(e)
@@ -378,12 +398,18 @@ def wait_for_pod_running(config: Config, pod_id: str, timeout: int = 300) -> Non
     raise RuntimeError("Timeout waiting for pod to be running")
 
 
-def wait_for_tailscale(config: Config, timeout: int = 600) -> str | None:
+def wait_for_tailscale(config: Config, ts_hostname: str | None = None, timeout: int = 600) -> str | None:
     """Wait for the pod to appear on Tailscale and be reachable via SSH.
+
+    Args:
+        config: Afterburner configuration
+        ts_hostname: Override hostname to search for (supports instance-specific names)
+        timeout: Maximum seconds to wait
 
     Returns the Tailscale IP of the pod, or None on timeout.
     """
-    log(f"Waiting for {config.ts_hostname}* to appear on Tailscale...")
+    hostname_prefix = ts_hostname or config.ts_hostname
+    log(f"Waiting for {hostname_prefix}* to appear on Tailscale...")
 
     start_time = time.time()
 
@@ -401,9 +427,9 @@ def wait_for_tailscale(config: Config, timeout: int = 600) -> str | None:
             for _, peer in peers.items():
                 hostname = peer.get("HostName", "")
                 online = peer.get("Online", False)
-                
+
                 # Match prefix - Tailscale adds -1, -2 etc. when name is taken
-                if hostname.startswith(config.ts_hostname) and online:
+                if hostname.startswith(hostname_prefix) and online:
                     candidates.append(peer)
 
             # Sort candidates by creation time (newest first)
@@ -461,7 +487,7 @@ def wait_for_tailscale(config: Config, timeout: int = 600) -> str | None:
 
         time.sleep(5)
 
-    log(f"Timeout waiting for {config.ts_hostname}*", "ERROR")
+    log(f"Timeout waiting for {hostname_prefix}*", "ERROR")
     return None
 
 
@@ -563,11 +589,11 @@ def terminate_pod(config: Config, pod_id: str) -> None:
 
 
 def get_running_pods(config: Config) -> list[dict]:
-    """Get list of running cast2md-afterburner pods."""
+    """Get list of running cast2md-afterburner pods (prefix match for parallel support)."""
     runpod.api_key = config.runpod_api_key
 
     pods = runpod.get_pods()
-    return [p for p in pods if p.get("name") == "cast2md-afterburner"]
+    return [p for p in pods if p.get("name", "").startswith("cast2md-afterburner")]
 
 
 def get_gpu_hourly_rate(gpu_type: str) -> float | None:
@@ -611,8 +637,14 @@ def estimate_cost(start_time: datetime, gpu_type: str) -> tuple[float, str]:
     return cost, runtime_str
 
 
-def setup_pod_via_ssh(config: Config, host_ip: str) -> None:
-    """Install cast2md and dependencies on the pod via SSH."""
+def setup_pod_via_ssh(config: Config, host_ip: str, node_name: str = "RunPod Afterburner") -> None:
+    """Install cast2md and dependencies on the pod via SSH.
+
+    Args:
+        config: Afterburner configuration
+        host_ip: Tailscale IP of the pod
+        node_name: Name to register the node with (supports unique suffixes)
+    """
 
     def run_ssh(cmd: str, description: str, timeout: int = 300) -> str:
         """Run SSH command with logging and timeout."""
@@ -676,7 +708,7 @@ def setup_pod_via_ssh(config: Config, host_ip: str) -> None:
     # Register node with server (use HTTP proxy for Tailscale traffic)
     run_ssh(
         f"http_proxy=http://localhost:1055 "
-        f"cast2md node register --server '{internal_server_url}' --name 'RunPod Afterburner'",
+        f"cast2md node register --server '{internal_server_url}' --name '{node_name}'",
         "Registering node with server"
     )
 
@@ -716,6 +748,11 @@ def main():
         help="Terminate any existing afterburner pods first",
     )
     parser.add_argument(
+        "--terminate-all",
+        action="store_true",
+        help="Terminate all running afterburner pods and exit",
+    )
+    parser.add_argument(
         "--update-template",
         action="store_true",
         help="Update the template without creating a pod",
@@ -743,10 +780,30 @@ def main():
         log(str(e), "ERROR")
         sys.exit(1)
 
+    # Generate unique instance ID for parallel execution
+    instance_id = secrets.token_hex(2)  # e.g., "a3f2"
+    ts_hostname = f"{config.ts_hostname}-{instance_id}"
+    pod_name = f"cast2md-afterburner-{instance_id}"
+    node_name = f"RunPod Afterburner {instance_id}"
+
     log("RunPod Afterburner")
+    log(f"Instance: {instance_id}")
     log(f"Server: {config.server_url}")
     log(f"GPU: {config.gpu_type}")
-    log(f"Tailscale hostname: {config.ts_hostname}")
+    log(f"Tailscale hostname: {ts_hostname}")
+
+    # Handle --terminate-all early
+    if args.terminate_all:
+        existing_pods = get_running_pods(config)
+        if not existing_pods:
+            log("No afterburner pods to terminate")
+            return
+        log(f"Terminating {len(existing_pods)} pod(s)...")
+        for p in existing_pods:
+            log(f"  Terminating {p['id']} ({p.get('name', 'unknown')})")
+            terminate_pod(config, p["id"])
+        log("All pods terminated")
+        return
 
     if args.dry_run:
         log("Dry run - validating configuration...")
@@ -847,9 +904,8 @@ def main():
                 terminate_pod(config, p["id"])
             time.sleep(5)
         else:
-            log(f"Found {len(existing_pods)} existing afterburner pod(s)", "WARN")
-            log("Use --terminate-existing to remove them first")
-            sys.exit(1)
+            # Parallel execution supported - just log a warning
+            log(f"Found {len(existing_pods)} existing afterburner pod(s) - running in parallel", "WARN")
 
     # Ensure template exists
     template_id = ensure_template(config, recreate=args.recreate_template)
@@ -861,13 +917,15 @@ def main():
     exit_reason = "completed"
     try:
         # Create pod from template (with fallback to other GPU types)
-        pod, gpu_used = create_pod(config, template_id)
+        # Pass unique TS_HOSTNAME for parallel execution
+        env_overrides = {"TS_HOSTNAME": ts_hostname}
+        pod, gpu_used = create_pod(config, template_id, pod_name, env_overrides)
         pod_id = pod["id"]
 
         notify(
             config,
             "Afterburner: Pod Created",
-            f"Pod {pod_id} created with {gpu_used}",
+            f"Pod {pod_id} ({instance_id}) created with {gpu_used}",
             tags=["rocket"],
         )
 
@@ -876,7 +934,7 @@ def main():
 
         # Wait for Tailscale connection (startup script handles setup)
         log("Waiting for Tailscale to connect...")
-        host_ip = wait_for_tailscale(config)
+        host_ip = wait_for_tailscale(config, ts_hostname)
         if not host_ip:
             raise RuntimeError("Pod failed to connect to Tailscale")
 
@@ -892,7 +950,7 @@ def main():
             return
 
         # Install dependencies via SSH (safer than in startup script)
-        setup_pod_via_ssh(config, host_ip)
+        setup_pod_via_ssh(config, host_ip, node_name)
 
         notify(
             config,
@@ -930,7 +988,7 @@ def main():
             log(f"Estimated cost: ${cost:.2f} ({gpu_used})")
             if args.keep_alive:
                 log(f"Pod {pod['id']} left running (--keep-alive)")
-                log(f"Terminate manually: python afterburner.py --terminate-existing")
+                log(f"Terminate manually: python afterburner.py --terminate-all")
             else:
                 terminate_pod(config, pod["id"])
                 if exit_reason == "completed":

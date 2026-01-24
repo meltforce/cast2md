@@ -2,6 +2,8 @@
 
 On-demand GPU transcription worker that spins up a RunPod pod, processes the transcription backlog, and auto-terminates when complete.
 
+**Supports parallel execution**: Run multiple instances simultaneously to scale up processing. Each instance gets a unique ID (e.g., `a3f2`) for its pod name, Tailscale hostname, and node registration.
+
 ## Architecture
 
 ```
@@ -168,13 +170,38 @@ If you modify the startup script, force template recreation:
 python deploy/afterburner/afterburner.py --recreate-template
 ```
 
-### Terminate Existing Pods
+### Terminate All Pods
 
-If a previous run left a pod running:
+To terminate all running afterburner pods:
+
+```bash
+python deploy/afterburner/afterburner.py --terminate-all
+```
+
+### Terminate Before Starting
+
+If you want to terminate existing pods before starting a new one:
 
 ```bash
 python deploy/afterburner/afterburner.py --terminate-existing
 ```
+
+### Parallel Execution
+
+Run multiple instances in parallel for faster processing:
+
+```bash
+# Terminal 1
+python deploy/afterburner/afterburner.py
+
+# Terminal 2
+python deploy/afterburner/afterburner.py
+
+# Terminal 3
+python deploy/afterburner/afterburner.py
+```
+
+Each instance gets a unique ID (visible in logs) and runs independently.
 
 ### Use Existing Pod
 
@@ -191,7 +218,7 @@ python deploy/afterburner/afterburner.py --use-existing --test
 | `RUNPOD_API_KEY` | Yes | - | RunPod API key |
 | `CAST2MD_SERVER_URL` | Yes | - | Your cast2md server URL (e.g., `https://cast2md.your-tailnet.ts.net`) |
 | `CAST2MD_SERVER_IP` | Yes | - | Tailscale IP of the server (MagicDNS not available in containers) |
-| `TS_HOSTNAME` | No | `runpod-afterburner` | Hostname on Tailscale |
+| `TS_HOSTNAME` | No | `runpod-afterburner` | Base hostname on Tailscale (instance ID appended: `runpod-afterburner-a3f2`) |
 | `RUNPOD_GPU_TYPE` | No | `NVIDIA GeForce RTX 4090` | GPU type to use |
 | `GITHUB_REPO` | No | `meltforce/cast2md` | GitHub repo to install from |
 | `NTFY_SERVER` | No | - | ntfy server URL (e.g., `https://ntfy.sh`) |
@@ -281,14 +308,14 @@ This is why `CAST2MD_SERVER_IP` is required.
 
 ### Pod Detection Logic
 
-When detecting the pod on Tailscale, the script:
+When detecting a pod on Tailscale, each instance:
 
-1. Looks for hostnames starting with `runpod-afterburner*` (Tailscale adds `-1`, `-2` suffixes if name is taken)
+1. Looks for its specific hostname prefix (e.g., `runpod-afterburner-a3f2*`)
 2. Filters for `Online=true` status
 3. Sorts by creation timestamp (newest first)
 4. Verifies SSH connectivity before proceeding
 
-This handles multiple orphaned nodes from previous test runs.
+The unique instance ID prevents conflicts between parallel runs.
 
 ## Troubleshooting
 
