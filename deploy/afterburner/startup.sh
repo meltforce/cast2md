@@ -1,70 +1,52 @@
 #!/bin/bash
 # RunPod Afterburner Startup Script
-# This runs automatically when the pod boots via the template's dockerStartCmd
+#
+# NOTE: This file is for reference only. The actual startup script is embedded
+# inline in afterburner.py (STARTUP_SCRIPT constant). If you modify this file,
+# also update the inline version in afterburner.py.
+#
+# This script runs automatically when the pod boots via the template's dockerStartCmd.
+# It only sets up Tailscale - all other setup (ffmpeg, cast2md) is done via SSH
+# from afterburner.py for better visibility.
 
 set -e
 
-LOG_FILE="/var/log/afterburner-startup.log"
-exec > >(tee -a "$LOG_FILE") 2>&1
-
 echo "=== Afterburner Startup $(date) ==="
 
-# Required environment variables (injected by template):
-# - TS_AUTH_KEY: Tailscale auth key (from RunPod secret)
-# - TS_HOSTNAME: Tailscale hostname for this pod
-# - CAST2MD_SERVER_URL: cast2md server URL
-# - GITHUB_REPO: GitHub repo to install from (default: meltforce/cast2md)
-
+# Required env vars from template
 : "${TS_AUTH_KEY:?TS_AUTH_KEY is required}"
 : "${TS_HOSTNAME:=runpod-afterburner}"
-: "${CAST2MD_SERVER_URL:?CAST2MD_SERVER_URL is required}"
-: "${GITHUB_REPO:=meltforce/cast2md}"
 
-echo "Configuration:"
-echo "  TS_HOSTNAME: $TS_HOSTNAME"
-echo "  CAST2MD_SERVER_URL: $CAST2MD_SERVER_URL"
-echo "  GITHUB_REPO: $GITHUB_REPO"
+echo "Config: TS_HOSTNAME=$TS_HOSTNAME"
 
-# Install system dependencies
-echo "Installing system dependencies..."
-apt-get update -qq
-apt-get install -y -qq ffmpeg curl > /dev/null
-
-# Install Tailscale
+# === TAILSCALE SETUP ===
 echo "Installing Tailscale..."
 curl -fsSL https://tailscale.com/install.sh | sh
 
-# Start tailscaled in userspace mode (for container environments)
-echo "Starting tailscaled..."
-tailscaled --tun=userspace-networking --state=/var/lib/tailscale/tailscaled.state &
-sleep 3
+echo "Starting tailscaled (userspace networking with HTTP proxy)..."
+tailscaled --tun=userspace-networking --state=/var/lib/tailscale/tailscaled.state --outbound-http-proxy-listen=localhost:1055 &
 
-# Connect to Tailscale
+# Wait for tailscaled to be ready
+echo "Waiting for tailscaled socket..."
+for i in {1..30}; do
+    if [ -S /var/run/tailscale/tailscaled.sock ]; then
+        echo "tailscaled ready"
+        break
+    fi
+    sleep 1
+done
+
 echo "Connecting to Tailscale as $TS_HOSTNAME..."
-tailscale up \
-    --auth-key="$TS_AUTH_KEY" \
-    --hostname="$TS_HOSTNAME" \
-    --ssh \
-    --accept-routes \
-    --accept-dns
+tailscale up --auth-key="$TS_AUTH_KEY" --hostname="$TS_HOSTNAME" --ssh --accept-dns
 
 echo "Tailscale connected!"
 tailscale status
 
-# Install cast2md from GitHub
-echo "Installing cast2md from GitHub ($GITHUB_REPO)..."
-pip install "cast2md[node] @ git+https://github.com/${GITHUB_REPO}.git"
+# Export proxy for applications
+export http_proxy=http://localhost:1055
+export https_proxy=http://localhost:1055
+echo "HTTP proxy available at localhost:1055"
 
-# Verify installation
-echo "Verifying cast2md installation..."
-cast2md --version
-
-# Register node with server
-echo "Registering node with server..."
-cast2md node register --server "$CAST2MD_SERVER_URL" --name "RunPod Afterburner"
-
-# Start the transcription worker
-echo "Starting transcription worker..."
-cast2md node start
-
-# Note: cast2md node start runs in foreground and will keep the container alive
+# Keep container alive - setup continues via SSH from afterburner.py
+echo "Container ready - waiting for SSH setup..."
+tail -f /dev/null
