@@ -16,40 +16,6 @@ from cast2md.notifications.ntfy import send_notification, NotificationType
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
 
-def _is_runpod_available() -> bool:
-    """Check if RunPod is available (API key configured)."""
-    settings = get_settings()
-    return bool(settings.runpod_api_key)
-
-
-def _get_runpod_gpu_options() -> list[str]:
-    """Get GPU type options from RunPod API or fallback."""
-    from cast2md.services.runpod_service import get_runpod_service
-
-    # Default fallback
-    fallback = [
-        "NVIDIA GeForce RTX 4090",
-        "NVIDIA GeForce RTX 3090",
-        "NVIDIA RTX A4000",
-        "NVIDIA RTX A5000",
-        "NVIDIA GeForce RTX 4080",
-        "NVIDIA RTX A6000",
-        "NVIDIA L4",
-        "NVIDIA L40",
-    ]
-
-    try:
-        service = get_runpod_service()
-        if service.is_available():
-            gpus = service.get_available_gpus()
-            if gpus:
-                return [g["id"] for g in gpus]
-    except Exception:
-        pass
-
-    return fallback
-
-
 def _get_configurable_settings() -> dict:
     """Get configurable settings with dynamic model options."""
     # Get whisper models from database
@@ -60,9 +26,6 @@ def _get_configurable_settings() -> dict:
         models = model_repo.get_all(enabled_only=True)
 
     model_options = [m.id for m in models]
-
-    # Check if RunPod is available
-    runpod_available = _is_runpod_available()
 
     # Order matters for UI layout (2 items per row)
     # Row 1: Whisper Model, Whisper Backend
@@ -161,55 +124,43 @@ def _get_configurable_settings() -> dict:
             "label": "iTunes Country",
             "description": "ISO country code for iTunes search (e.g., de, us, gb)",
         },
+        # RunPod settings - managed on /admin/runpod page, not shown on settings page
+        "runpod_enabled": {
+            "type": "bool",
+            "label": "Enable RunPod",
+            "description": "Master switch for RunPod GPU workers",
+        },
+        "runpod_max_pods": {
+            "type": "int",
+            "label": "Max Pods",
+            "description": "Maximum concurrent GPU pods",
+            "min": 1,
+            "max": 10,
+        },
+        "runpod_auto_scale": {
+            "type": "bool",
+            "label": "Auto-scale",
+            "description": "Automatically start pods when queue grows",
+        },
+        "runpod_scale_threshold": {
+            "type": "int",
+            "label": "Scale Threshold",
+            "description": "Start pods when queue exceeds this count",
+            "min": 1,
+            "max": 100,
+        },
+        "runpod_gpu_type": {
+            "type": "text",
+            "label": "GPU Type",
+            "description": "Preferred GPU for pods",
+        },
+        "runpod_whisper_model": {
+            "type": "select",
+            "label": "Pod Whisper Model",
+            "description": "Whisper model for GPU pods",
+            "options": ["large-v3-turbo", "large-v3", "large-v2", "medium", "small"],
+        },
     }
-
-    # Only add RunPod settings if API key is configured
-    if runpod_available:
-        settings.update({
-            "runpod_enabled": {
-                "type": "bool",
-                "label": "Enable RunPod",
-                "description": "Master switch for RunPod GPU workers",
-                "full_width": True,
-                "section": "runpod",
-            },
-            "runpod_max_pods": {
-                "type": "int",
-                "label": "Max Pods",
-                "description": "Maximum concurrent GPU pods",
-                "min": 1,
-                "max": 10,
-                "section": "runpod",
-            },
-            "runpod_auto_scale": {
-                "type": "bool",
-                "label": "Auto-scale",
-                "description": "Automatically start pods when queue grows",
-                "section": "runpod",
-            },
-            "runpod_scale_threshold": {
-                "type": "int",
-                "label": "Scale Threshold",
-                "description": "Start pods when queue exceeds this count",
-                "min": 1,
-                "max": 100,
-                "section": "runpod",
-            },
-            "runpod_gpu_type": {
-                "type": "select",
-                "label": "GPU Type",
-                "description": "Preferred GPU for pods (falls back to available)",
-                "options": _get_runpod_gpu_options(),
-                "section": "runpod",
-            },
-            "runpod_whisper_model": {
-                "type": "select",
-                "label": "Pod Whisper Model",
-                "description": "Whisper model for GPU pods",
-                "options": ["large-v3-turbo", "large-v3", "large-v2", "medium", "small"],
-                "section": "runpod",
-            },
-        })
 
     return settings
 
