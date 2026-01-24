@@ -227,12 +227,21 @@ tail -f /dev/null
         except ValueError:
             return False, f"Invalid server IP: {server_ip}"
 
-        current = len(self.list_pods())
-        creating = len([s for s in self._setup_states.values() if s.phase not in (PodSetupPhase.READY, PodSetupPhase.FAILED)])
-        total = current + creating
+        # Count running pods from RunPod API
+        running_pods = self.list_pods()
+        running_pod_ids = {p.id for p in running_pods}
+
+        # Count setup states that aren't yet in the running list (avoid double-counting)
+        creating = len([
+            s for s in self._setup_states.values()
+            if s.phase not in (PodSetupPhase.READY, PodSetupPhase.FAILED)
+            and (s.pod_id is None or s.pod_id not in running_pod_ids)
+        ])
+
+        total = len(running_pods) + creating
 
         if total >= self.settings.runpod_max_pods:
-            return False, f"Max pods ({self.settings.runpod_max_pods}) reached ({current} running, {creating} creating)"
+            return False, f"Max pods ({self.settings.runpod_max_pods}) reached ({len(running_pods)} running, {creating} creating)"
 
         return True, ""
 
