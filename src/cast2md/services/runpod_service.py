@@ -561,18 +561,21 @@ tail -f /dev/null
         """Create a RunPod pod. Returns (pod_id, gpu_type)."""
         runpod.api_key = self.settings.runpod_api_key
 
-        # Build GPU fallback list
-        gpu_types = [self.settings.runpod_gpu_type]
-        fallbacks = [
-            "NVIDIA GeForce RTX 4090",
-            "NVIDIA GeForce RTX 3090",
-            "NVIDIA RTX A4000",
-            "NVIDIA RTX A5000",
-            "NVIDIA GeForce RTX 4080",
-        ]
-        for fb in fallbacks:
-            if fb not in gpu_types:
-                gpu_types.append(fb)
+        # Build GPU fallback list: selected GPU first, then others sorted by price
+        selected_gpu = self.settings.runpod_gpu_type
+        gpu_types = [selected_gpu]
+
+        # Add cached GPUs (sorted by price) as fallbacks
+        cached_gpus = self.get_available_gpus()
+        for gpu in cached_gpus:
+            if gpu["id"] not in gpu_types:
+                gpu_types.append(gpu["id"])
+
+        # Hardcoded fallback if cache is empty
+        if len(gpu_types) == 1:
+            for fb in ["NVIDIA GeForce RTX 4090", "NVIDIA GeForce RTX 3090", "NVIDIA RTX A4000"]:
+                if fb not in gpu_types:
+                    gpu_types.append(fb)
 
         last_error = None
         for gpu_type in gpu_types:
