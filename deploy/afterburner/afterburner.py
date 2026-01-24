@@ -25,16 +25,16 @@ import os
 import subprocess
 import sys
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
-from pathlib import Path
 
 import httpx
 
 
 TEMPLATE_NAME = "cast2md-afterburner"
 
-# Inline startup script (embedded because repo is private)
+# Inline startup script - minimal, just sets up Tailscale
+# All other setup (ffmpeg, cast2md, etc.) is done via SSH for visibility
 STARTUP_SCRIPT = '''
 #!/bin/bash
 set -e
@@ -44,32 +44,40 @@ echo "=== Afterburner Startup $(date) ==="
 # Required env vars from template
 : "${TS_AUTH_KEY:?TS_AUTH_KEY is required}"
 : "${TS_HOSTNAME:=runpod-afterburner}"
-: "${CAST2MD_SERVER_URL:?CAST2MD_SERVER_URL is required}"
-: "${GITHUB_REPO:=meltforce/cast2md}"
 
-echo "Config: TS_HOSTNAME=$TS_HOSTNAME SERVER=$CAST2MD_SERVER_URL"
+echo "Config: TS_HOSTNAME=$TS_HOSTNAME"
 
-# Install dependencies
-apt-get update -qq && apt-get install -y -qq ffmpeg curl > /dev/null
-
-# Install Tailscale
+# === TAILSCALE SETUP ===
+echo "Installing Tailscale..."
 curl -fsSL https://tailscale.com/install.sh | sh
 
-# Start tailscaled in userspace mode
-tailscaled --tun=userspace-networking --state=/var/lib/tailscale/tailscaled.state &
-sleep 3
+echo "Starting tailscaled (userspace networking with HTTP proxy)..."
+tailscaled --tun=userspace-networking --state=/var/lib/tailscale/tailscaled.state --outbound-http-proxy-listen=localhost:1055 &
 
-# Connect to Tailscale
-tailscale up --auth-key="$TS_AUTH_KEY" --hostname="$TS_HOSTNAME" --ssh --accept-routes --accept-dns
+# Wait for tailscaled to be ready
+echo "Waiting for tailscaled socket..."
+for i in {1..30}; do
+    if [ -S /var/run/tailscale/tailscaled.sock ]; then
+        echo "tailscaled ready"
+        break
+    fi
+    sleep 1
+done
+
+echo "Connecting to Tailscale as $TS_HOSTNAME..."
+tailscale up --auth-key="$TS_AUTH_KEY" --hostname="$TS_HOSTNAME" --ssh --accept-dns
+
 echo "Tailscale connected!"
+tailscale status
 
-# Install cast2md
-pip install "cast2md[node] @ git+https://github.com/${GITHUB_REPO}.git"
-cast2md --version
+# Export proxy for applications
+export http_proxy=http://localhost:1055
+export https_proxy=http://localhost:1055
+echo "HTTP proxy available at localhost:1055"
 
-# Register and start node
-cast2md node register --server "$CAST2MD_SERVER_URL" --name "RunPod Afterburner"
-cast2md node start
+# Keep container alive - setup continues via SSH from afterburner.py
+echo "Container ready - waiting for SSH setup..."
+tail -f /dev/null
 '''
 
 
@@ -79,6 +87,7 @@ class Config:
 
     runpod_api_key: str
     server_url: str  # Required - your cast2md server URL
+    server_ip: str  # Required - Tailscale IP of server (MagicDNS not available in pod)
     ts_hostname: str = "runpod-afterburner"
     gpu_type: str = "NVIDIA GeForce RTX 4090"
     image_name: str = "runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04"
@@ -106,9 +115,14 @@ class Config:
         if not server_url:
             raise ValueError("CAST2MD_SERVER_URL environment variable required")
 
+        server_ip = os.environ.get("CAST2MD_SERVER_IP")
+        if not server_ip:
+            raise ValueError("CAST2MD_SERVER_IP environment variable required (Tailscale IP of server)")
+
         return cls(
             runpod_api_key=runpod_api_key,
             server_url=server_url,
+            server_ip=server_ip,
             ts_hostname=os.environ.get("TS_HOSTNAME", "runpod-afterburner"),
             gpu_type=os.environ.get("RUNPOD_GPU_TYPE", cls.gpu_type),
             github_repo=os.environ.get("GITHUB_REPO", "meltforce/cast2md"),
@@ -163,7 +177,7 @@ class RunPodAPI:
         response.raise_for_status()
 
 
-def get_startup_command(config: Config) -> list[str]:
+def get_startup_command() -> list[str]:
     """Generate the startup command that runs when the pod boots."""
     # Run the inline startup script
     return ["bash", "-c", STARTUP_SCRIPT]
@@ -177,11 +191,12 @@ def get_template_env(config: Config) -> dict:
         # Dynamic config
         "TS_HOSTNAME": config.ts_hostname,
         "CAST2MD_SERVER_URL": config.server_url,
+        "CAST2MD_SERVER_IP": config.server_ip,  # Tailscale IP (MagicDNS not available in pod)
         "GITHUB_REPO": config.github_repo,
     }
 
 
-def ensure_template(config: Config) -> str:
+def ensure_template(config: Config, recreate: bool = False) -> str:
     """Ensure the afterburner template exists and is up to date. Returns template ID."""
     api = RunPodAPI(config.runpod_api_key)
 
@@ -189,11 +204,17 @@ def ensure_template(config: Config) -> str:
     templates = api.get_templates()
     existing = next((t for t in templates if t.get("name") == TEMPLATE_NAME), None)
 
+    # Delete existing template if recreating
+    if existing and recreate:
+        log(f"Deleting existing template: {existing['id']}")
+        api.delete_template(existing["id"])
+        existing = None
+
     # Base template data (shared between create and update)
     base_data = {
         "name": TEMPLATE_NAME,
         "imageName": config.image_name,
-        "dockerStartCmd": get_startup_command(config),
+        "dockerStartCmd": get_startup_command(),
         "containerDiskInGb": 20,
         "volumeInGb": 0,
         "ports": ["22/tcp"],
@@ -205,8 +226,6 @@ def ensure_template(config: Config) -> str:
     if existing:
         template_id = existing["id"]
         log(f"Using existing template: {template_id}")
-        # Only update if needed - for now just use the existing template
-        # The update API has stricter field requirements
         return template_id
     else:
         log("Creating new template...")
@@ -297,11 +316,15 @@ def wait_for_pod_running(config: Config, pod_id: str, timeout: int = 300) -> Non
     raise RuntimeError("Timeout waiting for pod to be running")
 
 
-def wait_for_tailscale(config: Config, timeout: int = 600) -> bool:
-    """Wait for the pod to appear on Tailscale."""
-    log(f"Waiting for {config.ts_hostname} to appear on Tailscale...")
+def wait_for_tailscale(config: Config, timeout: int = 600) -> str | None:
+    """Wait for the pod to appear on Tailscale and be reachable via SSH.
+
+    Returns the Tailscale IP of the pod, or None on timeout.
+    """
+    log(f"Waiting for {config.ts_hostname}* to appear on Tailscale...")
 
     start_time = time.time()
+
     while time.time() - start_time < timeout:
         result = subprocess.run(
             ["tailscale", "status", "--json"],
@@ -310,17 +333,74 @@ def wait_for_tailscale(config: Config, timeout: int = 600) -> bool:
         )
         if result.returncode == 0:
             status = json.loads(result.stdout)
+            # Find all matching candidates
+            candidates = []
             peers = status.get("Peer", {})
-            for peer_id, peer in peers.items():
-                if peer.get("HostName") == config.ts_hostname:
-                    if peer.get("Online", False):
-                        log(f"Found {config.ts_hostname} on Tailscale!")
-                        return True
+            for _, peer in peers.items():
+                hostname = peer.get("HostName", "")
+                online = peer.get("Online", False)
+                
+                # Match prefix - Tailscale adds -1, -2 etc. when name is taken
+                if hostname.startswith(config.ts_hostname) and online:
+                    candidates.append(peer)
 
-        time.sleep(10)
+            # Sort candidates by creation time (newest first)
+            def get_created_time(p):
+                created_str = p.get("Created", "")
+                if not created_str:
+                    return datetime.min
+                try:
+                    # Handle Z suffix for UTC
+                    if created_str.endswith("Z"):
+                        created_str = created_str[:-1] + "+00:00"
+                    return datetime.fromisoformat(created_str)
+                except ValueError:
+                    return datetime.min
 
-    log(f"Timeout waiting for {config.ts_hostname}", "ERROR")
-    return False
+            candidates.sort(key=get_created_time, reverse=True)
+
+            # Try candidates
+            for peer in candidates:
+                hostname = peer.get("HostName")
+                ip = peer.get("TailscaleIPs", ["?"])[0]
+                created = peer.get("Created", "unknown")
+                
+                # Skip invalid IPs
+                if ip == "?":
+                    continue
+
+                # Check SSH connectivity directly (more robust than ping)
+                log(f"Checking candidate: {hostname} ({ip}) Created={created}", "DEBUG")
+                
+                ssh_cmd = [
+                    "ssh",
+                    "-o", "StrictHostKeyChecking=no",
+                    "-o", "ConnectTimeout=5",
+                    "-o", "BatchMode=yes",
+                    f"root@{ip}",
+                    "exit 0"
+                ]
+                
+                result = subprocess.run(
+                    ssh_cmd,
+                    capture_output=True,
+                    text=True,
+                )
+                
+                if result.returncode == 0:
+                    log(f"SSH handshake successful: {ip}")
+                    return ip
+                else:
+                    log(f"SSH failed for {hostname} ({ip}): {result.stderr.strip()}", "DEBUG")
+            
+            # If we get here, no candidates worked
+            if candidates:
+                log(f"Tried {len(candidates)} candidates, none reachable yet", "DEBUG")
+
+        time.sleep(5)
+
+    log(f"Timeout waiting for {config.ts_hostname}*", "ERROR")
+    return None
 
 
 def get_queue_status(config: Config) -> dict:
@@ -420,22 +500,97 @@ def estimate_cost(start_time: datetime, gpu_type: str) -> tuple[float, str]:
     return cost, runtime_str
 
 
+def setup_pod_via_ssh(config: Config, host_ip: str) -> None:
+    """Install cast2md and dependencies on the pod via SSH."""
+
+    def run_ssh(cmd: str, description: str) -> str:
+        """Run SSH command with logging."""
+        log(f"{description}...")
+        ssh_cmd = [
+            "ssh",
+            "-o", "StrictHostKeyChecking=no",
+            "-o", "ConnectTimeout=30",
+            f"root@{host_ip}",
+            cmd
+        ]
+        log(f"Running: {cmd}", "DEBUG")
+        result = subprocess.run(ssh_cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            log(f"Command failed: {result.stderr}", "ERROR")
+            raise RuntimeError(f"SSH command failed: {description}")
+        if result.stdout.strip():
+            # Show last few lines of output
+            lines = result.stdout.strip().split('\n')
+            for line in lines[-5:]:
+                log(f"  {line}", "DEBUG")
+        return result.stdout.strip()
+
+    # Add server to /etc/hosts (MagicDNS workaround)
+    server_host = config.server_url.replace("https://", "").split("/")[0]
+    run_ssh(
+        f"echo '{config.server_ip} {server_host}' >> /etc/hosts",
+        f"Adding {server_host} -> {config.server_ip} to /etc/hosts"
+    )
+
+    # Install system dependencies
+    run_ssh(
+        "apt-get update -qq && apt-get install -y -qq ffmpeg > /dev/null 2>&1",
+        "Installing ffmpeg"
+    )
+
+    # Install cast2md from GitHub
+    run_ssh(
+        f"pip install 'cast2md[node] @ git+https://github.com/{config.github_repo}.git' 2>&1 | tail -5",
+        f"Installing cast2md from {config.github_repo}"
+    )
+
+    # Verify installation
+    version = run_ssh("cast2md --version", "Verifying cast2md installation")
+    log(f"Installed: {version}")
+
+    # Convert HTTPS URL to HTTP:8000 for internal Tailscale traffic
+    # (The HTTP proxy only supports plain HTTP, not HTTPS CONNECT)
+    internal_server_url = config.server_url.replace("https://", "http://")
+    if ":8000" not in internal_server_url:
+        internal_server_url = internal_server_url.rstrip("/") + ":8000"
+
+    # Register node with server (use HTTP proxy for Tailscale traffic)
+    run_ssh(
+        f"http_proxy=http://localhost:1055 "
+        f"cast2md node register --server '{internal_server_url}' --name 'RunPod Afterburner'",
+        "Registering node with server"
+    )
+
+    # Start node worker in background (use HTTP proxy for Tailscale traffic)
+    run_ssh(
+        "http_proxy=http://localhost:1055 "
+        "nohup cast2md node start > /tmp/cast2md-node.log 2>&1 &",
+        "Starting node worker"
+    )
+
+    log("Pod setup complete!")
+
+
 def tailscale_ssh_cmd(hostname: str, cmd: str, check: bool = True, retries: int = 1) -> str:
     """Run a command on the pod via Tailscale SSH."""
-    last_error = None
+    ssh_cmd = ["ssh", "-o", "StrictHostKeyChecking=no", "-o", "ConnectTimeout=10", f"root@{hostname}", cmd]
+    log(f"SSH command: {' '.join(ssh_cmd)}", "DEBUG")
+
     for attempt in range(retries):
         result = subprocess.run(
-            ["ssh", "-o", "StrictHostKeyChecking=no", "-o", "ConnectTimeout=10", f"root@{hostname}", cmd],
+            ssh_cmd,
             capture_output=True,
             text=True,
             check=False,
         )
+        log(f"SSH result: returncode={result.returncode}, stdout={result.stdout[:200] if result.stdout else ''!r}, stderr={result.stderr[:200] if result.stderr else ''!r}", "DEBUG")
         if result.returncode == 0:
             return result.stdout.strip()
-        last_error = result.stderr
         if attempt < retries - 1:
-            log(f"SSH command failed, retrying ({attempt + 1}/{retries})...", "DEBUG")
+            log(f"SSH failed (attempt {attempt + 1}/{retries}): {result.stderr.strip()}", "DEBUG")
             time.sleep(5)
+        else:
+            log(f"SSH error: {result.stderr.strip()}", "ERROR")
 
     if check:
         raise subprocess.CalledProcessError(result.returncode, result.args, result.stdout, result.stderr)
@@ -463,6 +618,21 @@ def main():
         "--update-template",
         action="store_true",
         help="Update the template without creating a pod",
+    )
+    parser.add_argument(
+        "--recreate-template",
+        action="store_true",
+        help="Delete and recreate the template (use when startup script changes)",
+    )
+    parser.add_argument(
+        "--keep-alive",
+        action="store_true",
+        help="Don't terminate pod on exit (for debugging)",
+    )
+    parser.add_argument(
+        "--use-existing",
+        action="store_true",
+        help="Use existing pod instead of creating new one (for debugging)",
     )
     args = parser.parse_args()
 
@@ -513,7 +683,7 @@ def main():
 
         # Check/create template
         try:
-            template_id = ensure_template(config)
+            template_id = ensure_template(config, recreate=args.recreate_template)
             log(f"Template: Ready ({template_id})")
         except Exception as e:
             log(f"Template: Failed - {e}", "ERROR")
@@ -524,17 +694,47 @@ def main():
 
     if args.update_template:
         log("Updating template...")
-        template_id = ensure_template(config)
+        template_id = ensure_template(config, recreate=args.recreate_template)
         log(f"Template updated: {template_id}")
         return
 
     # Check for existing pods
     existing_pods = get_running_pods(config)
+
+    # Handle --use-existing mode
+    if args.use_existing:
+        if not existing_pods:
+            log("No existing afterburner pods found", "ERROR")
+            sys.exit(1)
+        pod = existing_pods[0]
+        log(f"Using existing pod: {pod['id']}")
+
+        # Just test Tailscale connectivity
+        log("Waiting for Tailscale to connect...")
+        host_ip = wait_for_tailscale(config)
+        if not host_ip:
+            log("Pod not found on Tailscale", "ERROR")
+            sys.exit(1)
+
+        log(f"Pod reachable at: {host_ip}")
+        log(f"Try: ssh root@{host_ip}")
+
+        if args.test:
+            # Try SSH
+            log("Testing SSH...")
+            result = tailscale_ssh_cmd(host_ip, "echo 'SSH works!' && hostname", retries=3)
+            log(f"SSH output: {result}")
+            log("Test successful!")
+
+        log("Press Enter to exit (pod will keep running)...")
+        input()
+        return
+
     if existing_pods:
         if args.terminate_existing:
-            for pod in existing_pods:
-                log(f"Terminating existing pod {pod['id']}...")
-                terminate_pod(config, pod["id"])
+            for p in existing_pods:
+                log(f"Terminating existing pod {p['id']}...")
+                terminate_pod(config, p["id"])
             time.sleep(5)
         else:
             log(f"Found {len(existing_pods)} existing afterburner pod(s)", "WARN")
@@ -542,7 +742,7 @@ def main():
             sys.exit(1)
 
     # Ensure template exists
-    template_id = ensure_template(config)
+    template_id = ensure_template(config, recreate=args.recreate_template)
 
     start_time = datetime.now()
     pod = None
@@ -557,23 +757,27 @@ def main():
         wait_for_pod_running(config, pod_id)
 
         # Wait for Tailscale connection (startup script handles setup)
-        log("Waiting for startup script to complete and Tailscale to connect...")
-        if not wait_for_tailscale(config):
+        log("Waiting for Tailscale to connect...")
+        host_ip = wait_for_tailscale(config)
+        if not host_ip:
             raise RuntimeError("Pod failed to connect to Tailscale")
 
         if args.test:
-            # Wait for startup script to complete (installs dependencies, tailscale, cast2md)
-            log("Test mode - waiting for startup script to complete...")
-            time.sleep(30)  # Give time for pip install
-
-            log("Verifying connectivity...")
-            result = tailscale_ssh_cmd(config.ts_hostname, "cast2md --version", retries=6)
-            log(f"cast2md version: {result}")
-            log("Test successful!")
+            log(f"Pod reachable at: {host_ip}")
+            log(f"Try: ssh root@{host_ip}")
+            log("Press Enter to terminate the pod (or Ctrl+C to keep it running)...")
+            try:
+                input()
+            except KeyboardInterrupt:
+                log("Keeping pod alive", "WARN")
+                args.keep_alive = True
             return
 
+        # Install dependencies via SSH (safer than in startup script)
+        setup_pod_via_ssh(config, host_ip)
+
         # For full run, wait for worker to start
-        time.sleep(30)
+        time.sleep(10)
 
         # Monitor queue until empty
         monitor_queue(config)
@@ -588,7 +792,11 @@ def main():
             cost, runtime = estimate_cost(start_time, gpu_used)
             log(f"Runtime: {runtime}")
             log(f"Estimated cost: ${cost:.2f} ({gpu_used})")
-            terminate_pod(config, pod["id"])
+            if args.keep_alive:
+                log(f"Pod {pod['id']} left running (--keep-alive)")
+                log(f"Terminate manually: python afterburner.py --terminate-existing")
+            else:
+                terminate_pod(config, pod["id"])
 
     log("Afterburner complete!")
 
