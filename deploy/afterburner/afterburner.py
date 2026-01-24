@@ -20,6 +20,7 @@ Usage:
 """
 
 import argparse
+import ipaddress
 import json
 import os
 import subprocess
@@ -29,6 +30,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 import httpx
+import runpod
 
 
 TEMPLATE_NAME = "cast2md-afterburner"
@@ -56,13 +58,20 @@ tailscaled --tun=userspace-networking --state=/var/lib/tailscale/tailscaled.stat
 
 # Wait for tailscaled to be ready
 echo "Waiting for tailscaled socket..."
+SOCKET_READY=false
 for i in {1..30}; do
     if [ -S /var/run/tailscale/tailscaled.sock ]; then
         echo "tailscaled ready"
+        SOCKET_READY=true
         break
     fi
     sleep 1
 done
+
+if [ "$SOCKET_READY" != "true" ]; then
+    echo "ERROR: tailscaled socket not ready after 30s"
+    exit 1
+fi
 
 echo "Connecting to Tailscale as $TS_HOSTNAME..."
 tailscale up --auth-key="$TS_AUTH_KEY" --hostname="$TS_HOSTNAME" --ssh --accept-dns
@@ -103,6 +112,11 @@ class Config:
         "NVIDIA RTX A5000",
         "NVIDIA GeForce RTX 4080",
     )
+    # Optional ntfy notifications
+    ntfy_server: str | None = None
+    ntfy_topic: str | None = None
+    # Safety limits
+    max_runtime: int | None = None  # Max runtime in seconds (None = unlimited)
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -119,6 +133,16 @@ class Config:
         if not server_ip:
             raise ValueError("CAST2MD_SERVER_IP environment variable required (Tailscale IP of server)")
 
+        # Validate IP address format
+        try:
+            ipaddress.ip_address(server_ip)
+        except ValueError:
+            raise ValueError(f"CAST2MD_SERVER_IP is not a valid IP address: {server_ip}")
+
+        # Parse max runtime
+        max_runtime_str = os.environ.get("AFTERBURNER_MAX_RUNTIME")
+        max_runtime = int(max_runtime_str) if max_runtime_str else None
+
         return cls(
             runpod_api_key=runpod_api_key,
             server_url=server_url,
@@ -126,6 +150,9 @@ class Config:
             ts_hostname=os.environ.get("TS_HOSTNAME", "runpod-afterburner"),
             gpu_type=os.environ.get("RUNPOD_GPU_TYPE", cls.gpu_type),
             github_repo=os.environ.get("GITHUB_REPO", "meltforce/cast2md"),
+            ntfy_server=os.environ.get("NTFY_SERVER"),
+            ntfy_topic=os.environ.get("NTFY_TOPIC"),
+            max_runtime=max_runtime,
         )
 
 
@@ -133,6 +160,33 @@ def log(msg: str, level: str = "INFO") -> None:
     """Log a message with timestamp."""
     timestamp = datetime.now().strftime("%H:%M:%S")
     print(f"[{timestamp}] [{level}] {msg}")
+
+
+def notify(
+    config: Config,
+    title: str,
+    message: str,
+    priority: str = "default",
+    tags: list[str] | None = None,
+) -> None:
+    """Send a notification via ntfy if configured."""
+    if not config.ntfy_server or not config.ntfy_topic:
+        return
+
+    try:
+        headers = {"Title": title, "Priority": priority}
+        if tags:
+            headers["Tags"] = ",".join(tags)
+
+        response = httpx.post(
+            f"{config.ntfy_server}/{config.ntfy_topic}",
+            content=message,
+            headers=headers,
+            timeout=10.0,
+        )
+        response.raise_for_status()
+    except Exception as e:
+        log(f"Failed to send notification: {e}", "WARN")
 
 
 class RunPodAPI:
@@ -146,6 +200,16 @@ class RunPodAPI:
             headers={"Authorization": f"Bearer {api_key}"},
             timeout=30.0,
         )
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+
+    def close(self):
+        """Close the HTTP client."""
+        self.client.close()
 
     def get_templates(self) -> list[dict]:
         """Get all templates."""
@@ -198,43 +262,42 @@ def get_template_env(config: Config) -> dict:
 
 def ensure_template(config: Config, recreate: bool = False) -> str:
     """Ensure the afterburner template exists and is up to date. Returns template ID."""
-    api = RunPodAPI(config.runpod_api_key)
+    with RunPodAPI(config.runpod_api_key) as api:
+        # Check if template already exists
+        templates = api.get_templates()
+        existing = next((t for t in templates if t.get("name") == TEMPLATE_NAME), None)
 
-    # Check if template already exists
-    templates = api.get_templates()
-    existing = next((t for t in templates if t.get("name") == TEMPLATE_NAME), None)
+        # Delete existing template if recreating
+        if existing and recreate:
+            log(f"Deleting existing template: {existing['id']}")
+            api.delete_template(existing["id"])
+            existing = None
 
-    # Delete existing template if recreating
-    if existing and recreate:
-        log(f"Deleting existing template: {existing['id']}")
-        api.delete_template(existing["id"])
-        existing = None
+        # Base template data (shared between create and update)
+        base_data = {
+            "name": TEMPLATE_NAME,
+            "imageName": config.image_name,
+            "dockerStartCmd": get_startup_command(),
+            "containerDiskInGb": 20,
+            "volumeInGb": 0,
+            "ports": ["22/tcp"],
+            "isPublic": False,
+            "env": get_template_env(config),
+            "readme": "cast2md Afterburner - On-demand GPU transcription worker",
+        }
 
-    # Base template data (shared between create and update)
-    base_data = {
-        "name": TEMPLATE_NAME,
-        "imageName": config.image_name,
-        "dockerStartCmd": get_startup_command(),
-        "containerDiskInGb": 20,
-        "volumeInGb": 0,
-        "ports": ["22/tcp"],
-        "isPublic": False,
-        "env": get_template_env(config),
-        "readme": "cast2md Afterburner - On-demand GPU transcription worker",
-    }
-
-    if existing:
-        template_id = existing["id"]
-        log(f"Using existing template: {template_id}")
-        return template_id
-    else:
-        log("Creating new template...")
-        # Create requires isServerless
-        create_data = {**base_data, "isServerless": False}
-        result = api.create_template(create_data)
-        template_id = result["id"]
-        log(f"Created template: {template_id}")
-        return template_id
+        if existing:
+            template_id = existing["id"]
+            log(f"Using existing template: {template_id}")
+            return template_id
+        else:
+            log("Creating new template...")
+            # Create requires isServerless
+            create_data = {**base_data, "isServerless": False}
+            result = api.create_template(create_data)
+            template_id = result["id"]
+            log(f"Created template: {template_id}")
+            return template_id
 
 
 def create_pod(config: Config, template_id: str) -> tuple[dict, str]:
@@ -243,8 +306,6 @@ def create_pod(config: Config, template_id: str) -> tuple[dict, str]:
     Returns:
         Tuple of (pod dict, gpu_type used)
     """
-    import runpod
-
     runpod.api_key = config.runpod_api_key
 
     # Build list of GPUs to try - start with configured, then fallbacks
@@ -283,8 +344,6 @@ def create_pod(config: Config, template_id: str) -> tuple[dict, str]:
 
 def wait_for_pod_running(config: Config, pod_id: str, timeout: int = 300) -> None:
     """Wait for pod to be running."""
-    import runpod
-
     runpod.api_key = config.runpod_api_key
 
     log("Waiting for pod to be running...")
@@ -403,21 +462,53 @@ def wait_for_tailscale(config: Config, timeout: int = 600) -> str | None:
     return None
 
 
-def get_queue_status(config: Config) -> dict:
-    """Get the current queue status from the server."""
-    response = httpx.get(f"{config.server_url}/api/queue/status", timeout=10.0)
-    response.raise_for_status()
-    return response.json()
+def get_queue_status(config: Config, retries: int = 3) -> dict:
+    """Get the current queue status from the server with retry logic."""
+    last_error = None
+    for attempt in range(retries):
+        try:
+            response = httpx.get(f"{config.server_url}/api/queue/status", timeout=10.0)
+            response.raise_for_status()
+            return response.json()
+        except (httpx.RequestError, httpx.HTTPStatusError) as e:
+            last_error = e
+            if attempt < retries - 1:
+                wait_time = 2 ** attempt  # Exponential backoff: 1s, 2s, 4s
+                log(f"Queue status request failed, retrying in {wait_time}s: {e}", "WARN")
+                time.sleep(wait_time)
+    raise last_error
 
 
-def monitor_queue(config: Config) -> None:
+class MaxRuntimeExceeded(Exception):
+    """Raised when max runtime limit is exceeded."""
+
+    pass
+
+
+def monitor_queue(config: Config, start_time: datetime) -> None:
     """Monitor the queue and wait until it's empty."""
     log("Monitoring queue status...")
+    if config.max_runtime:
+        log(f"Max runtime limit: {config.max_runtime}s")
 
     consecutive_empty = 0
     required_empty_checks = 2  # Require queue to be empty twice in a row
 
     while True:
+        # Check max runtime limit
+        if config.max_runtime:
+            elapsed = (datetime.now() - start_time).total_seconds()
+            if elapsed >= config.max_runtime:
+                log(f"Max runtime exceeded ({elapsed:.0f}s >= {config.max_runtime}s)", "WARN")
+                notify(
+                    config,
+                    "Afterburner: Max Runtime",
+                    f"Max runtime limit ({config.max_runtime}s) exceeded. Terminating pod.",
+                    priority="high",
+                    tags=["warning", "clock"],
+                )
+                raise MaxRuntimeExceeded(f"Max runtime exceeded: {elapsed:.0f}s")
+
         try:
             status = get_queue_status(config)
 
@@ -452,6 +543,8 @@ def monitor_queue(config: Config) -> None:
                 consecutive_empty = 0
                 time.sleep(config.poll_interval)
 
+        except MaxRuntimeExceeded:
+            raise
         except Exception as e:
             log(f"Error checking queue: {e}", "WARN")
             time.sleep(config.poll_interval)
@@ -459,8 +552,6 @@ def monitor_queue(config: Config) -> None:
 
 def terminate_pod(config: Config, pod_id: str) -> None:
     """Terminate the RunPod pod."""
-    import runpod
-
     runpod.api_key = config.runpod_api_key
 
     log(f"Terminating pod {pod_id}...")
@@ -470,30 +561,47 @@ def terminate_pod(config: Config, pod_id: str) -> None:
 
 def get_running_pods(config: Config) -> list[dict]:
     """Get list of running cast2md-afterburner pods."""
-    import runpod
-
     runpod.api_key = config.runpod_api_key
 
     pods = runpod.get_pods()
     return [p for p in pods if p.get("name") == "cast2md-afterburner"]
 
 
+def get_gpu_hourly_rate(gpu_type: str) -> float | None:
+    """Fetch live GPU pricing from RunPod API.
+
+    Returns the community cloud hourly rate, or None if unavailable.
+    """
+    try:
+        gpu_info = runpod.get_gpu(gpu_type)
+        if gpu_info and "communityPrice" in gpu_info:
+            return float(gpu_info["communityPrice"])
+    except Exception as e:
+        log(f"Failed to fetch live GPU pricing: {e}", "DEBUG")
+    return None
+
+
 def estimate_cost(start_time: datetime, gpu_type: str) -> tuple[float, str]:
-    """Estimate the cost based on runtime."""
-    # Approximate hourly rates for common GPUs (RunPod community cloud, Jan 2025)
-    rates = {
-        "NVIDIA GeForce RTX 4090": 0.34,
-        "NVIDIA GeForce RTX 4080": 0.28,
-        "NVIDIA GeForce RTX 3090": 0.22,
-        "NVIDIA RTX A4000": 0.16,
-        "NVIDIA RTX A5000": 0.22,
-        "NVIDIA A40": 0.39,
-        "NVIDIA A100 80GB PCIe": 1.19,
-    }
+    """Estimate the cost based on runtime using live pricing when available."""
+    # Try to get live pricing first
+    rate = get_gpu_hourly_rate(gpu_type)
+
+    # Fallback to cached rates if API fails
+    if rate is None:
+        fallback_rates = {
+            "NVIDIA GeForce RTX 4090": 0.34,
+            "NVIDIA GeForce RTX 4080": 0.28,
+            "NVIDIA GeForce RTX 3090": 0.22,
+            "NVIDIA RTX A4000": 0.16,
+            "NVIDIA RTX A5000": 0.22,
+            "NVIDIA A40": 0.39,
+            "NVIDIA A100 80GB PCIe": 1.19,
+        }
+        rate = fallback_rates.get(gpu_type, 0.40)
+        log(f"Using fallback rate for {gpu_type}: ${rate}/hr", "DEBUG")
 
     runtime = datetime.now() - start_time
     hours = runtime.total_seconds() / 3600
-    rate = rates.get(gpu_type, 0.40)  # Default rate if unknown
     cost = hours * rate
 
     runtime_str = str(runtime).split(".")[0]  # Remove microseconds
@@ -576,6 +684,13 @@ def setup_pod_via_ssh(config: Config, host_ip: str) -> None:
         "Starting node worker"
     )
 
+    # Verify worker started successfully
+    time.sleep(3)  # Give it a moment to start
+    run_ssh(
+        "pgrep -f 'cast2md node' > /dev/null || (echo 'Worker not running!' && cat /tmp/cast2md-node.log && exit 1)",
+        "Verifying worker is running"
+    )
+
     log("Pod setup complete!")
 
 
@@ -634,8 +749,6 @@ def main():
 
         # Check RunPod connection
         try:
-            import runpod
-
             runpod.api_key = config.runpod_api_key
             pods = runpod.get_pods()
             log(f"RunPod: Connected ({len(pods)} existing pods)")
@@ -741,10 +854,18 @@ def main():
     pod = None
     gpu_used = config.gpu_type
 
+    exit_reason = "completed"
     try:
         # Create pod from template (with fallback to other GPU types)
         pod, gpu_used = create_pod(config, template_id)
         pod_id = pod["id"]
+
+        notify(
+            config,
+            "Afterburner: Pod Created",
+            f"Pod {pod_id} created with {gpu_used}",
+            tags=["rocket"],
+        )
 
         # Wait for pod to be running
         wait_for_pod_running(config, pod_id)
@@ -769,16 +890,34 @@ def main():
         # Install dependencies via SSH (safer than in startup script)
         setup_pod_via_ssh(config, host_ip)
 
+        notify(
+            config,
+            "Afterburner: Worker Ready",
+            f"Worker connected and processing queue ({gpu_used})",
+            tags=["white_check_mark"],
+        )
+
         # For full run, wait for worker to start
         time.sleep(10)
 
         # Monitor queue until empty
-        monitor_queue(config)
+        monitor_queue(config, start_time)
 
     except KeyboardInterrupt:
         log("Interrupted by user", "WARN")
+        exit_reason = "interrupted"
+    except MaxRuntimeExceeded:
+        exit_reason = "max_runtime"
     except Exception as e:
         log(f"Error: {e}", "ERROR")
+        exit_reason = "error"
+        notify(
+            config,
+            "Afterburner: Error",
+            f"Error: {e}",
+            priority="high",
+            tags=["x"],
+        )
         raise
     finally:
         if pod:
@@ -790,6 +929,13 @@ def main():
                 log(f"Terminate manually: python afterburner.py --terminate-existing")
             else:
                 terminate_pod(config, pod["id"])
+                if exit_reason == "completed":
+                    notify(
+                        config,
+                        "Afterburner: Complete",
+                        f"Queue empty. Runtime: {runtime}, Cost: ${cost:.2f}",
+                        tags=["tada"],
+                    )
 
     log("Afterburner complete!")
 
