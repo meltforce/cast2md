@@ -496,6 +496,9 @@ tail -f /dev/null
             self._setup_pod_via_ssh(host_ip, state.node_name)
             self._update_state(instance_id, phase=PodSetupPhase.READY, message="Worker is running")
 
+            # Record pod run in database
+            self._record_pod_run(instance_id, pod_id, state.pod_name, gpu_type, state.started_at)
+
             logger.info(f"Pod {instance_id} ({pod_id}) setup complete")
 
         except Exception as e:
@@ -736,6 +739,55 @@ tail -f /dev/null
             "Verifying worker",
         )
 
+    def _get_gpu_price(self, gpu_type: str) -> float | None:
+        """Get the hourly price for a GPU type from cache."""
+        cached_gpus = self.get_available_gpus()
+        for gpu in cached_gpus:
+            if gpu["id"] == gpu_type:
+                return gpu.get("price_hr")
+        return None
+
+    def _record_pod_run(
+        self,
+        instance_id: str,
+        pod_id: str,
+        pod_name: str,
+        gpu_type: str,
+        started_at: datetime,
+    ) -> None:
+        """Record a new pod run in the database."""
+        from cast2md.db.connection import get_db
+        from cast2md.db.repository import PodRunRepository
+
+        gpu_price = self._get_gpu_price(gpu_type)
+        try:
+            with get_db() as conn:
+                repo = PodRunRepository(conn)
+                repo.create(
+                    instance_id=instance_id,
+                    pod_id=pod_id,
+                    pod_name=pod_name,
+                    gpu_type=gpu_type,
+                    gpu_price_hr=gpu_price,
+                    started_at=started_at,
+                )
+            logger.info(f"Recorded pod run for {pod_id} ({gpu_type} @ ${gpu_price}/hr)")
+        except Exception as e:
+            logger.error(f"Failed to record pod run: {e}")
+
+    def _end_pod_run(self, pod_id: str) -> None:
+        """Mark a pod run as ended in the database."""
+        from cast2md.db.connection import get_db
+        from cast2md.db.repository import PodRunRepository
+
+        try:
+            with get_db() as conn:
+                repo = PodRunRepository(conn)
+                repo.end_run(pod_id)
+            logger.info(f"Ended pod run for {pod_id}")
+        except Exception as e:
+            logger.error(f"Failed to end pod run: {e}")
+
     def terminate_pod(self, pod_id: str) -> bool:
         """Terminate a specific pod."""
         if not self.is_available():
@@ -744,6 +796,7 @@ tail -f /dev/null
         runpod.api_key = self.settings.runpod_api_key
         try:
             runpod.terminate_pod(pod_id)
+            self._end_pod_run(pod_id)
             logger.info(f"Terminated pod {pod_id}")
             return True
         except Exception as e:
@@ -831,6 +884,32 @@ tail -f /dev/null
                 removed += 1
 
         return removed
+
+    def get_pod_runs(self, limit: int = 20) -> list[dict]:
+        """Get recent pod runs with cost info."""
+        from cast2md.db.connection import get_db
+        from cast2md.db.repository import PodRunRepository
+
+        try:
+            with get_db() as conn:
+                repo = PodRunRepository(conn)
+                return repo.get_recent(limit)
+        except Exception as e:
+            logger.error(f"Failed to get pod runs: {e}")
+            return []
+
+    def get_pod_run_stats(self, days: int = 30) -> dict:
+        """Get aggregate stats for pod runs."""
+        from cast2md.db.connection import get_db
+        from cast2md.db.repository import PodRunRepository
+
+        try:
+            with get_db() as conn:
+                repo = PodRunRepository(conn)
+                return repo.get_stats(days)
+        except Exception as e:
+            logger.error(f"Failed to get pod run stats: {e}")
+            return {"total_runs": 0, "total_jobs": 0, "total_cost": 0, "total_hours": 0}
 
 
 # Singleton instance

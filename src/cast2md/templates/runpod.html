@@ -202,6 +202,62 @@
     </div>
 </article>
 
+<!-- Pod Run History -->
+<article>
+    <header style="display: flex; justify-content: space-between; align-items: center;">
+        <h4 style="margin: 0;">Run History (30 days)</h4>
+        {% if pod_run_stats %}
+        <div style="color: var(--pico-muted-color); font-size: 0.875rem;">
+            {{ pod_run_stats.total_runs }} runs &bull;
+            {{ pod_run_stats.total_hours }}h &bull;
+            ${{ "%.2f"|format(pod_run_stats.total_cost) }} total
+        </div>
+        {% endif %}
+    </header>
+    {% if pod_runs %}
+    <table>
+        <thead>
+            <tr>
+                <th>Pod</th>
+                <th>GPU</th>
+                <th>Duration</th>
+                <th>Cost</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for run in pod_runs %}
+            <tr>
+                <td>
+                    <strong>{{ run.pod_name }}</strong>
+                    <br><small style="color: var(--pico-muted-color);">{{ run.started_at.strftime('%Y-%m-%d %H:%M') if run.started_at else '-' }}</small>
+                </td>
+                <td>{{ run.gpu_type }}{% if run.gpu_price_hr %}<br><small style="color: var(--pico-muted-color);">${{ "%.2f"|format(run.gpu_price_hr) }}/hr</small>{% endif %}</td>
+                <td>
+                    {% if run.ended_at and run.started_at %}
+                    {% set duration_seconds = (run.ended_at - run.started_at).total_seconds() %}
+                    {% set hours = (duration_seconds // 3600) | int %}
+                    {% set minutes = ((duration_seconds % 3600) // 60) | int %}
+                    {{ hours }}h {{ minutes }}m
+                    {% elif run.status == 'running' %}
+                    <span style="color: var(--pico-primary);">Running...</span>
+                    {% else %}
+                    -
+                    {% endif %}
+                </td>
+                <td>{% if run.cost is not none %}${{ "%.2f"|format(run.cost) }}{% else %}-{% endif %}</td>
+                <td>
+                    <span class="status-badge status-{{ run.status }}">{{ run.status }}</span>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <p style="text-align: center; color: var(--pico-muted-color);">No pod runs recorded yet. Start a pod to begin tracking costs.</p>
+    {% endif %}
+</article>
+
 {% else %}
 <!-- Disabled state - show settings but greyed out -->
 <article style="opacity: 0.6;">
@@ -273,7 +329,7 @@
         color: var(--pico-primary);
         border: 1px solid color-mix(in srgb, var(--pico-primary) 40%, transparent);
     }
-    .status-ready, .status-running {
+    .status-ready, .status-running, .status-completed {
         background: color-mix(in srgb, #22c55e 15%, transparent);
         color: #22c55e;
         border: 1px solid color-mix(in srgb, #22c55e 40%, transparent);
