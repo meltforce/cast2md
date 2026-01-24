@@ -6,25 +6,33 @@ On-demand GPU transcription worker that spins up a RunPod pod, processes the tra
 
 ```
 Local Machine                    RunPod Pod                     cast2md Server
-┌─────────────┐                 ┌─────────────┐                ┌─────────────┐
-│             │  1. Create pod  │             │                │             │
-│ afterburner ├────────────────►│  GPU Worker │                │   Server    │
-│    .py      │  (from template)│             │                │             │
-│             │                 │  2. Startup │  3. Tailscale  │  (Tailscale │
-│             │                 │     script  ├───────────────►│    only)    │
-│             │                 │   (auto)    │     connect    │             │
-│             │                 │             │                │             │
-│             │  5. Terminate   │  4. Process │  Poll jobs     │             │
-│             │◄────────────────┤     jobs    │◄──────────────►│             │
-└─────────────┘   when done     └─────────────┘                └─────────────┘
+┌─────────────┐                 ┌─────────────────────┐        ┌─────────────┐
+│             │  1. Create pod  │  tailscaled         │        │             │
+│ afterburner ├────────────────►│  (userspace mode)   │        │   :8000     │
+│    .py      │  (from template)│  HTTP proxy :1055   │        │             │
+│             │                 │                     │        │  (Tailscale │
+│             │  2. SSH setup   │  3. HTTP traffic    │        │    only)    │
+│             ├────────────────►│     via proxy       ├───────►│             │
+│             │  (ffmpeg, pip)  │                     │        │             │
+│             │                 │  cast2md node       │        │             │
+│             │  5. Terminate   │  (polls server)     │        │             │
+│             │◄────────────────┤                     │        │             │
+└─────────────┘   when done     └─────────────────────┘        └─────────────┘
 ```
 
-The script uses a **template-based approach**:
-1. Creates/updates a RunPod template with a startup script
-2. Creates pod from template - startup script runs automatically
-3. Startup script installs Tailscale, cast2md, and starts the worker
-4. Waits for pod to appear on Tailscale
-5. Monitors queue and terminates when empty
+The script uses a **two-phase approach**:
+
+**Phase 1: Pod Bootstrap (automatic via template)**
+1. Creates RunPod template with startup script
+2. Creates pod from template
+3. Startup script installs Tailscale in userspace mode with HTTP proxy
+4. Pod appears on your Tailscale network
+
+**Phase 2: SSH Setup (from local machine)**
+5. Local script detects pod via Tailscale, verifies SSH connectivity
+6. Installs ffmpeg, cast2md via SSH (for better visibility)
+7. Registers node with server and starts worker
+8. Monitors queue and terminates when empty
 
 ## Prerequisites
 
@@ -33,10 +41,6 @@ The script uses a **template-based approach**:
 1. Create account at [runpod.io](https://runpod.io)
 2. Add credits (~$15 for 40+ hours of RTX 4090 time)
 3. Generate API key: Settings → API Keys
-4. Store as environment variable:
-   ```bash
-   export RUNPOD_API_KEY="your-api-key"
-   ```
 
 ### 2. RunPod Secret for Tailscale
 
@@ -87,10 +91,26 @@ Ensure your cast2md server has the `tag:server` tag:
 ssh root@cast2md "tailscale up --advertise-tags=tag:server"
 ```
 
-### 5. Install Dependencies
+### 5. Get Server Tailscale IP
+
+Find your server's Tailscale IP (needed because MagicDNS doesn't work in containers):
+
+```bash
+tailscale status | grep cast2md
+# Example output: 100.105.149.43   cast2md   tagged-devices   linux   -
+```
+
+### 6. Install Dependencies
 
 ```bash
 pip install runpod httpx
+```
+
+### 7. Configure Environment
+
+```bash
+cp deploy/afterburner/.env.example deploy/afterburner/.env
+# Edit .env with your values
 ```
 
 ## Usage
@@ -110,10 +130,16 @@ This checks:
 
 ### Test Mode
 
-Create pod, verify Tailscale connectivity, then terminate immediately:
+Create pod, verify Tailscale connectivity, then terminate:
 
 ```bash
 python deploy/afterburner/afterburner.py --test
+```
+
+Add `--keep-alive` to leave the pod running for debugging:
+
+```bash
+python deploy/afterburner/afterburner.py --test --keep-alive
 ```
 
 ### Full Run
@@ -127,29 +153,20 @@ python deploy/afterburner/afterburner.py
 The script will:
 1. Create/update the RunPod template
 2. Create a GPU pod from the template
-3. Wait for the startup script to install Tailscale and cast2md
-4. Wait for pod to appear on your Tailscale network
-5. Monitor queue progress
-6. Auto-terminate when queue is empty
-7. Report runtime and estimated cost
+3. Wait for Tailscale to connect (SSH verification)
+4. Install ffmpeg and cast2md via SSH
+5. Register node and start worker
+6. Monitor queue progress
+7. Auto-terminate when queue is empty
+8. Report runtime and estimated cost
 
-### Update Template Only
+### Recreate Template
 
-To update the template without creating a pod:
+If you modify the startup script, force template recreation:
 
 ```bash
-python deploy/afterburner/afterburner.py --update-template
+python deploy/afterburner/afterburner.py --recreate-template
 ```
-
-### Environment Variables
-
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `RUNPOD_API_KEY` | Yes | - | RunPod API key |
-| `CAST2MD_SERVER_URL` | Yes | - | Your cast2md server URL (Tailscale hostname) |
-| `TS_HOSTNAME` | No | `runpod-afterburner` | Hostname on Tailscale |
-| `RUNPOD_GPU_TYPE` | No | `NVIDIA GeForce RTX 4090` | GPU type to use |
-| `GITHUB_REPO` | No | `meltforce/cast2md` | GitHub repo to install from |
 
 ### Terminate Existing Pods
 
@@ -158,6 +175,25 @@ If a previous run left a pod running:
 ```bash
 python deploy/afterburner/afterburner.py --terminate-existing
 ```
+
+### Use Existing Pod
+
+For debugging, reuse an existing pod instead of creating a new one:
+
+```bash
+python deploy/afterburner/afterburner.py --use-existing --test
+```
+
+## Environment Variables
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `RUNPOD_API_KEY` | Yes | - | RunPod API key |
+| `CAST2MD_SERVER_URL` | Yes | - | Your cast2md server URL (e.g., `https://cast2md.your-tailnet.ts.net`) |
+| `CAST2MD_SERVER_IP` | Yes | - | Tailscale IP of the server (MagicDNS not available in containers) |
+| `TS_HOSTNAME` | No | `runpod-afterburner` | Hostname on Tailscale |
+| `RUNPOD_GPU_TYPE` | No | `NVIDIA GeForce RTX 4090` | GPU type to use |
+| `GITHUB_REPO` | No | `meltforce/cast2md` | GitHub repo to install from |
 
 ## Cost Estimate
 
@@ -169,6 +205,59 @@ python deploy/afterburner/afterburner.py --terminate-existing
 
 Transcription speed is approximately 20x realtime with large-v3 model on RTX 4090.
 
+## Technical Details
+
+### Tailscale Userspace Networking
+
+RunPod containers don't have access to `/dev/net/tun`, so Tailscale must run in **userspace networking mode**:
+
+```bash
+tailscaled --tun=userspace-networking --state=/var/lib/tailscale/tailscaled.state --outbound-http-proxy-listen=localhost:1055 &
+```
+
+**Key implications:**
+
+1. **No TUN interface**: Traffic doesn't go through a virtual network interface
+2. **Inbound works**: SSH via Tailscale works normally (tailscaled handles it)
+3. **Outbound requires proxy**: Applications must use the HTTP proxy for Tailscale traffic
+
+### HTTP Proxy for Outbound Traffic
+
+The `--outbound-http-proxy-listen=localhost:1055` flag creates an HTTP proxy that routes traffic through Tailscale.
+
+**Important limitation**: This proxy only supports plain HTTP, not HTTPS CONNECT tunneling. For internal Tailscale traffic, we use HTTP on port 8000:
+
+```bash
+# Works (HTTP)
+curl -x http://localhost:1055 http://100.105.149.43:8000/api/health
+
+# Doesn't work (HTTPS - no CONNECT support)
+curl -x http://localhost:1055 https://cast2md.leo-royal.ts.net/api/health
+```
+
+The setup script automatically converts `https://server` to `http://server:8000` for internal traffic.
+
+### MagicDNS Not Available
+
+MagicDNS (resolving `*.ts.net` hostnames) doesn't work in userspace mode. The script adds the server to `/etc/hosts`:
+
+```bash
+echo '100.105.149.43 cast2md.leo-royal.ts.net' >> /etc/hosts
+```
+
+This is why `CAST2MD_SERVER_IP` is required.
+
+### Pod Detection Logic
+
+When detecting the pod on Tailscale, the script:
+
+1. Looks for hostnames starting with `runpod-afterburner*` (Tailscale adds `-1`, `-2` suffixes if name is taken)
+2. Filters for `Online=true` status
+3. Sorts by creation timestamp (newest first)
+4. Verifies SSH connectivity before proceeding
+
+This handles multiple orphaned nodes from previous test runs.
+
 ## Troubleshooting
 
 ### Pod doesn't appear on Tailscale
@@ -178,53 +267,53 @@ Transcription speed is approximately 20x realtime with large-v3 model on RTX 409
 3. Check that the auth key has the `tag:runpod` tag
 4. Check RunPod pod logs in the dashboard
 
-### View startup logs
+### SSH times out
 
-SSH into the pod via Tailscale (once connected):
-```bash
-ssh root@runpod-afterburner "cat /var/log/afterburner-startup.log"
-```
-
-### Node fails to start
-
-Check the node logs on the pod:
-```bash
-ssh root@runpod-afterburner "tail -100 /tmp/cast2md-node.log"
-```
+1. Verify the pod shows `Online=true` in `tailscale status --json`
+2. Multiple orphaned hosts? The script should pick the newest online one
+3. Check ACLs allow SSH from your machine to `tag:runpod`
 
 ### Server unreachable from pod
 
 1. Verify ACLs allow `tag:runpod` → `tag:server:8000`
-2. Check the server is tagged correctly
-3. Test connectivity:
+2. Check the server has `tag:server`: `tailscale whois <server-ip>`
+3. Verify HTTP proxy is running: `ss -tlnp | grep 1055`
+4. Test with proxy:
    ```bash
-   ssh root@runpod-afterburner "curl -s $CAST2MD_SERVER_URL/api/health"
+   ssh root@<pod-ip> "curl -x http://localhost:1055 http://<server-ip>:8000/api/health"
    ```
+
+### Node fails to register
+
+1. Check the server IP in `/etc/hosts` is correct
+2. Verify using HTTP (not HTTPS) to port 8000
+3. Check proxy environment variable:
+   ```bash
+   ssh root@<pod-ip> "http_proxy=http://localhost:1055 cast2md node register --server 'http://<server>:8000' --name 'Test'"
+   ```
+
+### View logs
+
+```bash
+# Startup script output (in container's stdout)
+# View in RunPod dashboard
+
+# Node worker logs
+ssh root@<pod-ip> "tail -100 /tmp/cast2md-node.log"
+
+# Tailscale status
+ssh root@<pod-ip> "tailscale status"
+```
 
 ## Files
 
-- `afterburner.py` - Main orchestration script
-- `startup.sh` - Startup script that runs when pod boots (downloaded from GitHub)
+- `afterburner.py` - Main orchestration script (startup script embedded inline)
+- `startup.sh` - Reference copy of startup script (actual script is in afterburner.py)
 - `.env.example` - Example environment configuration
-
-## How the Template Works
-
-1. **Template creation**: The script creates a RunPod template with:
-   - Base image: `runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04`
-   - Startup command: Downloads and runs `startup.sh` from GitHub
-   - Environment variables including the Tailscale secret reference
-
-2. **Pod boot sequence**:
-   - Pod starts with the template
-   - Startup script runs automatically
-   - Installs ffmpeg, Tailscale, cast2md
-   - Connects to Tailscale network
-   - Starts the transcription worker
-
-3. **Monitoring**: The local script waits for Tailscale to connect, then monitors the queue
 
 ## Security
 
 - **Tailscale auth key**: Stored in RunPod Secrets, never exposed in code or logs
 - **Ephemeral nodes**: Pods auto-remove from Tailscale when terminated
 - **Network isolation**: Server only accessible via Tailscale (not public internet)
+- **HTTP internal traffic**: Uses HTTP:8000 internally, but traffic is encrypted by Tailscale's WireGuard tunnel
