@@ -256,6 +256,40 @@ tail -f /dev/null
             logger.error(f"Failed to list RunPod pods: {e}")
             return []
 
+    def get_available_gpus(self) -> list[dict]:
+        """Get available GPU types from RunPod API.
+
+        Returns list of dicts with id, display_name, memory_gb.
+        """
+        if not self.is_available():
+            return []
+
+        runpod.api_key = self.settings.runpod_api_key
+        try:
+            gpus = runpod.get_gpus()
+            result = []
+            for gpu in gpus:
+                gpu_id = gpu.get("id", "")
+                display_name = gpu.get("displayName", gpu_id)
+                memory_mb = gpu.get("memoryInGb", 0)
+
+                # Filter for commonly used GPUs (skip exotic/expensive ones)
+                if not gpu_id:
+                    continue
+
+                result.append({
+                    "id": gpu_id,
+                    "display_name": display_name,
+                    "memory_gb": memory_mb if memory_mb else None,
+                })
+
+            # Sort by memory (descending) then name
+            result.sort(key=lambda x: (-(x.get("memory_gb") or 0), x["display_name"]))
+            return result
+        except Exception as e:
+            logger.error(f"Failed to get RunPod GPU types: {e}")
+            return []
+
     def get_setup_states(self) -> list[PodSetupState]:
         """Get all pod setup states (for status display)."""
         with self._lock:

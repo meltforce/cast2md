@@ -204,3 +204,49 @@ def cleanup_states():
 
     removed = service.cleanup_stale_states()
     return {"removed": removed, "message": f"Removed {removed} stale setup state(s)"}
+
+
+class GpuTypeInfo(BaseModel):
+    """GPU type information."""
+
+    id: str
+    display_name: str
+    memory_gb: int | None = None
+
+
+class GpuTypesResponse(BaseModel):
+    """Available GPU types response."""
+
+    gpu_types: list[GpuTypeInfo]
+    source: str  # "api" or "fallback"
+
+
+# Default fallback GPU types (used when API is unavailable)
+FALLBACK_GPU_TYPES = [
+    GpuTypeInfo(id="NVIDIA GeForce RTX 4090", display_name="RTX 4090", memory_gb=24),
+    GpuTypeInfo(id="NVIDIA GeForce RTX 3090", display_name="RTX 3090", memory_gb=24),
+    GpuTypeInfo(id="NVIDIA RTX A4000", display_name="RTX A4000", memory_gb=16),
+    GpuTypeInfo(id="NVIDIA RTX A5000", display_name="RTX A5000", memory_gb=24),
+    GpuTypeInfo(id="NVIDIA GeForce RTX 4080", display_name="RTX 4080", memory_gb=16),
+    GpuTypeInfo(id="NVIDIA RTX A6000", display_name="RTX A6000", memory_gb=48),
+    GpuTypeInfo(id="NVIDIA L4", display_name="L4", memory_gb=24),
+    GpuTypeInfo(id="NVIDIA L40", display_name="L40", memory_gb=48),
+]
+
+
+@router.get("/gpu-types", response_model=GpuTypesResponse)
+def get_gpu_types():
+    """Get available GPU types from RunPod API."""
+    service = get_runpod_service()
+
+    if not service.is_available():
+        return GpuTypesResponse(gpu_types=FALLBACK_GPU_TYPES, source="fallback")
+
+    try:
+        gpu_types = service.get_available_gpus()
+        if gpu_types:
+            return GpuTypesResponse(gpu_types=gpu_types, source="api")
+    except Exception:
+        pass
+
+    return GpuTypesResponse(gpu_types=FALLBACK_GPU_TYPES, source="fallback")

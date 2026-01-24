@@ -22,6 +22,34 @@ def _is_runpod_available() -> bool:
     return bool(settings.runpod_api_key and settings.runpod_ts_auth_key)
 
 
+def _get_runpod_gpu_options() -> list[str]:
+    """Get GPU type options from RunPod API or fallback."""
+    from cast2md.services.runpod_service import get_runpod_service
+
+    # Default fallback
+    fallback = [
+        "NVIDIA GeForce RTX 4090",
+        "NVIDIA GeForce RTX 3090",
+        "NVIDIA RTX A4000",
+        "NVIDIA RTX A5000",
+        "NVIDIA GeForce RTX 4080",
+        "NVIDIA RTX A6000",
+        "NVIDIA L4",
+        "NVIDIA L40",
+    ]
+
+    try:
+        service = get_runpod_service()
+        if service.is_available():
+            gpus = service.get_available_gpus()
+            if gpus:
+                return [g["id"] for g in gpus]
+    except Exception:
+        pass
+
+    return fallback
+
+
 def _get_configurable_settings() -> dict:
     """Get configurable settings with dynamic model options."""
     # Get whisper models from database
@@ -171,13 +199,7 @@ def _get_configurable_settings() -> dict:
                 "type": "select",
                 "label": "GPU Type",
                 "description": "Preferred GPU for pods (falls back to available)",
-                "options": [
-                    "NVIDIA GeForce RTX 4090",
-                    "NVIDIA GeForce RTX 3090",
-                    "NVIDIA RTX A4000",
-                    "NVIDIA RTX A5000",
-                    "NVIDIA GeForce RTX 4080",
-                ],
+                "options": _get_runpod_gpu_options(),
                 "section": "runpod",
             },
             "runpod_whisper_model": {
