@@ -58,6 +58,9 @@ class RemoteTranscriptionCoordinator:
             logger.warning("Coordinator already running")
             return
 
+        # Cleanup stale nodes on startup
+        self._cleanup_stale_nodes()
+
         self._running = True
         self._stop_event.clear()
 
@@ -68,6 +71,17 @@ class RemoteTranscriptionCoordinator:
         )
         self._thread.start()
         logger.info("Started remote transcription coordinator")
+
+    def _cleanup_stale_nodes(self, offline_hours: int = 24):
+        """Clean up nodes that have been offline too long."""
+        try:
+            with get_db() as conn:
+                node_repo = TranscriberNodeRepository(conn)
+                deleted = node_repo.cleanup_stale_nodes(offline_hours)
+                if deleted > 0:
+                    logger.info(f"Cleaned up {deleted} stale nodes (offline > {offline_hours}h)")
+        except Exception as e:
+            logger.warning(f"Failed to cleanup stale nodes: {e}")
 
     def stop(self, timeout: float = 10.0):
         """Stop the coordinator."""

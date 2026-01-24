@@ -1841,6 +1841,130 @@ class JobRepository:
         )
         return cursor.fetchone()[0]
 
+    def get_completed_jobs_stats(
+        self,
+        hours: int = 24,
+        job_type: JobType | None = None,
+    ) -> dict:
+        """Get statistics for completed jobs within a time window.
+
+        Args:
+            hours: Number of hours to look back.
+            job_type: Optional job type filter.
+
+        Returns:
+            Dict with count, total_duration_seconds, avg_duration_seconds.
+        """
+        threshold = (datetime.now() - timedelta(hours=hours)).isoformat()
+
+        if job_type:
+            cursor = execute(
+                self.conn,
+                """
+                SELECT
+                    COUNT(*) as count,
+                    COALESCE(SUM(EXTRACT(EPOCH FROM (completed_at - started_at))), 0) as total_seconds,
+                    COALESCE(AVG(EXTRACT(EPOCH FROM (completed_at - started_at))), 0) as avg_seconds
+                FROM job_queue
+                WHERE status = %s
+                  AND job_type = %s
+                  AND completed_at >= %s
+                  AND started_at IS NOT NULL
+                """,
+                (JobStatus.COMPLETED.value, job_type.value, threshold),
+            )
+        else:
+            cursor = execute(
+                self.conn,
+                """
+                SELECT
+                    COUNT(*) as count,
+                    COALESCE(SUM(EXTRACT(EPOCH FROM (completed_at - started_at))), 0) as total_seconds,
+                    COALESCE(AVG(EXTRACT(EPOCH FROM (completed_at - started_at))), 0) as avg_seconds
+                FROM job_queue
+                WHERE status = %s
+                  AND completed_at >= %s
+                  AND started_at IS NOT NULL
+                """,
+                (JobStatus.COMPLETED.value, threshold),
+            )
+
+        row = cursor.fetchone()
+        return {
+            "count": row[0] or 0,
+            "total_duration_seconds": int(row[1] or 0),
+            "avg_duration_seconds": int(row[2] or 0),
+        }
+
+    def get_stats_by_node(self, hours: int = 24) -> list[dict]:
+        """Get completion stats grouped by node.
+
+        Args:
+            hours: Number of hours to look back.
+
+        Returns:
+            List of dicts with node_id, node_name, count, avg_duration_seconds.
+        """
+        threshold = (datetime.now() - timedelta(hours=hours)).isoformat()
+
+        cursor = execute(
+            self.conn,
+            """
+            SELECT
+                j.assigned_node_id,
+                n.name as node_name,
+                COUNT(*) as count,
+                COALESCE(AVG(EXTRACT(EPOCH FROM (j.completed_at - j.started_at))), 0) as avg_seconds
+            FROM job_queue j
+            LEFT JOIN transcriber_node n ON j.assigned_node_id = n.id
+            WHERE j.status = %s
+              AND j.job_type = %s
+              AND j.completed_at >= %s
+              AND j.started_at IS NOT NULL
+              AND j.assigned_node_id IS NOT NULL
+            GROUP BY j.assigned_node_id, n.name
+            ORDER BY count DESC
+            """,
+            (JobStatus.COMPLETED.value, JobType.TRANSCRIBE.value, threshold),
+        )
+
+        return [
+            {
+                "node_id": row[0],
+                "node_name": row[1] or "Unknown",
+                "count": row[2],
+                "avg_duration_seconds": int(row[3] or 0),
+            }
+            for row in cursor.fetchall()
+        ]
+
+    def get_audio_minutes_processed(self, hours: int = 24) -> int:
+        """Get total audio minutes processed in the time window.
+
+        Args:
+            hours: Number of hours to look back.
+
+        Returns:
+            Total audio duration in minutes.
+        """
+        threshold = (datetime.now() - timedelta(hours=hours)).isoformat()
+
+        cursor = execute(
+            self.conn,
+            """
+            SELECT COALESCE(SUM(e.duration_seconds), 0)
+            FROM job_queue j
+            JOIN episode e ON j.episode_id = e.id
+            WHERE j.status = %s
+              AND j.job_type = %s
+              AND j.completed_at >= %s
+            """,
+            (JobStatus.COMPLETED.value, JobType.TRANSCRIBE.value, threshold),
+        )
+
+        total_seconds = cursor.fetchone()[0] or 0
+        return int(total_seconds / 60)
+
 
 class SettingsRepository:
     """Repository for runtime settings overrides."""
@@ -2209,3 +2333,60 @@ class TranscriberNodeRepository:
             """
         )
         return dict(cursor.fetchall())
+
+    def get_by_name(self, name: str) -> Optional[TranscriberNode]:
+        """Get node by name."""
+        cursor = execute(
+            self.conn,
+            f"SELECT {self.NODE_COLUMNS} FROM transcriber_node WHERE name = %s",
+            (name,),
+        )
+        row = cursor.fetchone()
+        return TranscriberNode.from_row(row) if row else None
+
+    def cleanup_stale_nodes(self, offline_hours: int = 24) -> int:
+        """Delete nodes that have been offline for longer than threshold.
+
+        Args:
+            offline_hours: Hours a node must be offline before deletion.
+
+        Returns:
+            Number of nodes deleted.
+        """
+        threshold = (datetime.now() - timedelta(hours=offline_hours)).isoformat()
+
+        cursor = execute(
+            self.conn,
+            """
+            DELETE FROM transcriber_node
+            WHERE status = %s
+              AND (last_heartbeat IS NULL OR last_heartbeat < %s)
+              AND current_job_id IS NULL
+            """,
+            (NodeStatus.OFFLINE.value, threshold),
+        )
+        self.conn.commit()
+        return cursor.rowcount
+
+    def get_stale_offline_nodes(self, offline_hours: int = 24) -> list[TranscriberNode]:
+        """Get nodes that have been offline for longer than threshold.
+
+        Args:
+            offline_hours: Hours a node must be offline to be considered stale.
+
+        Returns:
+            List of stale offline nodes.
+        """
+        threshold = (datetime.now() - timedelta(hours=offline_hours)).isoformat()
+
+        cursor = execute(
+            self.conn,
+            f"""
+            SELECT {self.NODE_COLUMNS} FROM transcriber_node
+            WHERE status = %s
+              AND (last_heartbeat IS NULL OR last_heartbeat < %s)
+            ORDER BY last_heartbeat ASC NULLS FIRST
+            """,
+            (NodeStatus.OFFLINE.value, threshold),
+        )
+        return [TranscriberNode.from_row(row) for row in cursor.fetchall()]

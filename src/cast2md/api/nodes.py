@@ -2,6 +2,7 @@
 
 import secrets
 import uuid
+from datetime import datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Response
@@ -145,12 +146,44 @@ def register_node(request: RegisterNodeRequest):
     """Register a new transcriber node.
 
     This endpoint is called by nodes during initial setup to get credentials.
+    If a node with the same name already exists and is offline, it will be
+    reused with a new API key (prevents orphaned node entries from pod restarts).
     """
-    node_id = str(uuid.uuid4())
-    api_key = secrets.token_urlsafe(32)
-
     with get_db() as conn:
         repo = TranscriberNodeRepository(conn)
+
+        # Check if node with same name exists
+        existing = repo.get_by_name(request.name)
+
+        if existing and existing.status == NodeStatus.OFFLINE:
+            # Reuse existing offline node with new API key
+            api_key = secrets.token_urlsafe(32)
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                UPDATE transcriber_node
+                SET url = %s, api_key = %s, whisper_model = %s, whisper_backend = %s,
+                    status = %s, last_heartbeat = NULL, current_job_id = NULL,
+                    updated_at = %s
+                WHERE id = %s
+                """,
+                (
+                    request.url, api_key, request.whisper_model, request.whisper_backend,
+                    NodeStatus.OFFLINE.value, datetime.now().isoformat(), existing.id
+                ),
+            )
+            conn.commit()
+
+            return RegisterNodeResponse(
+                node_id=existing.id,
+                api_key=api_key,
+                message=f"Node '{request.name}' re-registered (reused existing entry)",
+            )
+
+        # Create new node
+        node_id = str(uuid.uuid4())
+        api_key = secrets.token_urlsafe(32)
+
         repo.create(
             node_id=node_id,
             name=request.name,
@@ -585,3 +618,78 @@ def test_node(node_id: str):
             return MessageResponse(message=f"Node returned status {response.status_code}")
     except httpx.RequestError as e:
         return MessageResponse(message=f"Failed to reach node: {e}")
+
+
+# === Cleanup Endpoints ===
+
+
+class StaleNodeInfo(BaseModel):
+    """Info about a stale node."""
+
+    id: str
+    name: str
+    last_heartbeat: str | None
+    offline_hours: int
+
+
+class StaleNodesResponse(BaseModel):
+    """Response with stale nodes info."""
+
+    stale_count: int
+    threshold_hours: int
+    nodes: list[StaleNodeInfo]
+
+
+class CleanupResponse(BaseModel):
+    """Response for cleanup operations."""
+
+    deleted_count: int
+    message: str
+
+
+@router.get("/stale", response_model=StaleNodesResponse)
+def get_stale_nodes(offline_hours: int = 24):
+    """Get nodes that have been offline for longer than threshold.
+
+    Args:
+        offline_hours: Hours a node must be offline to be considered stale.
+    """
+    with get_db() as conn:
+        repo = TranscriberNodeRepository(conn)
+        stale_nodes = repo.get_stale_offline_nodes(offline_hours)
+
+    nodes = []
+    for n in stale_nodes:
+        hours_offline = 0
+        if n.last_heartbeat:
+            delta = datetime.now() - n.last_heartbeat
+            hours_offline = int(delta.total_seconds() / 3600)
+        nodes.append(StaleNodeInfo(
+            id=n.id,
+            name=n.name,
+            last_heartbeat=n.last_heartbeat.isoformat() if n.last_heartbeat else None,
+            offline_hours=hours_offline,
+        ))
+
+    return StaleNodesResponse(
+        stale_count=len(nodes),
+        threshold_hours=offline_hours,
+        nodes=nodes,
+    )
+
+
+@router.delete("/stale", response_model=CleanupResponse)
+def cleanup_stale_nodes(offline_hours: int = 24):
+    """Delete nodes that have been offline for longer than threshold.
+
+    Args:
+        offline_hours: Hours a node must be offline before deletion.
+    """
+    with get_db() as conn:
+        repo = TranscriberNodeRepository(conn)
+        deleted = repo.cleanup_stale_nodes(offline_hours)
+
+    return CleanupResponse(
+        deleted_count=deleted,
+        message=f"Deleted {deleted} stale nodes (offline > {offline_hours}h)",
+    )
