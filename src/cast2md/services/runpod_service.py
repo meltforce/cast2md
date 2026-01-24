@@ -283,15 +283,82 @@ tail -f /dev/null
     # Minimum VRAM for Whisper large-v3
     MIN_GPU_VRAM = 16  # GB
 
-    def get_available_gpus(self) -> list[dict]:
-        """Get available GPU types from RunPod API with pricing.
+    # Cache settings
+    GPU_CACHE_KEY = "_runpod_gpu_cache"
+    GPU_CACHE_MAX_AGE_DAYS = 7
+
+    def get_available_gpus(self, force_refresh: bool = False) -> list[dict]:
+        """Get available GPU types with pricing (cached).
 
         Returns list of dicts with id, display_name, memory_gb, price_hr.
-        Filtered to reasonable GPUs for transcription, sorted by price.
+        Uses cached data if available and fresh, otherwise fetches from API.
         """
         if not self.is_available():
             return []
 
+        # Try to get from cache
+        if not force_refresh:
+            cached = self._get_gpu_cache()
+            if cached is not None:
+                return cached
+
+        # Fetch fresh data and cache it
+        return self.refresh_gpu_cache()
+
+    def refresh_gpu_cache(self) -> list[dict]:
+        """Fetch GPU data from API and update cache. Returns the GPU list."""
+        if not self.is_available():
+            return []
+
+        gpus = self._fetch_gpus_from_api()
+        self._set_gpu_cache(gpus)
+        return gpus
+
+    def _get_gpu_cache(self) -> list[dict] | None:
+        """Get cached GPU data if fresh, else None."""
+        from cast2md.db.connection import get_db
+        from cast2md.db.repository import SettingsRepository
+
+        try:
+            with get_db() as conn:
+                repo = SettingsRepository(conn)
+                cached_json = repo.get(self.GPU_CACHE_KEY)
+
+            if not cached_json:
+                return None
+
+            cached = json.loads(cached_json)
+            cached_at = datetime.fromisoformat(cached.get("cached_at", ""))
+            age_days = (datetime.now() - cached_at).days
+
+            if age_days >= self.GPU_CACHE_MAX_AGE_DAYS:
+                logger.info(f"GPU cache expired ({age_days} days old)")
+                return None
+
+            return cached.get("gpus", [])
+        except Exception as e:
+            logger.warning(f"Failed to read GPU cache: {e}")
+            return None
+
+    def _set_gpu_cache(self, gpus: list[dict]) -> None:
+        """Store GPU data in cache."""
+        from cast2md.db.connection import get_db
+        from cast2md.db.repository import SettingsRepository
+
+        try:
+            cache_data = {
+                "cached_at": datetime.now().isoformat(),
+                "gpus": gpus,
+            }
+            with get_db() as conn:
+                repo = SettingsRepository(conn)
+                repo.set(self.GPU_CACHE_KEY, json.dumps(cache_data))
+            logger.info(f"Cached {len(gpus)} GPU types")
+        except Exception as e:
+            logger.warning(f"Failed to cache GPU data: {e}")
+
+    def _fetch_gpus_from_api(self) -> list[dict]:
+        """Fetch GPU types with pricing from RunPod API (slow - use cache)."""
         runpod.api_key = self.settings.runpod_api_key
         try:
             gpus = runpod.get_gpus()

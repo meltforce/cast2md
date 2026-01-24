@@ -155,13 +155,16 @@
     <div class="grid" style="margin-top: 1rem;">
         <label>
             GPU Type
-            <select id="setting-gpu-type" name="runpod_gpu_type">
-                {% for gpu in gpu_types %}
-                <option value="{{ gpu.id }}" {% if gpu.id == settings.runpod_gpu_type %}selected{% endif %}>
-                    {{ gpu.display_name }}{% if gpu.memory_gb %} ({{ gpu.memory_gb }}GB){% endif %}{% if gpu.price_hr %} - ${{ "%.2f"|format(gpu.price_hr) }}/hr{% endif %}
-                </option>
-                {% endfor %}
-            </select>
+            <div style="display: flex; gap: 0.5rem;">
+                <select id="setting-gpu-type" name="runpod_gpu_type" style="flex: 1;">
+                    {% for gpu in gpu_types %}
+                    <option value="{{ gpu.id }}" {% if gpu.id == settings.runpod_gpu_type %}selected{% endif %}>
+                        {{ gpu.display_name }}{% if gpu.memory_gb %} ({{ gpu.memory_gb }}GB){% endif %}{% if gpu.price_hr %} - ${{ "%.2f"|format(gpu.price_hr) }}/hr{% endif %}
+                    </option>
+                    {% endfor %}
+                </select>
+                <button type="button" id="refresh-gpus-btn" class="outline secondary" style="padding: 0.5rem; width: auto;" title="Refresh GPU prices">↻</button>
+            </div>
             <small>Sorted by price - fallback uses next cheapest available</small>
         </label>
         <label>
@@ -212,13 +215,16 @@
     <div class="grid" style="margin-top: 1rem;">
         <label>
             GPU Type
-            <select id="setting-gpu-type" name="runpod_gpu_type">
-                {% for gpu in gpu_types %}
-                <option value="{{ gpu.id }}" {% if gpu.id == settings.runpod_gpu_type %}selected{% endif %}>
-                    {{ gpu.display_name }}{% if gpu.memory_gb %} ({{ gpu.memory_gb }}GB){% endif %}{% if gpu.price_hr %} - ${{ "%.2f"|format(gpu.price_hr) }}/hr{% endif %}
-                </option>
-                {% endfor %}
-            </select>
+            <div style="display: flex; gap: 0.5rem;">
+                <select id="setting-gpu-type" name="runpod_gpu_type" style="flex: 1;">
+                    {% for gpu in gpu_types %}
+                    <option value="{{ gpu.id }}" {% if gpu.id == settings.runpod_gpu_type %}selected{% endif %}>
+                        {{ gpu.display_name }}{% if gpu.memory_gb %} ({{ gpu.memory_gb }}GB){% endif %}{% if gpu.price_hr %} - ${{ "%.2f"|format(gpu.price_hr) }}/hr{% endif %}
+                    </option>
+                    {% endfor %}
+                </select>
+                <button type="button" id="refresh-gpus-btn" class="outline secondary" style="padding: 0.5rem; width: auto;" title="Refresh GPU prices">↻</button>
+            </div>
             <small>Sorted by price - fallback uses next cheapest available</small>
         </label>
         <label>
@@ -464,6 +470,42 @@ document.addEventListener('DOMContentLoaded', function() {
             } finally {
                 saveBtn.disabled = false;
                 saveBtn.removeAttribute('aria-busy');
+            }
+        });
+    }
+
+    // Refresh GPU prices button
+    const refreshGpusBtn = document.getElementById('refresh-gpus-btn');
+    if (refreshGpusBtn) {
+        refreshGpusBtn.addEventListener('click', async function() {
+            refreshGpusBtn.disabled = true;
+            refreshGpusBtn.setAttribute('aria-busy', 'true');
+            refreshGpusBtn.textContent = '';
+
+            try {
+                const response = await fetch('/api/runpod/gpu-types/refresh', { method: 'POST' });
+                const data = await response.json();
+
+                if (response.ok && data.gpu_types) {
+                    // Update the select options
+                    const select = document.getElementById('setting-gpu-type');
+                    const currentValue = select.value;
+                    select.innerHTML = data.gpu_types.map(gpu => {
+                        const price = gpu.price_hr ? ` - $${gpu.price_hr.toFixed(2)}/hr` : '';
+                        const mem = gpu.memory_gb ? ` (${gpu.memory_gb}GB)` : '';
+                        const selected = gpu.id === currentValue ? ' selected' : '';
+                        return `<option value="${gpu.id}"${selected}>${gpu.display_name}${mem}${price}</option>`;
+                    }).join('');
+                    showToast(`Updated ${data.gpu_types.length} GPU types`, 'success');
+                } else {
+                    showToast('Error: ' + (data.detail || 'Failed to refresh'), 'error');
+                }
+            } catch (err) {
+                showToast('Error: ' + err.message, 'error');
+            } finally {
+                refreshGpusBtn.disabled = false;
+                refreshGpusBtn.removeAttribute('aria-busy');
+                refreshGpusBtn.textContent = '↻';
             }
         });
     }

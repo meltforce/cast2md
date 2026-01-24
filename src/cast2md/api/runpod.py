@@ -234,7 +234,7 @@ FALLBACK_GPU_TYPES = [
 
 @router.get("/gpu-types", response_model=GpuTypesResponse)
 def get_gpu_types():
-    """Get available GPU types from RunPod API."""
+    """Get available GPU types (cached)."""
     service = get_runpod_service()
 
     if not service.is_available():
@@ -246,5 +246,23 @@ def get_gpu_types():
             return GpuTypesResponse(gpu_types=gpu_types, source="api")
     except Exception:
         pass
+
+    return GpuTypesResponse(gpu_types=FALLBACK_GPU_TYPES, source="fallback")
+
+
+@router.post("/gpu-types/refresh", response_model=GpuTypesResponse)
+def refresh_gpu_types():
+    """Refresh GPU types cache from RunPod API."""
+    service = get_runpod_service()
+
+    if not service.is_available():
+        raise HTTPException(status_code=503, detail="RunPod not configured")
+
+    try:
+        gpu_types = service.refresh_gpu_cache()
+        if gpu_types:
+            return GpuTypesResponse(gpu_types=gpu_types, source="api")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to refresh GPU types: {e}")
 
     return GpuTypesResponse(gpu_types=FALLBACK_GPU_TYPES, source="fallback")
