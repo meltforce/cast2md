@@ -153,18 +153,6 @@
     </details>
 </article>
 
-<!-- RunPod GPU Workers -->
-<article id="runpodSection">
-    <header style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
-        <h3 style="margin: 0;">RunPod GPU Workers</h3>
-        <a href="/admin/runpod" class="outline secondary" role="button" style="padding: 0.25rem 0.5rem; font-size: 0.875rem;">Manage Pods</a>
-    </header>
-    <div id="runpodFields"></div>
-    <p id="runpodNotConfigured" style="color: var(--pico-muted-color); display: none;">
-        RunPod not configured. Set <code>RUNPOD_API_KEY</code> environment variable to enable.
-    </p>
-</article>
-
 <!-- General -->
 <article>
     <header>
@@ -217,12 +205,6 @@ const settingSections = {
     'node_heartbeat_timeout_seconds': 'distributed',
     'remote_job_timeout_hours': 'distributed',
     'itunes_country': 'general',
-    'runpod_enabled': 'runpod',
-    'runpod_max_pods': 'runpod',
-    'runpod_auto_scale': 'runpod',
-    'runpod_scale_threshold': 'runpod',
-    'runpod_gpu_type': 'runpod',
-    'runpod_whisper_model': 'runpod',
 };
 
 const sectionContainers = {
@@ -231,7 +213,6 @@ const sectionContainers = {
     'workers': 'workersFields',
     'notifications': 'notificationsFields',
     'distributed': 'distributedFields',
-    'runpod': 'runpodFields',
     'general': 'generalFields',
 };
 
@@ -246,9 +227,10 @@ async function loadSettings() {
             document.getElementById(id).innerHTML = '';
         });
 
-        // Group settings by section
+        // Group settings by section (skip runpod_ settings - managed on RunPod page)
         const sections = {};
         for (const [key, info] of Object.entries(currentSettings)) {
+            if (key.startsWith('runpod_')) continue;  // Skip RunPod settings
             const section = settingSections[key] || 'general';
             if (!sections[section]) sections[section] = [];
             sections[section].push({ key, info });
@@ -302,39 +284,12 @@ async function loadSettings() {
             container.innerHTML = html;
         }
 
-        // Handle RunPod section visibility
-        const runpodSection = document.getElementById('runpodSection');
-        const runpodNotConfigured = document.getElementById('runpodNotConfigured');
-        const runpodFields = document.getElementById('runpodFields');
-        const hasRunpodSettings = currentSettings.hasOwnProperty('runpod_enabled');
-
-        if (!hasRunpodSettings) {
-            // RunPod not available (no API key configured)
-            runpodFields.style.display = 'none';
-            runpodNotConfigured.style.display = 'block';
-        } else {
-            runpodFields.style.display = '';
-            runpodNotConfigured.style.display = 'none';
-
-            // Grey out other RunPod settings when disabled
-            const runpodEnabled = currentSettings.runpod_enabled?.value === true ||
-                                  currentSettings.runpod_enabled?.value === 'true';
-
-            // Set opacity and disable inputs for non-master-switch RunPod settings
-            const runpodInputs = runpodFields.querySelectorAll('input:not([name="runpod_enabled"]), select:not([name="runpod_enabled"])');
-            runpodInputs.forEach(input => {
-                if (!runpodEnabled) {
-                    input.disabled = true;
-                    input.closest('label')?.style.setProperty('opacity', '0.5');
-                }
-            });
-        }
-
-        // Populate current values table
+        // Populate current values table (skip runpod_ settings)
         const tbody = document.querySelector('#currentSettings tbody');
         tbody.innerHTML = '';
 
         for (const [key, info] of Object.entries(currentSettings)) {
+            if (key.startsWith('runpod_')) continue;  // Skip RunPod settings
             const row = document.createElement('tr');
 
             let sourceClass = 'status-new';

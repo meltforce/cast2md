@@ -809,6 +809,26 @@ def admin_runpod_page(request: Request):
         job_repo = JobRepository(conn)
         transcribe_queued = job_repo.count_by_status(JobType.TRANSCRIBE).get("queued", 0)
 
+    # Get GPU types for settings dropdown
+    gpu_types = []
+    if service.is_available():
+        raw_gpus = service.get_available_gpus()
+        if raw_gpus:
+            gpu_types = [{"id": g["id"], "display_name": g["display_name"], "memory_gb": g.get("memory_gb")} for g in raw_gpus]
+
+    # Fallback GPU types if API unavailable
+    if not gpu_types:
+        gpu_types = [
+            {"id": "NVIDIA GeForce RTX 4090", "display_name": "RTX 4090", "memory_gb": 24},
+            {"id": "NVIDIA GeForce RTX 3090", "display_name": "RTX 3090", "memory_gb": 24},
+            {"id": "NVIDIA RTX A4000", "display_name": "RTX A4000", "memory_gb": 16},
+            {"id": "NVIDIA RTX A5000", "display_name": "RTX A5000", "memory_gb": 24},
+            {"id": "NVIDIA GeForce RTX 4080", "display_name": "RTX 4080", "memory_gb": 16},
+            {"id": "NVIDIA RTX A6000", "display_name": "RTX A6000", "memory_gb": 48},
+            {"id": "NVIDIA L4", "display_name": "L4", "memory_gb": 24},
+            {"id": "NVIDIA L40", "display_name": "L40", "memory_gb": 48},
+        ]
+
     return templates.TemplateResponse(
         "runpod.html",
         {
@@ -816,6 +836,7 @@ def admin_runpod_page(request: Request):
             "runpod_status": runpod_status,
             "settings": settings,
             "transcribe_queued": transcribe_queued,
+            "gpu_types": gpu_types,
         },
     )
 

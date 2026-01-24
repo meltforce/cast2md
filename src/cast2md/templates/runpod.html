@@ -39,14 +39,9 @@
                 {% endif %}
             </small>
         </div>
-        <div style="display: flex; gap: 0.5rem; align-items: center;">
-            <a href="https://console.runpod.io/deploy" target="_blank" rel="noopener" class="secondary outline" role="button" style="font-size: 0.875rem;">
-                RunPod Console
-            </a>
-            <a href="/admin/settings" class="secondary outline" role="button" style="font-size: 0.875rem;">
-                Settings
-            </a>
-        </div>
+        <a href="https://console.runpod.io/deploy" target="_blank" rel="noopener" class="secondary outline" role="button" style="font-size: 0.875rem;">
+            RunPod Console
+        </a>
     </div>
 </article>
 
@@ -151,32 +146,113 @@
 </article>
 {% endif %}
 
-<!-- Configuration Info -->
+<!-- Settings -->
 <article>
-    <h4>Configuration</h4>
+    <header style="display: flex; justify-content: space-between; align-items: center;">
+        <h4 style="margin: 0;">Settings</h4>
+        <button type="button" id="save-settings-btn" class="outline" style="padding: 0.25rem 0.75rem; font-size: 0.875rem;">Save</button>
+    </header>
+    <div class="grid" style="margin-top: 1rem;">
+        <label>
+            GPU Type
+            <select id="setting-gpu-type" name="runpod_gpu_type">
+                {% for gpu in gpu_types %}
+                <option value="{{ gpu.id }}" {% if gpu.id == settings.runpod_gpu_type %}selected{% endif %}>
+                    {{ gpu.display_name }}{% if gpu.memory_gb %} ({{ gpu.memory_gb }}GB){% endif %}
+                </option>
+                {% endfor %}
+            </select>
+            <small>Preferred GPU for pods</small>
+        </label>
+        <label>
+            Whisper Model
+            <select id="setting-whisper-model" name="runpod_whisper_model">
+                {% for model in ['large-v3-turbo', 'large-v3', 'large-v2', 'medium', 'small'] %}
+                <option value="{{ model }}" {% if model == settings.runpod_whisper_model %}selected{% endif %}>{{ model }}</option>
+                {% endfor %}
+            </select>
+            <small>Transcription model for GPU pods</small>
+        </label>
+    </div>
     <div class="grid">
-        <div>
-            <strong>GPU Type:</strong> {{ settings.runpod_gpu_type }}<br>
-            <strong>Whisper Model:</strong> {{ settings.runpod_whisper_model }}<br>
-            <strong>Max Pods:</strong> {{ settings.runpod_max_pods }}
-        </div>
-        <div>
-            <strong>Auto-scale:</strong> {% if settings.runpod_auto_scale %}Enabled (threshold: {{ settings.runpod_scale_threshold }}){% else %}Disabled{% endif %}<br>
-            <strong>Server:</strong> {{ runpod_status.server_url or 'Not detected' }}<br>
-            <strong>IP:</strong> {{ runpod_status.server_ip or 'Not detected' }}
-        </div>
+        <label>
+            Max Pods
+            <input type="number" id="setting-max-pods" name="runpod_max_pods" value="{{ settings.runpod_max_pods }}" min="1" max="10">
+            <small>Maximum concurrent GPU pods</small>
+        </label>
+        <label>
+            Scale Threshold
+            <input type="number" id="setting-scale-threshold" name="runpod_scale_threshold" value="{{ settings.runpod_scale_threshold }}" min="1" max="100" {% if not settings.runpod_auto_scale %}disabled{% endif %}>
+            <small>Start pods when queue exceeds this</small>
+        </label>
+    </div>
+    <label style="display: flex; align-items: center; gap: 0.5rem; margin-top: 0.5rem;">
+        <input type="checkbox" id="setting-auto-scale" name="runpod_auto_scale" role="switch" {% if settings.runpod_auto_scale %}checked{% endif %}>
+        Auto-scale
+    </label>
+    <small style="display: block; margin-top: -0.5rem; color: var(--pico-muted-color);">Automatically start pods when queue grows</small>
+
+    <hr style="margin: 1.5rem 0 1rem;">
+    <div style="color: var(--pico-muted-color); font-size: 0.875rem;">
+        <strong>Server:</strong> {{ runpod_status.server_url or 'Not detected' }} &nbsp;|&nbsp;
+        <strong>IP:</strong> {{ runpod_status.server_ip or 'Not detected' }}
     </div>
 </article>
 
 {% else %}
-<!-- Disabled state - show basic info -->
+<!-- Disabled state - show settings but greyed out -->
 <article style="opacity: 0.6;">
-    <p style="text-align: center; color: var(--pico-muted-color);">
+    <p style="text-align: center; color: var(--pico-muted-color); margin-bottom: 1rem;">
         RunPod is disabled. Enable it above to manage GPU workers.
     </p>
-    <div style="text-align: center; margin-top: 1rem;">
-        <strong>Configured:</strong> GPU {{ settings.runpod_gpu_type }} | Model {{ settings.runpod_whisper_model }} | Max {{ settings.runpod_max_pods }} pods
-        {% if settings.runpod_auto_scale %} | Auto-scale at {{ settings.runpod_scale_threshold }} jobs{% endif %}
+    <header style="display: flex; justify-content: space-between; align-items: center;">
+        <h4 style="margin: 0;">Settings</h4>
+        <button type="button" id="save-settings-btn" class="outline" style="padding: 0.25rem 0.75rem; font-size: 0.875rem;">Save</button>
+    </header>
+    <div class="grid" style="margin-top: 1rem;">
+        <label>
+            GPU Type
+            <select id="setting-gpu-type" name="runpod_gpu_type">
+                {% for gpu in gpu_types %}
+                <option value="{{ gpu.id }}" {% if gpu.id == settings.runpod_gpu_type %}selected{% endif %}>
+                    {{ gpu.display_name }}{% if gpu.memory_gb %} ({{ gpu.memory_gb }}GB){% endif %}
+                </option>
+                {% endfor %}
+            </select>
+            <small>Preferred GPU for pods</small>
+        </label>
+        <label>
+            Whisper Model
+            <select id="setting-whisper-model" name="runpod_whisper_model">
+                {% for model in ['large-v3-turbo', 'large-v3', 'large-v2', 'medium', 'small'] %}
+                <option value="{{ model }}" {% if model == settings.runpod_whisper_model %}selected{% endif %}>{{ model }}</option>
+                {% endfor %}
+            </select>
+            <small>Transcription model for GPU pods</small>
+        </label>
+    </div>
+    <div class="grid">
+        <label>
+            Max Pods
+            <input type="number" id="setting-max-pods" name="runpod_max_pods" value="{{ settings.runpod_max_pods }}" min="1" max="10">
+            <small>Maximum concurrent GPU pods</small>
+        </label>
+        <label>
+            Scale Threshold
+            <input type="number" id="setting-scale-threshold" name="runpod_scale_threshold" value="{{ settings.runpod_scale_threshold }}" min="1" max="100" {% if not settings.runpod_auto_scale %}disabled{% endif %}>
+            <small>Start pods when queue exceeds this</small>
+        </label>
+    </div>
+    <label style="display: flex; align-items: center; gap: 0.5rem; margin-top: 0.5rem;">
+        <input type="checkbox" id="setting-auto-scale" name="runpod_auto_scale" role="switch" {% if settings.runpod_auto_scale %}checked{% endif %}>
+        Auto-scale
+    </label>
+    <small style="display: block; margin-top: -0.5rem; color: var(--pico-muted-color);">Automatically start pods when queue grows</small>
+
+    <hr style="margin: 1.5rem 0 1rem;">
+    <div style="color: var(--pico-muted-color); font-size: 0.875rem;">
+        <strong>Server:</strong> {{ runpod_status.server_url or 'Not detected' }} &nbsp;|&nbsp;
+        <strong>IP:</strong> {{ runpod_status.server_ip or 'Not detected' }}
     </div>
 </article>
 {% endif %}
@@ -344,6 +420,52 @@ document.addEventListener('DOMContentLoaded', function() {
         container.appendChild(toast);
 
         setTimeout(() => toast.remove(), 5000);
+    }
+
+    // Auto-scale toggle - enable/disable threshold field
+    const autoScaleToggle = document.getElementById('setting-auto-scale');
+    const thresholdInput = document.getElementById('setting-scale-threshold');
+    if (autoScaleToggle && thresholdInput) {
+        autoScaleToggle.addEventListener('change', function() {
+            thresholdInput.disabled = !this.checked;
+        });
+    }
+
+    // Save settings button
+    const saveBtn = document.getElementById('save-settings-btn');
+    if (saveBtn) {
+        saveBtn.addEventListener('click', async function() {
+            saveBtn.disabled = true;
+            saveBtn.setAttribute('aria-busy', 'true');
+
+            const settings = {
+                runpod_gpu_type: document.getElementById('setting-gpu-type')?.value,
+                runpod_whisper_model: document.getElementById('setting-whisper-model')?.value,
+                runpod_max_pods: document.getElementById('setting-max-pods')?.value,
+                runpod_scale_threshold: document.getElementById('setting-scale-threshold')?.value,
+                runpod_auto_scale: document.getElementById('setting-auto-scale')?.checked ? 'true' : 'false',
+            };
+
+            try {
+                const response = await fetch('/api/settings', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ settings })
+                });
+
+                if (response.ok) {
+                    showToast('Settings saved', 'success');
+                } else {
+                    const data = await response.json();
+                    showToast('Error: ' + (data.detail || 'Failed to save'), 'error');
+                }
+            } catch (err) {
+                showToast('Error: ' + err.message, 'error');
+            } finally {
+                saveBtn.disabled = false;
+                saveBtn.removeAttribute('aria-busy');
+            }
+        });
     }
 
     // Auto-refresh if pods are starting
