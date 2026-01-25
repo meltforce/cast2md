@@ -44,6 +44,22 @@ MIGRATIONS: list[dict] = [
             "CREATE INDEX IF NOT EXISTS idx_pod_runs_started_at ON pod_runs(started_at)",
         ],
     },
+    {
+        "version": 13,
+        "description": "Add runpod_models table for customizable pod transcription models",
+        "sql": [
+            """
+            CREATE TABLE IF NOT EXISTS runpod_models (
+                id TEXT PRIMARY KEY,
+                display_name TEXT NOT NULL,
+                backend TEXT NOT NULL DEFAULT 'whisper',
+                is_enabled BOOLEAN DEFAULT TRUE,
+                sort_order INTEGER DEFAULT 100,
+                created_at TIMESTAMP NOT NULL DEFAULT NOW()
+            )
+            """,
+        ],
+    },
 ]
 
 

@@ -100,6 +100,17 @@ SCHEMA_STATEMENTS = [
         created_at TIMESTAMP NOT NULL DEFAULT NOW()
     )
     """,
+    # RunPod transcription models table
+    """
+    CREATE TABLE IF NOT EXISTS runpod_models (
+        id TEXT PRIMARY KEY,
+        display_name TEXT NOT NULL,
+        backend TEXT NOT NULL DEFAULT 'whisper',
+        is_enabled BOOLEAN DEFAULT TRUE,
+        sort_order INTEGER DEFAULT 100,
+        created_at TIMESTAMP NOT NULL DEFAULT NOW()
+    )
+    """,
     # Transcriber node table
     """
     CREATE TABLE IF NOT EXISTS transcriber_node (

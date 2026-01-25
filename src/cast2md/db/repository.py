@@ -2142,6 +2142,112 @@ class WhisperModelRepository:
         return len(default_models)
 
 
+@dataclass
+class RunPodModel:
+    """A RunPod transcription model configuration."""
+
+    id: str
+    display_name: str
+    backend: str  # 'whisper' or 'parakeet'
+    is_enabled: bool
+    sort_order: int
+
+    @classmethod
+    def from_row(cls, row) -> "RunPodModel":
+        """Create from database row."""
+        return cls(
+            id=row[0],
+            display_name=row[1],
+            backend=row[2],
+            is_enabled=bool(row[3]),
+            sort_order=row[4],
+        )
+
+
+class RunPodModelRepository:
+    """Repository for RunPod transcription model configurations."""
+
+    def __init__(self, conn: Connection):
+        self.conn = conn
+
+    def get_all(self, enabled_only: bool = True) -> list[RunPodModel]:
+        """Get all models, ordered by sort_order."""
+        if enabled_only:
+            cursor = execute(
+                self.conn,
+                "SELECT id, display_name, backend, is_enabled, sort_order FROM runpod_models WHERE is_enabled = TRUE ORDER BY sort_order, id"
+            )
+        else:
+            cursor = execute(
+                self.conn,
+                "SELECT id, display_name, backend, is_enabled, sort_order FROM runpod_models ORDER BY sort_order, id"
+            )
+        return [RunPodModel.from_row(row) for row in cursor.fetchall()]
+
+    def get_by_id(self, model_id: str) -> Optional[RunPodModel]:
+        """Get a model by ID."""
+        cursor = execute(
+            self.conn,
+            "SELECT id, display_name, backend, is_enabled, sort_order FROM runpod_models WHERE id = %s",
+            (model_id,),
+        )
+        row = cursor.fetchone()
+        return RunPodModel.from_row(row) if row else None
+
+    def upsert(
+        self,
+        model_id: str,
+        display_name: str,
+        backend: str = "whisper",
+        is_enabled: bool = True,
+        sort_order: int = 100,
+    ) -> None:
+        """Insert or update a model."""
+        now = datetime.now().isoformat()
+        execute(
+            self.conn,
+            """
+            INSERT INTO runpod_models (id, display_name, backend, is_enabled, sort_order, created_at)
+            VALUES (%s, %s, %s, %s, %s, %s)
+            ON CONFLICT (id) DO UPDATE SET
+                display_name = EXCLUDED.display_name, backend = EXCLUDED.backend,
+                is_enabled = EXCLUDED.is_enabled, sort_order = EXCLUDED.sort_order
+            """,
+            (model_id, display_name, backend, is_enabled, sort_order, now),
+        )
+        self.conn.commit()
+
+    def delete(self, model_id: str) -> bool:
+        """Delete a model."""
+        cursor = execute(self.conn, "DELETE FROM runpod_models WHERE id = %s", (model_id,))
+        self.conn.commit()
+        return cursor.rowcount > 0
+
+    def seed_defaults(self) -> int:
+        """Seed the default models if table is empty."""
+        cursor = execute(self.conn, "SELECT COUNT(*) FROM runpod_models")
+        if cursor.fetchone()[0] > 0:
+            return 0
+
+        # Import here to avoid circular import
+        from cast2md.config.settings import RUNPOD_TRANSCRIPTION_MODELS
+
+        now = datetime.now().isoformat()
+        for idx, (model_id, display_name) in enumerate(RUNPOD_TRANSCRIPTION_MODELS):
+            # Determine backend from model_id
+            backend = "parakeet" if "parakeet" in model_id else "whisper"
+            execute(
+                self.conn,
+                """
+                INSERT INTO runpod_models (id, display_name, backend, is_enabled, sort_order, created_at)
+                VALUES (%s, %s, %s, TRUE, %s, %s)
+                """,
+                (model_id, display_name, backend, idx * 10, now),
+            )
+        self.conn.commit()
+        return len(RUNPOD_TRANSCRIPTION_MODELS)
+
+
 class TranscriberNodeRepository:
     """Repository for transcriber node operations."""
 
