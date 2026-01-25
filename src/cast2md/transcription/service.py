@@ -395,9 +395,9 @@ class TranscriptionService:
 
             for hyp in hypotheses:
                 # Handle different output formats from NeMo
-                if hasattr(hyp, "timestep") and hyp.timestep:
-                    # Word-level timestamps: hyp.timestep['word'] is a list of (word, start, end)
-                    word_timestamps = hyp.timestep.get("word", [])
+                if hasattr(hyp, "timestamp") and hyp.timestamp:
+                    # Word-level timestamps: hyp.timestamp['word'] is a list of (word, start, end)
+                    word_timestamps = hyp.timestamp.get("word", [])
                     for ts in word_timestamps:
                         # ts is a tuple/list: (word, start_time, end_time)
                         if isinstance(ts, (list, tuple)) and len(ts) >= 3:
