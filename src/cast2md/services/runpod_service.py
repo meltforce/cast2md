@@ -167,6 +167,10 @@ tail -f /dev/null
             self._db_loaded = True
             if rows:
                 logger.info(f"Loaded {len(rows)} pod setup state(s) from database")
+
+            # Clean up unreachable pods in background (always run on startup)
+            thread = threading.Thread(target=self._cleanup_unreachable_pods, daemon=True)
+            thread.start()
         except Exception as e:
             logger.warning(f"Failed to load pod setup states from DB: {e}")
             self._db_loaded = True  # Don't retry on every access
@@ -208,6 +212,69 @@ tail -f /dev/null
                 repo.delete(instance_id)
         except Exception as e:
             logger.warning(f"Failed to delete persisted pod setup state: {e}")
+
+    def _cleanup_unreachable_pods(self) -> None:
+        """Terminate pods that are running but not reachable via Tailscale.
+
+        Called on startup after loading persisted states. Pods that were
+        mid-setup when the server restarted may be running on RunPod but
+        never completed Tailscale setup, making them useless.
+        """
+        if not self.is_available():
+            return
+
+        try:
+            # Give pods a moment to appear on Tailscale
+            time.sleep(10)
+
+            # Get running pods from RunPod
+            running_pods = self.list_pods()
+            if not running_pods:
+                return
+
+            # Get online Tailscale hosts
+            result = subprocess.run(
+                ["tailscale", "status", "--json"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            if result.returncode != 0:
+                return
+
+            status = json.loads(result.stdout)
+            peers = status.get("Peer", {})
+
+            # Build set of online afterburner hostnames
+            online_hostnames = set()
+            for peer in peers.values():
+                hostname = peer.get("HostName", "")
+                if hostname.startswith("runpod-afterburner") and peer.get("Online", False):
+                    online_hostnames.add(hostname)
+
+            # Check each running pod
+            for pod in running_pods:
+                # Extract instance_id from pod name (e.g., "cast2md-afterburner-1fd6" -> "1fd6")
+                parts = pod.name.split("-")
+                if len(parts) < 3:
+                    continue
+                instance_id = parts[-1]
+                expected_hostname = f"runpod-afterburner-{instance_id}"
+
+                if expected_hostname not in online_hostnames:
+                    logger.warning(
+                        f"Pod {pod.id} ({pod.name}) is running but not reachable via Tailscale - terminating"
+                    )
+                    self.terminate_pod(pod.id)
+                    # Also clean up the setup state if it exists
+                    if instance_id in self._setup_states:
+                        with self._lock:
+                            if instance_id in self._setup_states:
+                                del self._setup_states[instance_id]
+                        self._delete_persisted_state(instance_id)
+
+        except Exception as e:
+            logger.error(f"Failed to cleanup unreachable pods: {e}")
 
     @property
     def settings(self) -> Settings:
