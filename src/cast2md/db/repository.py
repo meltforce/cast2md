@@ -2450,6 +2450,23 @@ class TranscriberNodeRepository:
         row = cursor.fetchone()
         return TranscriberNode.from_row(row) if row else None
 
+    def delete_by_name(self, name: str) -> bool:
+        """Delete a node by exact name.
+
+        Args:
+            name: The node name to delete.
+
+        Returns:
+            True if a node was deleted.
+        """
+        cursor = execute(
+            self.conn,
+            "DELETE FROM transcriber_node WHERE name = %s",
+            (name,),
+        )
+        self.conn.commit()
+        return cursor.rowcount > 0
+
     def cleanup_stale_nodes(self, offline_hours: int = 24) -> int:
         """Delete nodes that have been offline for longer than threshold.
 

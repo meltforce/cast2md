@@ -118,7 +118,7 @@
                 <span class="worker-job">
                     <a href="/episodes/{{ worker_groups.transcription.server.episode.id }}">{{ worker_groups.transcription.server.episode.title[:20] }}...</a>
                 </span>
-                {% if worker_groups.transcription.server.progress is not none %}
+                {% if worker_groups.transcription.server.progress is not none and worker_groups.transcription.server.progress > 0 %}
                 <span class="worker-progress">{{ worker_groups.transcription.server.progress }}%</span>
                 {% endif %}
                 {% endif %}
@@ -133,7 +133,7 @@
                 <span class="worker-job">
                     <a href="/episodes/{{ node.episode.id }}">{{ node.episode.title[:15] }}...</a>
                 </span>
-                {% if node.progress is not none %}
+                {% if node.progress is not none and node.progress > 0 %}
                 <span class="worker-progress">{{ node.progress }}%</span>
                 {% endif %}
                 {% endif %}
@@ -149,7 +149,7 @@
             <div class="worker-row">
                 <span class="worker-dot dot-stuck"></span>
                 <span class="worker-name">{{ item.episode.title[:25] }}...</span>
-                {% if item.progress is not none %}
+                {% if item.progress is not none and item.progress > 0 %}
                 <span class="worker-progress">{{ item.progress }}%</span>
                 {% endif %}
             </div>
