@@ -261,6 +261,13 @@ tail -f /dev/null
                 instance_id = parts[-1]
                 expected_hostname = f"runpod-afterburner-{instance_id}"
 
+                # Skip pods that are currently being set up (not yet expected on Tailscale)
+                with self._lock:
+                    state = self._setup_states.get(instance_id)
+                    if state and state.phase not in (PodSetupPhase.READY, PodSetupPhase.FAILED):
+                        # Pod is still in setup, don't terminate it
+                        continue
+
                 if expected_hostname not in online_hostnames:
                     logger.warning(
                         f"Pod {pod.id} ({pod.name}) is running but not reachable via Tailscale - terminating"
