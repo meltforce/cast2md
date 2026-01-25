@@ -298,3 +298,45 @@ def cleanup_old_trash(days: int = 30) -> int:
             deleted += 1
 
     return deleted
+
+
+def cleanup_orphaned_temp_files(hours: int = 24) -> int:
+    """Delete orphaned temporary files older than specified hours.
+
+    Cleans up:
+    - preprocess_*.wav - Preprocessing temp files
+    - .downloading_* - Incomplete downloads
+    - chunk_*.wav - Transcription chunk files
+
+    These files can be orphaned if the server crashes or workers are interrupted.
+
+    Args:
+        hours: Delete temp files older than this many hours.
+
+    Returns:
+        Number of files deleted.
+    """
+    settings = get_settings()
+    temp_dir = settings.temp_download_path
+
+    if not temp_dir.exists():
+        return 0
+
+    cutoff = datetime.now().timestamp() - (hours * 60 * 60)
+    deleted = 0
+
+    # Patterns for orphaned temp files
+    patterns = ["preprocess_*.wav", ".downloading_*", "chunk_*.wav"]
+
+    for pattern in patterns:
+        for file_path in temp_dir.glob(pattern):
+            if file_path.is_file():
+                try:
+                    if file_path.stat().st_mtime < cutoff:
+                        file_path.unlink()
+                        logger.info(f"Deleted orphaned temp file: {file_path.name}")
+                        deleted += 1
+                except Exception as e:
+                    logger.warning(f"Failed to delete temp file {file_path}: {e}")
+
+    return deleted
