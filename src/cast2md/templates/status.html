@@ -196,14 +196,14 @@
 
         <div class="card-section">
             <div class="section-label">Last Hour</div>
-            <div class="queued-count">{{ performance_stats.hour_episodes }}</div>
-            <div style="color: var(--pico-muted-color); font-size: 0.8rem;">episodes</div>
+            <div class="queued-count">{{ performance_stats.hour_throughput }}x</div>
+            <div style="color: var(--pico-muted-color); font-size: 0.8rem;">{{ performance_stats.hour_episodes }} episodes</div>
         </div>
 
         <div class="card-section">
             <div class="section-label">Last 24h</div>
-            <div class="queued-count">{{ performance_stats.day_eps_per_hour }}/hr</div>
-            <div style="color: var(--pico-muted-color); font-size: 0.8rem;">avg ({{ performance_stats.day_episodes }} total)</div>
+            <div class="queued-count">{{ performance_stats.day_throughput }}x</div>
+            <div style="color: var(--pico-muted-color); font-size: 0.8rem;">{{ performance_stats.day_episodes }} episodes</div>
         </div>
     </div>
 </div>
