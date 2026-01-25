@@ -889,6 +889,10 @@ tail -f /dev/null
                 raise RuntimeError(f"SSH command failed ({description}): {result.stderr}")
             return result.stdout.strip()
 
+        # Get persistent flag from setup state (dev mode)
+        state = self.get_setup_state(instance_id)
+        is_persistent = state.persistent if state else False
+
         # Use shared setup logic
         config = PodSetupConfig(
             server_url=self.get_effective_server_url(),
@@ -897,6 +901,7 @@ tail -f /dev/null
             model=self.settings.runpod_whisper_model,
             github_repo=self.settings.runpod_github_repo,
             idle_timeout_minutes=self.settings.runpod_idle_timeout_minutes,
+            persistent=is_persistent,
         )
         setup_pod(config, run_ssh)
 
@@ -1089,15 +1094,16 @@ tail -f /dev/null
                 timeout=600,
             )
 
-            # Determine backend from model
+            # Determine backend and termination settings from model and state
             model = settings.runpod_whisper_model
             is_parakeet = "parakeet" in model.lower()
             backend_env = "TRANSCRIPTION_BACKEND=parakeet" if is_parakeet else ""
             idle_env = f"NODE_IDLE_TIMEOUT_MINUTES={settings.runpod_idle_timeout_minutes}"
+            persistent_env = f"NODE_PERSISTENT={'1' if state.persistent else '0'}"
 
             # Restart worker
             run_ssh(
-                f"http_proxy=http://localhost:1055 {backend_env} {idle_env} WHISPER_MODEL={model} "
+                f"http_proxy=http://localhost:1055 {backend_env} {idle_env} {persistent_env} WHISPER_MODEL={model} "
                 "nohup cast2md node start > /tmp/cast2md-node.log 2>&1 &",
                 "Restarting worker",
             )

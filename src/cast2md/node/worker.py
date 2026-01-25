@@ -78,12 +78,27 @@ class TranscriberNodeWorker:
         self._prefetch_thread: Optional[threading.Thread] = None
         self._prefetch_stop = threading.Event()  # Signal to stop prefetch thread
 
-        # Idle timeout - auto-terminate if no jobs for this many minutes
-        # Set to 0 to disable (for permanent workers)
-        # Default: read from NODE_IDLE_TIMEOUT_MINUTES env var, or 10 minutes
+        # Auto-termination settings - both checks respect persistent/dev mode
+        # Set NODE_PERSISTENT=1 to disable all auto-termination (dev mode / permanent workers)
+        self._persistent = os.environ.get("NODE_PERSISTENT", "0") == "1"
+
+        # Empty queue termination - matches CLI afterburner behavior
+        # Terminate after N consecutive empty queue checks
+        self._empty_queue_wait = int(os.environ.get("NODE_EMPTY_QUEUE_WAIT", "60"))  # seconds between checks
+        self._required_empty_checks = int(os.environ.get("NODE_REQUIRED_EMPTY_CHECKS", "2"))
+        self._consecutive_empty = 0
+
+        # Idle timeout - safety net if jobs exist but can't be claimed
+        # Default: 10 minutes
         self._idle_timeout_minutes = int(os.environ.get("NODE_IDLE_TIMEOUT_MINUTES", "10"))
-        self._last_job_time: Optional[float] = None  # Time of last job completion/failure
+        self._last_job_time: Optional[float] = None
         self._worker_start_time: float = time.time()
+
+        # Server unreachable detection - terminate if server is down
+        # Default: 5 minutes of failed heartbeats/claims
+        self._server_unreachable_minutes = int(os.environ.get("NODE_SERVER_UNREACHABLE_MINUTES", "5"))
+        self._last_server_contact: float = time.time()
+        self._consecutive_server_failures = 0
 
     @property
     def config(self) -> NodeConfig:
@@ -251,6 +266,8 @@ class TranscriberNodeWorker:
                 )
                 if response.status_code == 200:
                     logger.debug("Heartbeat sent")
+                    # Server responded - update last contact time
+                    self._last_server_contact = time.time()
                 else:
                     logger.warning(f"Heartbeat failed: {response.status_code}")
             except httpx.RequestError as e:
@@ -258,42 +275,43 @@ class TranscriberNodeWorker:
 
             self._stop_event.wait(timeout=self._heartbeat_interval)
 
-    def _check_idle_timeout(self) -> bool:
-        """Check if we've been idle too long and should terminate.
+    def _check_should_terminate(self) -> tuple[bool, str]:
+        """Check if worker should auto-terminate.
+
+        Three conditions checked (all respect persistent/dev mode):
+        1. Empty queue - no claimable jobs for N consecutive checks
+        2. Idle timeout - no jobs processed for M minutes (safety net)
+        3. Server unreachable - can't reach server for K minutes
 
         Returns:
-            True if worker should terminate due to idle timeout.
+            Tuple of (should_terminate, reason)
         """
-        if self._idle_timeout_minutes <= 0:
-            return False  # Disabled
+        if self._persistent:
+            return False, ""  # Dev mode - never auto-terminate
 
-        now = time.time()
-        idle_seconds = self._idle_timeout_minutes * 60
+        # Check 1: Empty queue (matches CLI afterburner behavior)
+        if self._consecutive_empty >= self._required_empty_checks:
+            return True, f"queue empty for {self._consecutive_empty} consecutive checks"
 
-        # Use last job time if we've processed any jobs, otherwise use start time
-        reference_time = self._last_job_time or self._worker_start_time
-        idle_duration = now - reference_time
+        # Check 2: Idle timeout (safety net for stuck jobs)
+        if self._idle_timeout_minutes > 0:
+            reference_time = self._last_job_time or self._worker_start_time
+            idle_minutes = (time.time() - reference_time) / 60
+            if idle_minutes >= self._idle_timeout_minutes:
+                return True, f"idle for {int(idle_minutes)} minutes (no jobs processed)"
 
-        if idle_duration > idle_seconds:
-            logger.warning(
-                f"Idle timeout reached: no jobs for {int(idle_duration / 60)} minutes "
-                f"(threshold: {self._idle_timeout_minutes} min). Terminating worker."
-            )
-            return True
-        return False
+        # Check 3: Server unreachable (server crash protection)
+        if self._server_unreachable_minutes > 0:
+            unreachable_minutes = (time.time() - self._last_server_contact) / 60
+            if unreachable_minutes >= self._server_unreachable_minutes:
+                return True, f"server unreachable for {int(unreachable_minutes)} minutes"
+
+        return False, ""
 
     def _poll_loop(self):
         """Poll for jobs and process them."""
         while not self._stop_event.is_set():
             try:
-                # Check for idle timeout (only when not processing)
-                if self._check_idle_timeout():
-                    logger.info("Initiating shutdown due to idle timeout")
-                    self._stop_event.set()
-                    # Signal to main run() loop to exit
-                    self._running = False
-                    break
-
                 # Check for prefetched job first
                 prefetched = None
                 with self._prefetch_lock:
@@ -302,6 +320,7 @@ class TranscriberNodeWorker:
 
                 if prefetched:
                     logger.info(f"Using prefetched job {prefetched.job['job_id']}")
+                    self._consecutive_empty = 0  # Reset empty counter
                     self._process_prefetched_job(
                         prefetched.job, prefetched.audio_path, prefetched.temp_dir
                     )
@@ -309,10 +328,30 @@ class TranscriberNodeWorker:
                     # No prefetched job, claim and process directly
                     job = self._claim_job()
                     if job:
+                        self._consecutive_empty = 0  # Reset empty counter
                         self._process_job(job)
                     else:
-                        # No job available, wait before polling again
-                        self._stop_event.wait(timeout=self._poll_interval)
+                        # No job available - track for empty queue termination
+                        self._consecutive_empty += 1
+                        if self._consecutive_empty == 1:
+                            logger.info("Queue appears empty, waiting to confirm...")
+                        elif self._consecutive_empty < self._required_empty_checks:
+                            logger.info(
+                                f"Queue still empty ({self._consecutive_empty}/{self._required_empty_checks})..."
+                            )
+
+                        # Check all termination conditions
+                        should_terminate, reason = self._check_should_terminate()
+                        if should_terminate:
+                            logger.warning(f"Initiating shutdown: {reason}")
+                            self._stop_event.set()
+                            self._running = False
+                            break
+
+                        # Wait before next poll (use empty_queue_wait when checking for empty)
+                        wait_time = self._empty_queue_wait if self._consecutive_empty > 0 else self._poll_interval
+                        self._stop_event.wait(timeout=wait_time)
+
             except Exception as e:
                 logger.error(f"Poll loop error: {e}")
                 self._stop_event.wait(timeout=self._poll_interval)
@@ -384,6 +423,9 @@ class TranscriberNodeWorker:
             if response.status_code != 200:
                 logger.warning(f"Claim request failed: {response.status_code}")
                 return None
+
+            # Server responded - update last contact time
+            self._last_server_contact = time.time()
 
             data = response.json()
             if not data.get("has_job"):
