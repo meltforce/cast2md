@@ -124,6 +124,8 @@ class Config:
     max_runtime: int | None = None  # Max runtime in seconds (None = unlimited)
     # Whisper model for transcription
     whisper_model: str = "large-v3-turbo"
+    # Idle timeout for workers (minutes, 0 to disable)
+    idle_timeout_minutes: int = 10
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -150,6 +152,10 @@ class Config:
         max_runtime_str = os.environ.get("AFTERBURNER_MAX_RUNTIME")
         max_runtime = int(max_runtime_str) if max_runtime_str else None
 
+        # Parse idle timeout
+        idle_timeout_str = os.environ.get("NODE_IDLE_TIMEOUT_MINUTES", "10")
+        idle_timeout = int(idle_timeout_str) if idle_timeout_str else 10
+
         return cls(
             runpod_api_key=runpod_api_key,
             server_url=server_url,
@@ -161,6 +167,7 @@ class Config:
             ntfy_topic=os.environ.get("NTFY_TOPIC"),
             max_runtime=max_runtime,
             whisper_model=os.environ.get("WHISPER_MODEL", "large-v3-turbo"),
+            idle_timeout_minutes=idle_timeout,
         )
 
 
@@ -722,9 +729,11 @@ def setup_pod_via_ssh(config: Config, host_ip: str, node_name: str = "RunPod Aft
 
     # Start node worker in background (use HTTP proxy for Tailscale traffic)
     # Set TRANSCRIPTION_BACKEND=parakeet to use Parakeet TDT instead of Whisper
+    # Set NODE_IDLE_TIMEOUT_MINUTES to auto-terminate when idle (saves money)
     run_ssh(
         f"http_proxy=http://localhost:1055 "
         f"TRANSCRIPTION_BACKEND=parakeet "
+        f"NODE_IDLE_TIMEOUT_MINUTES={config.idle_timeout_minutes} "
         "nohup cast2md node start > /tmp/cast2md-node.log 2>&1 &",
         "Starting node worker with Parakeet backend"
     )

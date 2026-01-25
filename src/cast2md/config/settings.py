@@ -88,6 +88,7 @@ class Settings(BaseSettings):
     runpod_image_name: str = "meltforce/cast2md-afterburner:latest"
     runpod_ts_hostname: str = "runpod-afterburner"  # Base hostname (instance ID appended)
     runpod_github_repo: str = "meltforce/cast2md"
+    runpod_idle_timeout_minutes: int = 10  # Auto-terminate pods after idle for this many minutes (0 to disable)
 
     # Server connection (for pods to register)
     runpod_server_url: str = ""  # e.g., https://cast2md.example.ts.net
@@ -157,6 +158,7 @@ _DEFAULTS = {
     "runpod_image_name": "meltforce/cast2md-afterburner:latest",
     "runpod_ts_hostname": "runpod-afterburner",
     "runpod_github_repo": "meltforce/cast2md",
+    "runpod_idle_timeout_minutes": 10,
     "runpod_server_url": "",
     "runpod_server_ip": "",
 }
