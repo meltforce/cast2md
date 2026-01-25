@@ -43,7 +43,7 @@ class RemoteTranscriptionCoordinator:
 
         # Configuration (can be overridden via settings)
         self._heartbeat_timeout_seconds = 60
-        self._job_timeout_hours = 2
+        self._job_timeout_minutes = 30
         self._check_interval_seconds = 30
 
         # In-memory heartbeat tracking to reduce DB writes
@@ -189,7 +189,7 @@ class RemoteTranscriptionCoordinator:
 
             # Reclaim jobs that have been running > timeout on any node
             requeued, failed = job_repo.reclaim_stale_jobs(
-                timeout_hours=self._job_timeout_hours
+                timeout_minutes=self._job_timeout_minutes
             )
 
             if requeued > 0 or failed > 0:
@@ -200,20 +200,20 @@ class RemoteTranscriptionCoordinator:
     def configure(
         self,
         heartbeat_timeout_seconds: int | None = None,
-        job_timeout_hours: int | None = None,
+        job_timeout_minutes: int | None = None,
         check_interval_seconds: int | None = None,
     ):
         """Update coordinator configuration.
 
         Args:
             heartbeat_timeout_seconds: Seconds after which a node is considered stale.
-            job_timeout_hours: Hours after which a running job is reclaimed.
+            job_timeout_minutes: Minutes after which a running job is reclaimed.
             check_interval_seconds: How often to check for stale nodes/jobs.
         """
         if heartbeat_timeout_seconds is not None:
             self._heartbeat_timeout_seconds = heartbeat_timeout_seconds
-        if job_timeout_hours is not None:
-            self._job_timeout_hours = job_timeout_hours
+        if job_timeout_minutes is not None:
+            self._job_timeout_minutes = job_timeout_minutes
         if check_interval_seconds is not None:
             self._check_interval_seconds = check_interval_seconds
 
@@ -286,7 +286,7 @@ class RemoteTranscriptionCoordinator:
             "busy_nodes": busy_count,
             "offline_nodes": offline_count,
             "heartbeat_timeout_seconds": self._heartbeat_timeout_seconds,
-            "job_timeout_hours": self._job_timeout_hours,
+            "job_timeout_minutes": self._job_timeout_minutes,
             "nodes": [
                 {
                     "id": n.id,
