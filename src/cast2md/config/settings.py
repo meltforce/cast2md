@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     temp_download_path: Path = Path("./data/temp")
 
     # Whisper configuration
-    whisper_model: str = "base"
+    whisper_model: str = "large-v3-turbo"
     whisper_device: Literal["cpu", "cuda", "auto"] = "auto"
     whisper_compute_type: Literal["int8", "float16", "float32"] = "int8"
     whisper_backend: Literal["auto", "faster-whisper", "mlx"] = "auto"
@@ -125,7 +125,7 @@ NODE_SPECIFIC_SETTINGS = frozenset({
 
 # Default values for comparison (to detect env file overrides)
 _DEFAULTS = {
-    "whisper_model": "base",
+    "whisper_model": "large-v3-turbo",
     "whisper_device": "auto",
     "whisper_compute_type": "int8",
     "whisper_backend": "auto",
