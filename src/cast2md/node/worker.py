@@ -21,6 +21,7 @@ class PrefetchedJob:
 
 from cast2md.config.settings import get_settings
 from cast2md.node.config import NodeConfig, load_config
+from cast2md.storage.filesystem import cleanup_orphaned_temp_files
 from cast2md.transcription.service import get_current_model_name, transcribe_audio
 
 logger = logging.getLogger(__name__)
@@ -104,6 +105,11 @@ class TranscriberNodeWorker:
         if self._running:
             logger.warning("Worker already running")
             return
+
+        # Clean up orphaned temp files from previous runs
+        deleted = cleanup_orphaned_temp_files(hours=24)
+        if deleted > 0:
+            logger.info(f"Cleaned up {deleted} orphaned temp files")
 
         self._running = True
         self._stop_event.clear()
