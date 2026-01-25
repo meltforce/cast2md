@@ -8,6 +8,7 @@ from cast2md.config.settings import (
     get_setting_source,
     reload_settings,
     NODE_SPECIFIC_SETTINGS,
+    RUNPOD_TRANSCRIPTION_MODELS,
 )
 from cast2md.db.connection import get_db
 from cast2md.db.repository import SettingsRepository, WhisperModelRepository
@@ -156,9 +157,9 @@ def _get_configurable_settings() -> dict:
         },
         "runpod_whisper_model": {
             "type": "select",
-            "label": "Pod Whisper Model",
-            "description": "Whisper model for GPU pods",
-            "options": ["large-v3-turbo", "large-v3", "large-v2", "medium", "small"],
+            "label": "Pod Transcription Model",
+            "description": "Transcription model for GPU pods",
+            "options": [model_id for model_id, _ in RUNPOD_TRANSCRIPTION_MODELS],
         },
     }
 
