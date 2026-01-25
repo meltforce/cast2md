@@ -99,10 +99,7 @@
         <tbody>
             {% for state in runpod_status.setup_states %}
             <tr>
-                <td>
-                    <strong>{{ state.pod_name or state.instance_id }}</strong>
-                    <br><small style="color: var(--pico-muted-color);">{{ state.ts_hostname }}</small>
-                </td>
+                <td><strong>{{ state.pod_name or state.instance_id }}</strong></td>
                 <td>
                     {% if state.phase == 'failed' %}
                     <span class="status-badge status-failed">FAILED</span>
