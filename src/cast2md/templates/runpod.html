@@ -48,13 +48,15 @@
 {% if runpod_status.enabled %}
 <!-- Status Overview (only when enabled) -->
 <article>
+    {% set running_pods = runpod_status.setup_states | selectattr('phase', 'equalto', 'ready') | list | length %}
+    {% set starting_pods = runpod_status.setup_states | rejectattr('phase', 'equalto', 'ready') | rejectattr('phase', 'equalto', 'failed') | list | length %}
     <div class="stats-grid" style="margin-bottom: 0;">
         <div class="stat-card">
-            <h3>{{ runpod_status.active_pods | length }}</h3>
-            <p>Active Pods</p>
+            <h3>{{ running_pods }}</h3>
+            <p>Running</p>
         </div>
         <div class="stat-card">
-            <h3>{{ runpod_status.setup_states | length }}</h3>
+            <h3>{{ starting_pods }}</h3>
             <p>Starting</p>
         </div>
         <div class="stat-card">
