@@ -486,23 +486,14 @@ def admin_status_page(request: Request):
         }
         feeds = feed_repo.get_all()
 
-        # Performance stats (throughput)
+        # Performance stats
         hour_stats = job_repo.get_completed_jobs_stats(hours=1, job_type=JobType.TRANSCRIBE)
-        hour_audio = job_repo.get_audio_minutes_processed(hours=1)
         day_stats = job_repo.get_completed_jobs_stats(hours=24, job_type=JobType.TRANSCRIBE)
-        day_audio = job_repo.get_audio_minutes_processed(hours=24)
-
-        def calc_throughput(audio_minutes: int, processing_seconds: int) -> float:
-            if processing_seconds <= 0:
-                return 0.0
-            wall_clock_minutes = processing_seconds / 60
-            return round(audio_minutes / wall_clock_minutes, 1) if wall_clock_minutes > 0 else 0.0
 
         performance_stats = {
-            "hour_throughput": calc_throughput(hour_audio, hour_stats["total_duration_seconds"]),
             "hour_episodes": hour_stats["count"],
-            "day_throughput": calc_throughput(day_audio, day_stats["total_duration_seconds"]),
             "day_episodes": day_stats["count"],
+            "day_eps_per_hour": round(day_stats["count"] / 24, 1) if day_stats["count"] > 0 else 0,
         }
 
         # Get running jobs for worker status display
