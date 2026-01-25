@@ -72,8 +72,8 @@ def queue_missing_embeddings():
         job_repo = JobRepository(conn)
         search_repo = TranscriptSearchRepository(conn)
 
-        # Get episodes with transcripts
-        completed_episodes = episode_repo.get_by_status(EpisodeStatus.COMPLETED)
+        # Get episodes with transcripts (use high limit to get all)
+        completed_episodes = episode_repo.get_by_status(EpisodeStatus.COMPLETED, limit=100000)
 
         # Get episodes that already have embeddings
         embedded_episode_ids = search_repo.get_embedded_episodes()
