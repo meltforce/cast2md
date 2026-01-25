@@ -199,9 +199,9 @@ install_deps() {
     # Upgrade pip
     pip install --quiet --upgrade pip
 
-    # Install cast2md package without dependencies
+    # Install cast2md package without dependencies (suppress resolver warnings)
     cd "$REPO_DIR"
-    pip install --quiet --no-deps -e .
+    pip install --quiet --no-deps -e . 2>/dev/null
 
     # Install node dependencies directly (minimal set for nodes)
     echo "  Installing core dependencies..."
