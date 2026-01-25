@@ -272,6 +272,7 @@ class TranscriberNodeWorker:
                         "name": self._config.name,
                         "whisper_model": model_name,
                         "whisper_backend": settings.transcription_backend,
+                        "current_job_id": self._current_job_id,
                     },
                 )
                 if response.status_code == 200:

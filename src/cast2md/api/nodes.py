@@ -1,9 +1,12 @@
 """Node API endpoints for distributed transcription."""
 
+import logging
 import secrets
 import uuid
 from datetime import datetime
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Response
 from fastapi.responses import FileResponse
@@ -86,6 +89,7 @@ class HeartbeatRequest(BaseModel):
     name: str | None = None
     whisper_model: str | None = None
     whisper_backend: str | None = None
+    current_job_id: int | None = None  # Job currently being processed
 
 
 class HeartbeatResponse(BaseModel):
@@ -227,9 +231,12 @@ def node_heartbeat(
     """Receive heartbeat from a node.
 
     Nodes should call this every 30 seconds to indicate they're alive.
+    If node reports a current_job_id that lost its assignment (e.g., after server
+    restart), the job assignment is restored.
     """
     with get_db() as conn:
         repo = TranscriberNodeRepository(conn)
+        job_repo = JobRepository(conn)
         node = repo.get_by_id(node_id)
 
         if not node:
@@ -258,6 +265,17 @@ def node_heartbeat(
         # If node was offline, mark it as online
         if node.status == NodeStatus.OFFLINE:
             repo.update_status(node_id, NodeStatus.ONLINE)
+
+        # Resync job assignment if node reports a job that lost its assignment
+        # (can happen after server restart)
+        if request.current_job_id:
+            job = job_repo.get_by_id(request.current_job_id)
+            if job and job.status == JobStatus.RUNNING and job.assigned_node_id is None:
+                job_repo.resync_job(request.current_job_id, node_id)
+                logger.info(f"Resynced job {request.current_job_id} to node {node_id}")
+
+            # Update node's current_job_id so status page shows correct episode
+            repo.update_status(node_id, node.status, current_job_id=request.current_job_id)
 
     return HeartbeatResponse(status="ok", message="Heartbeat received")
 

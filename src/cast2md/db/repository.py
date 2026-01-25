@@ -1245,6 +1245,24 @@ class JobRepository:
         )
         self.conn.commit()
 
+    def resync_job(self, job_id: int, node_id: str) -> None:
+        """Reassign a job to a node without incrementing attempts.
+
+        Used to restore job assignment after server restart when a node
+        reports it's still working on a job via heartbeat.
+        """
+        now = datetime.now().isoformat()
+        execute(
+            self.conn,
+            """
+            UPDATE job_queue
+            SET assigned_node_id = %s, claimed_at = %s
+            WHERE id = %s
+            """,
+            (node_id, now, job_id),
+        )
+        self.conn.commit()
+
     def get_jobs_by_node(self, node_id: str) -> list[Job]:
         """Get all jobs assigned to a specific node."""
         cursor = execute(
@@ -1441,12 +1459,15 @@ class JobRepository:
 
         now = datetime.now().isoformat()
 
-        # Find all running jobs with their attempt counts
+        # Find running jobs WITHOUT assigned nodes (local server jobs only).
+        # Jobs with assigned_node_id set are being processed by remote nodes
+        # and should be left alone - the coordinator's job timeout will reclaim
+        # them if the node truly died.
         cursor = execute(
             self.conn,
             """
             SELECT id, episode_id, job_type, attempts, max_attempts FROM job_queue
-            WHERE status = %s
+            WHERE status = %s AND assigned_node_id IS NULL
             """,
             (JobStatus.RUNNING.value,),
         )
