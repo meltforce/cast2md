@@ -114,7 +114,9 @@
                 </td>
                 <td>{{ state.gpu_type or '-' }}</td>
                 <td>
-                    {% if state.pod_id %}
+                    {% if state.phase == 'failed' %}
+                    <button class="secondary outline small dismiss-btn" data-instance-id="{{ state.instance_id }}">Dismiss</button>
+                    {% elif state.pod_id %}
                     <button class="secondary outline small terminate-btn" data-pod-id="{{ state.pod_id }}">Terminate</button>
                     {% else %}
                     -
@@ -452,6 +454,34 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (response.ok) {
                     showToast('Pod terminated', 'success');
                     setTimeout(() => window.location.reload(), 1000);
+                } else {
+                    showToast('Error: ' + data.detail, 'error');
+                    this.disabled = false;
+                    this.removeAttribute('aria-busy');
+                }
+            } catch (err) {
+                showToast('Error: ' + err.message, 'error');
+                this.disabled = false;
+                this.removeAttribute('aria-busy');
+            }
+        });
+    });
+
+    // Dismiss failed setup state buttons
+    document.querySelectorAll('.dismiss-btn').forEach(btn => {
+        btn.addEventListener('click', async function() {
+            const instanceId = this.dataset.instanceId;
+
+            this.disabled = true;
+            this.setAttribute('aria-busy', 'true');
+
+            try {
+                const response = await fetch('/api/runpod/setup-states/' + instanceId, { method: 'DELETE' });
+                const data = await response.json();
+
+                if (response.ok) {
+                    showToast('Dismissed', 'success');
+                    this.closest('tr').remove();
                 } else {
                     showToast('Error: ' + data.detail, 'error');
                     this.disabled = false;

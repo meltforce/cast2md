@@ -206,6 +206,27 @@ def cleanup_states():
     return {"removed": removed, "message": f"Removed {removed} stale setup state(s)"}
 
 
+@router.delete("/setup-states/{instance_id}", response_model=dict)
+def dismiss_setup_state(instance_id: str):
+    """Dismiss/clear a setup state (typically a failed one)."""
+    service = _check_available()
+
+    success = service.dismiss_setup_state(instance_id)
+    if not success:
+        raise HTTPException(status_code=404, detail=f"No setup state found for instance {instance_id}")
+
+    return {"message": f"Dismissed setup state {instance_id}"}
+
+
+@router.post("/setup-states/cleanup-orphaned", response_model=dict)
+def cleanup_orphaned_states():
+    """Remove failed states whose pods no longer exist."""
+    service = _check_available()
+
+    removed = service.cleanup_orphaned_states()
+    return {"removed": removed, "message": f"Removed {removed} orphaned setup state(s)"}
+
+
 class GpuTypeInfo(BaseModel):
     """GPU type information."""
 
