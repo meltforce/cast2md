@@ -946,10 +946,15 @@ tail -f /dev/null
             runpod.terminate_pod(pod_id)
             self._end_pod_run(pod_id)
 
-            # Delete the node registration (it will never reconnect)
+            # Clean up node and setup state
             if instance_id:
                 node_name = f"RunPod Afterburner {instance_id}"
                 self._delete_node_by_name(node_name)
+                # Remove setup state from memory and DB
+                with self._lock:
+                    if instance_id in self._setup_states:
+                        del self._setup_states[instance_id]
+                self._delete_persisted_state(instance_id)
 
             logger.info(f"Terminated pod {pod_id}")
             return True
