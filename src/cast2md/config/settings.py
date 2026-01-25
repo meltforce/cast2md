@@ -95,6 +95,19 @@ class Settings(BaseSettings):
 # Cached settings instance
 _settings: Settings | None = None
 
+
+# Available transcription models for RunPod GPU workers
+# Parakeet is fast English-only, Whisper models support multiple languages
+RUNPOD_TRANSCRIPTION_MODELS = [
+    ("parakeet-tdt-0.6b-v3", "Parakeet TDT 0.6B v3 (fast, English)"),
+    ("large-v3-turbo", "Whisper large-v3-turbo"),
+    ("large-v3", "Whisper large-v3"),
+    ("large-v2", "Whisper large-v2"),
+    ("medium", "Whisper medium"),
+    ("small", "Whisper small"),
+]
+
+
 # Node-specific settings - these come from env file only (not stored in DB).
 # This includes sensitive credentials that shouldn't be in the database.
 NODE_SPECIFIC_SETTINGS = frozenset({

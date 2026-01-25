@@ -749,7 +749,7 @@ def admin_queue_page(request: Request, status: str | None = None):
 @router.get("/admin/runpod", response_class=HTMLResponse)
 def admin_runpod_page(request: Request):
     """Admin RunPod management page."""
-    from cast2md.config.settings import get_settings, reload_settings
+    from cast2md.config.settings import RUNPOD_TRANSCRIPTION_MODELS, get_settings, reload_settings
     from cast2md.services.runpod_service import get_runpod_service
 
     # Reload settings to pick up any runtime changes
@@ -850,6 +850,7 @@ def admin_runpod_page(request: Request):
             "settings": settings,
             "transcribe_queued": transcribe_queued,
             "gpu_types": gpu_types,
+            "transcription_models": RUNPOD_TRANSCRIPTION_MODELS,
             "pod_runs": pod_runs,
             "pod_run_stats": pod_run_stats,
         },
