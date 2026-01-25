@@ -631,9 +631,13 @@ def admin_status_page(request: Request):
             })
 
     # Check for orphaned transcription jobs
+    # Exclude prefetched jobs (those with assigned_node_id are claimed by a node)
     orphaned_transcriptions = []
     for item in running_transcribe_episodes:
         if item["job"].id not in assigned_transcribe_job_ids:
+            # Skip if job is assigned to a node (it's prefetched, not orphaned)
+            if item["job"].assigned_node_id:
+                continue
             orphaned_transcriptions.append({
                 "status": "stuck",
                 "job": item["job"],
