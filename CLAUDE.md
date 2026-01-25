@@ -460,12 +460,24 @@ Node workers have three auto-termination conditions (all respect persistent/dev 
 - Creating pods with `persistent=True` via API
 - Using `--keep-alive` flag with CLI afterburner
 
-**Server-Controlled Termination**: When a node worker decides to auto-terminate, it notifies the server via `POST /api/nodes/{node_id}/request-termination`. The server then:
-1. Identifies the pod from the node name (e.g., "RunPod Afterburner a3f2")
-2. Terminates the pod via RunPod API
-3. Cleans up setup state and node registration atomically
+**Server-Controlled Termination**: When a node worker decides to auto-terminate, it notifies the server first instead of just exiting. This prevents orphaned setup states.
 
-This ensures the server's tracking stays consistent instead of becoming orphaned when pods self-terminate. The bash watchdog becomes a backup mechanism only.
+Flow:
+1. Worker detects termination condition (empty queue, idle, server unreachable)
+2. Worker calls `POST /api/nodes/{node_id}/request-termination`
+3. Server extracts instance_id from node name pattern "RunPod Afterburner {id}"
+4. Server releases any jobs claimed by the node back to queue
+5. Server terminates pod via RunPod API
+6. Server cleans up: setup state, node registration, pod run record
+7. Worker is killed when pod terminates (or exits gracefully if termination fails)
+
+The bash watchdog (created during pod setup) becomes a backup mechanism only - it catches cases where the worker crashes without notifying the server.
+
+**API Endpoint**: `POST /api/nodes/{node_id}/request-termination`
+- Requires `X-Transcriber-Key` header (node's API key)
+- Returns `{"status": "ok", "terminated": true}` on success
+- Returns `{"status": "ignored", "terminated": false}` for non-RunPod nodes
+- Jobs are released before termination to prevent orphaned work
 
 ### Tailscale Userspace Networking (Important Lessons)
 
