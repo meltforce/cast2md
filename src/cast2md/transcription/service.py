@@ -380,41 +380,61 @@ class TranscriptionService:
             timestamps=True,
         )
 
-        # Parse the output - Parakeet returns a list of hypotheses
+        # Parse the output - NeMo returns a list of Hypothesis objects
+        # Structure: output[0] is a list, each item has .text and .timestep dict
         segments = []
         if output and len(output) > 0:
-            # output[0] is the transcription result
-            result = output[0]
+            # Debug: log the actual structure
+            logger.debug(f"NeMo output type: {type(output)}, len: {len(output)}")
+            logger.debug(f"output[0] type: {type(output[0])}")
+            if hasattr(output[0], "__dict__"):
+                logger.debug(f"output[0] attrs: {list(output[0].__dict__.keys())}")
 
-            # Handle different output formats from NeMo
-            if hasattr(result, "timestamp") and result.timestamp:
-                # Word-level timestamps available
-                for ts in result.timestamp:
+            # output[0] is a list of Hypothesis objects (one per audio file)
+            hypotheses = output[0] if isinstance(output[0], list) else [output[0]]
+
+            for hyp in hypotheses:
+                # Handle different output formats from NeMo
+                if hasattr(hyp, "timestep") and hyp.timestep:
+                    # Word-level timestamps: hyp.timestep['word'] is a list of (word, start, end)
+                    word_timestamps = hyp.timestep.get("word", [])
+                    for ts in word_timestamps:
+                        # ts is a tuple/list: (word, start_time, end_time)
+                        if isinstance(ts, (list, tuple)) and len(ts) >= 3:
+                            segments.append(
+                                TranscriptSegment(
+                                    start=float(ts[1]),
+                                    end=float(ts[2]),
+                                    text=str(ts[0]),
+                                )
+                            )
+                        elif isinstance(ts, dict):
+                            # Alternative dict format
+                            segments.append(
+                                TranscriptSegment(
+                                    start=ts.get("start", 0.0),
+                                    end=ts.get("end", 0.0),
+                                    text=ts.get("word", ""),
+                                )
+                            )
+                elif hasattr(hyp, "text") and hyp.text:
+                    # No timestamps, just text
                     segments.append(
                         TranscriptSegment(
-                            start=ts["start"],
-                            end=ts["end"],
-                            text=ts["word"],
+                            start=0.0,
+                            end=0.0,
+                            text=hyp.text,
                         )
                     )
-            elif hasattr(result, "text"):
-                # No timestamps, just text
-                segments.append(
-                    TranscriptSegment(
-                        start=0.0,
-                        end=0.0,
-                        text=result.text,
+                elif isinstance(hyp, str):
+                    # Plain string result
+                    segments.append(
+                        TranscriptSegment(
+                            start=0.0,
+                            end=0.0,
+                            text=hyp,
+                        )
                     )
-                )
-            elif isinstance(result, str):
-                # Plain string result
-                segments.append(
-                    TranscriptSegment(
-                        start=0.0,
-                        end=0.0,
-                        text=result,
-                    )
-                )
 
         return segments
 
