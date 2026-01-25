@@ -236,6 +236,21 @@ def cleanup_orphaned_nodes():
     return {"removed": removed, "message": f"Removed {removed} orphaned node(s)"}
 
 
+@router.post("/pods/{instance_id}/update-code", response_model=dict)
+def update_pod_code(instance_id: str):
+    """Update cast2md code on a running pod (dev mode).
+
+    Stops the worker, reinstalls from git, and restarts.
+    """
+    service = _check_available()
+
+    success = service.update_pod_code(instance_id)
+    if not success:
+        raise HTTPException(status_code=500, detail=f"Failed to update code on pod {instance_id}")
+
+    return {"message": f"Code updated on pod {instance_id}"}
+
+
 class GpuTypeInfo(BaseModel):
     """GPU type information."""
 
