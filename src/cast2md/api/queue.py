@@ -859,7 +859,7 @@ class StuckJobsResponse(BaseModel):
     """Response for stuck jobs list."""
 
     stuck_count: int
-    threshold_hours: int
+    threshold_minutes: int
     jobs: list[StuckJobInfo]
 
 
@@ -895,25 +895,25 @@ class AllJobsResponse(BaseModel):
 def _get_stuck_threshold() -> int:
     """Get stuck threshold hours from settings."""
     from cast2md.config.settings import get_settings
-    return get_settings().stuck_threshold_hours
+    return get_settings().stuck_threshold_minutes
 
 
 @router.get("/stuck", response_model=StuckJobsResponse)
-def get_stuck_jobs(threshold_hours: int | None = None):
+def get_stuck_jobs(threshold_minutes: int | None = None):
     """Get jobs that have been running longer than threshold."""
     from datetime import datetime, timedelta
 
     from cast2md.db.repository import FeedRepository
 
-    if threshold_hours is None:
-        threshold_hours = _get_stuck_threshold()
+    if threshold_minutes is None:
+        threshold_minutes = _get_stuck_threshold()
 
     with get_db() as conn:
         job_repo = JobRepository(conn)
         episode_repo = EpisodeRepository(conn)
         feed_repo = FeedRepository(conn)
 
-        stuck_jobs = job_repo.get_stuck_jobs(threshold_hours)
+        stuck_jobs = job_repo.get_stuck_jobs(threshold_minutes)
 
         jobs = []
         for job in stuck_jobs:
@@ -940,7 +940,7 @@ def get_stuck_jobs(threshold_hours: int | None = None):
 
     return StuckJobsResponse(
         stuck_count=len(jobs),
-        threshold_hours=threshold_hours,
+        threshold_minutes=threshold_minutes,
         jobs=jobs,
     )
 
@@ -980,10 +980,10 @@ def get_all_jobs(
         episode_repo = EpisodeRepository(conn)
         feed_repo = FeedRepository(conn)
 
-        threshold_hours = _get_stuck_threshold()
+        threshold_minutes = _get_stuck_threshold()
         jobs = job_repo.get_all_jobs(status=job_status, job_type=jt, limit=limit)
-        stuck_threshold = datetime.now() - timedelta(hours=threshold_hours)
-        stuck_count = job_repo.count_stuck_jobs(threshold_hours)
+        stuck_threshold = datetime.now() - timedelta(minutes=threshold_minutes)
+        stuck_count = job_repo.count_stuck_jobs(threshold_minutes)
 
         job_infos = []
         for job in jobs:
@@ -1031,14 +1031,14 @@ def _get_stuck_jobs_as_all_jobs(limit: int) -> AllJobsResponse:
 
     from cast2md.db.repository import FeedRepository
 
-    threshold_hours = _get_stuck_threshold()
+    threshold_minutes = _get_stuck_threshold()
 
     with get_db() as conn:
         job_repo = JobRepository(conn)
         episode_repo = EpisodeRepository(conn)
         feed_repo = FeedRepository(conn)
 
-        stuck_jobs = job_repo.get_stuck_jobs(threshold_hours)[:limit]
+        stuck_jobs = job_repo.get_stuck_jobs(threshold_minutes)[:limit]
 
         job_infos = []
         for job in stuck_jobs:
@@ -1078,14 +1078,14 @@ def _get_stuck_jobs_as_all_jobs(limit: int) -> AllJobsResponse:
 
 
 @router.post("/batch/reset-stuck", response_model=BatchQueueResponse)
-def batch_reset_stuck(threshold_hours: int | None = None):
+def batch_reset_stuck(threshold_minutes: int | None = None):
     """Reset all stuck jobs back to queued state or fail them if max attempts exceeded."""
-    if threshold_hours is None:
-        threshold_hours = _get_stuck_threshold()
+    if threshold_minutes is None:
+        threshold_minutes = _get_stuck_threshold()
 
     with get_db() as conn:
         job_repo = JobRepository(conn)
-        requeued, failed = job_repo.batch_force_reset_stuck(threshold_hours)
+        requeued, failed = job_repo.batch_force_reset_stuck(threshold_minutes)
 
     return BatchQueueResponse(
         queued=requeued,
