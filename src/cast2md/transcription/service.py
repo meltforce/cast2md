@@ -5,12 +5,18 @@ from __future__ import annotations
 import logging
 import platform
 import threading
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Optional
 
 from cast2md.config.settings import get_settings
-from cast2md.transcription.preprocessing import cleanup_preprocessed, preprocess_audio
+from cast2md.transcription.preprocessing import (
+    cleanup_preprocessed,
+    extract_audio_chunk,
+    get_audio_duration,
+    preprocess_audio,
+)
 
 # Type hints only - these imports don't execute at runtime for node installs
 if TYPE_CHECKING:
@@ -221,7 +227,40 @@ class TranscriptionService:
         audio_path: Path,
         progress_callback: Optional[Callable[[int], None]] = None,
     ) -> TranscriptResult:
-        """Transcribe using faster-whisper backend."""
+        """Transcribe using faster-whisper backend.
+
+        For long audio files (> chunk threshold), uses chunked processing
+        to avoid loading the entire file into memory.
+        """
+        settings = get_settings()
+        threshold_seconds = settings.whisper_chunk_threshold_minutes * 60
+
+        # Check duration without loading file into memory
+        try:
+            duration = get_audio_duration(audio_path)
+        except Exception as e:
+            logger.warning(f"Could not get audio duration, using non-chunked mode: {e}")
+            duration = 0
+
+        # Use chunked processing for long files
+        if duration > threshold_seconds:
+            logger.info(
+                f"Audio duration {duration / 60:.1f} min exceeds threshold "
+                f"({settings.whisper_chunk_threshold_minutes} min), using chunked processing"
+            )
+            return self._transcribe_faster_whisper_chunked(
+                audio_path, duration, progress_callback
+            )
+
+        # Short audio - process whole file
+        return self._transcribe_faster_whisper_single(audio_path, progress_callback)
+
+    def _transcribe_faster_whisper_single(
+        self,
+        audio_path: Path,
+        progress_callback: Optional[Callable[[int], None]] = None,
+    ) -> TranscriptResult:
+        """Transcribe a single audio file using faster-whisper (non-chunked)."""
         segments_iter, info = self.model.transcribe(
             str(audio_path),
             vad_filter=True,
@@ -251,6 +290,102 @@ class TranscriptionService:
             segments=segments,
             language=info.language,
             language_probability=info.language_probability,
+        )
+
+    def _transcribe_faster_whisper_chunked(
+        self,
+        audio_path: Path,
+        total_duration: float,
+        progress_callback: Optional[Callable[[int], None]] = None,
+    ) -> TranscriptResult:
+        """Transcribe long audio in chunks for memory efficiency.
+
+        Uses ffmpeg to extract chunks without loading entire file,
+        then combines results with adjusted timestamps.
+        """
+        settings = get_settings()
+        chunk_size_seconds = settings.whisper_chunk_size_minutes * 60
+        temp_dir = settings.temp_download_path
+        temp_dir.mkdir(parents=True, exist_ok=True)
+
+        # Calculate number of chunks
+        num_chunks = int((total_duration + chunk_size_seconds - 1) // chunk_size_seconds)
+        logger.info(
+            f"Splitting {total_duration / 60:.1f} min audio into {num_chunks} chunks "
+            f"of {settings.whisper_chunk_size_minutes} min each"
+        )
+
+        all_segments = []
+        detected_language = None
+        language_probability = 0.0
+        chunk_paths = []
+
+        try:
+            for i in range(num_chunks):
+                start_sec = i * chunk_size_seconds
+                # For last chunk, use remaining duration
+                this_chunk_duration = min(chunk_size_seconds, total_duration - start_sec)
+
+                # Generate unique chunk filename
+                chunk_filename = f"chunk_{uuid.uuid4().hex[:8]}_{i}.wav"
+                chunk_path = temp_dir / chunk_filename
+                chunk_paths.append(chunk_path)
+
+                # Extract chunk using ffmpeg (memory efficient)
+                logger.info(
+                    f"Extracting chunk {i + 1}/{num_chunks}: "
+                    f"{start_sec / 60:.1f}-{(start_sec + this_chunk_duration) / 60:.1f} min"
+                )
+                extract_audio_chunk(audio_path, start_sec, this_chunk_duration, chunk_path)
+
+                # Transcribe chunk
+                logger.info(f"Transcribing chunk {i + 1}/{num_chunks}")
+                segments_iter, info = self.model.transcribe(
+                    str(chunk_path),
+                    vad_filter=True,
+                    vad_parameters=dict(
+                        min_silence_duration_ms=500,
+                    ),
+                )
+
+                # Capture language from first chunk
+                if detected_language is None:
+                    detected_language = info.language
+                    language_probability = info.language_probability
+
+                # Process segments with timestamp offset
+                for seg in segments_iter:
+                    all_segments.append(
+                        TranscriptSegment(
+                            start=seg.start + start_sec,  # Adjust for chunk offset
+                            end=seg.end + start_sec,
+                            text=seg.text,
+                        )
+                    )
+
+                # Report progress based on chunks completed
+                if progress_callback:
+                    progress = int(((i + 1) / num_chunks) * 99)
+                    progress_callback(progress)
+
+                # Clean up chunk after processing
+                if chunk_path.exists():
+                    chunk_path.unlink()
+                    chunk_paths.remove(chunk_path)
+
+        finally:
+            # Clean up any remaining chunk files on error
+            for chunk_path in chunk_paths:
+                if chunk_path.exists():
+                    try:
+                        chunk_path.unlink()
+                    except Exception:
+                        pass
+
+        return TranscriptResult(
+            segments=all_segments,
+            language=detected_language or "unknown",
+            language_probability=language_probability,
         )
 
     def _transcribe_mlx(self, audio_path: Path) -> TranscriptResult:

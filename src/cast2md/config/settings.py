@@ -35,6 +35,11 @@ class Settings(BaseSettings):
     # Transcription backend: whisper (default) or parakeet (for GPU nodes)
     transcription_backend: Literal["whisper", "parakeet"] = "whisper"
 
+    # Whisper chunking for memory efficiency (faster-whisper only)
+    # Episodes longer than threshold are processed in chunks to avoid OOM
+    whisper_chunk_threshold_minutes: int = 30  # Chunk episodes longer than this
+    whisper_chunk_size_minutes: int = 30       # Size of each chunk
+
     # Download settings
     max_concurrent_downloads: int = 2
     max_transcript_download_workers: int = 4  # Parallel workers for fetching external transcripts
@@ -124,6 +129,8 @@ _DEFAULTS = {
     "whisper_compute_type": "int8",
     "whisper_backend": "auto",
     "transcription_backend": "whisper",
+    "whisper_chunk_threshold_minutes": 30,
+    "whisper_chunk_size_minutes": 30,
     "max_concurrent_downloads": 2,
     "max_transcript_download_workers": 4,
     "max_retry_attempts": 3,
