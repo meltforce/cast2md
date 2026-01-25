@@ -749,7 +749,8 @@ def admin_queue_page(request: Request, status: str | None = None):
 @router.get("/admin/runpod", response_class=HTMLResponse)
 def admin_runpod_page(request: Request):
     """Admin RunPod management page."""
-    from cast2md.config.settings import RUNPOD_TRANSCRIPTION_MODELS, get_settings, reload_settings
+    from cast2md.config.settings import get_settings, reload_settings
+    from cast2md.db.repository import RunPodModelRepository
     from cast2md.services.runpod_service import get_runpod_service
 
     # Reload settings to pick up any runtime changes
@@ -842,6 +843,14 @@ def admin_runpod_page(request: Request):
     pod_runs = service.get_pod_runs(limit=10) if service.is_available() else []
     pod_run_stats = service.get_pod_run_stats(days=30) if service.is_available() else {}
 
+    # Get transcription models from database
+    model_repo = RunPodModelRepository(conn)
+    model_repo.seed_defaults()
+    transcription_models = [
+        {"id": m.id, "display_name": m.display_name, "backend": m.backend}
+        for m in model_repo.get_all(enabled_only=True)
+    ]
+
     return templates.TemplateResponse(
         "runpod.html",
         {
@@ -850,7 +859,7 @@ def admin_runpod_page(request: Request):
             "settings": settings,
             "transcribe_queued": transcribe_queued,
             "gpu_types": gpu_types,
-            "transcription_models": RUNPOD_TRANSCRIPTION_MODELS,
+            "transcription_models": transcription_models,
             "pod_runs": pod_runs,
             "pod_run_stats": pod_run_stats,
         },

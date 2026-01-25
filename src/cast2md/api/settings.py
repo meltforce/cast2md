@@ -8,10 +8,9 @@ from cast2md.config.settings import (
     get_setting_source,
     reload_settings,
     NODE_SPECIFIC_SETTINGS,
-    RUNPOD_TRANSCRIPTION_MODELS,
 )
 from cast2md.db.connection import get_db
-from cast2md.db.repository import SettingsRepository, WhisperModelRepository
+from cast2md.db.repository import RunPodModelRepository, SettingsRepository, WhisperModelRepository
 from cast2md.notifications.ntfy import send_notification, NotificationType
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
@@ -26,7 +25,13 @@ def _get_configurable_settings() -> dict:
         model_repo.seed_defaults()
         models = model_repo.get_all(enabled_only=True)
 
+        # Get RunPod models from database
+        runpod_model_repo = RunPodModelRepository(conn)
+        runpod_model_repo.seed_defaults()
+        runpod_models = runpod_model_repo.get_all(enabled_only=True)
+
     model_options = [m.id for m in models]
+    runpod_model_options = [m.id for m in runpod_models]
 
     # Order matters for UI layout (2 items per row)
     # Row 1: Whisper Model, Whisper Backend
@@ -159,7 +164,7 @@ def _get_configurable_settings() -> dict:
             "type": "select",
             "label": "Pod Transcription Model",
             "description": "Transcription model for GPU pods",
-            "options": [model_id for model_id, _ in RUNPOD_TRANSCRIPTION_MODELS],
+            "options": runpod_model_options if runpod_model_options else ["parakeet-tdt-0.6b-v3"],
         },
     }
 

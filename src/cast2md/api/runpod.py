@@ -287,3 +287,114 @@ def refresh_gpu_types():
         raise HTTPException(status_code=500, detail=f"Failed to refresh GPU types: {e}")
 
     return GpuTypesResponse(gpu_types=FALLBACK_GPU_TYPES, source="fallback")
+
+
+# RunPod Transcription Models API
+
+class RunPodModelInfo(BaseModel):
+    """RunPod transcription model info."""
+
+    id: str
+    display_name: str
+    backend: str
+    is_enabled: bool
+    sort_order: int
+
+
+class RunPodModelsResponse(BaseModel):
+    """List of RunPod transcription models."""
+
+    models: list[RunPodModelInfo]
+
+
+class AddRunPodModelRequest(BaseModel):
+    """Request to add a RunPod transcription model."""
+
+    id: str
+    display_name: str
+    backend: str = "whisper"  # 'whisper' or 'parakeet'
+
+
+class MessageResponse(BaseModel):
+    """Generic message response."""
+
+    message: str
+
+
+@router.get("/models", response_model=RunPodModelsResponse)
+def list_runpod_models(include_disabled: bool = False):
+    """List all RunPod transcription models."""
+    from cast2md.db.connection import get_db
+    from cast2md.db.repository import RunPodModelRepository
+
+    with get_db() as conn:
+        repo = RunPodModelRepository(conn)
+        repo.seed_defaults()
+        models = repo.get_all(enabled_only=not include_disabled)
+
+    return RunPodModelsResponse(
+        models=[
+            RunPodModelInfo(
+                id=m.id,
+                display_name=m.display_name,
+                backend=m.backend,
+                is_enabled=m.is_enabled,
+                sort_order=m.sort_order,
+            )
+            for m in models
+        ]
+    )
+
+
+@router.post("/models", response_model=MessageResponse)
+def add_runpod_model(request: AddRunPodModelRequest):
+    """Add a custom RunPod transcription model."""
+    from cast2md.db.connection import get_db
+    from cast2md.db.repository import RunPodModelRepository
+
+    with get_db() as conn:
+        repo = RunPodModelRepository(conn)
+        # Get max sort_order and add after
+        models = repo.get_all(enabled_only=False)
+        max_order = max((m.sort_order for m in models), default=0)
+
+        repo.upsert(
+            model_id=request.id,
+            display_name=request.display_name,
+            backend=request.backend,
+            is_enabled=True,
+            sort_order=max_order + 10,
+        )
+
+    return MessageResponse(message=f"Model '{request.id}' added.")
+
+
+@router.delete("/models/{model_id}", response_model=MessageResponse)
+def delete_runpod_model(model_id: str):
+    """Delete a RunPod transcription model."""
+    from cast2md.db.connection import get_db
+    from cast2md.db.repository import RunPodModelRepository
+
+    with get_db() as conn:
+        repo = RunPodModelRepository(conn)
+        if repo.delete(model_id):
+            return MessageResponse(message=f"Model '{model_id}' deleted.")
+        raise HTTPException(status_code=404, detail=f"Model '{model_id}' not found.")
+
+
+@router.post("/models/reset", response_model=MessageResponse)
+def reset_runpod_models():
+    """Reset RunPod models to defaults."""
+    from cast2md.db.connection import get_db
+    from cast2md.db.repository import RunPodModelRepository
+
+    with get_db() as conn:
+        # Clear all models
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM runpod_models")
+        conn.commit()
+        # Re-seed defaults
+        repo = RunPodModelRepository(conn)
+        count = repo.seed_defaults()
+
+    return MessageResponse(message=f"Models reset to {count} defaults.")

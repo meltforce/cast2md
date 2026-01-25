@@ -172,11 +172,11 @@
         <label>
             Transcription Model
             <select id="setting-whisper-model" name="runpod_whisper_model">
-                {% for model_id, model_label in transcription_models %}
-                <option value="{{ model_id }}" {% if model_id == settings.runpod_whisper_model %}selected{% endif %}>{{ model_label }}</option>
+                {% for model in transcription_models %}
+                <option value="{{ model.id }}" {% if model.id == settings.runpod_whisper_model %}selected{% endif %}>{{ model.display_name }}</option>
                 {% endfor %}
             </select>
-            <small>Parakeet (fast, English) or Whisper models</small>
+            <small>Parakeet (fast, 25 EU languages) or Whisper models</small>
         </label>
     </div>
     <div class="grid">
@@ -202,6 +202,62 @@
         <strong>Server:</strong> {{ runpod_status.server_url or 'Not detected' }} &nbsp;|&nbsp;
         <strong>IP:</strong> {{ runpod_status.server_ip or 'Not detected' }}
     </div>
+
+    <details style="margin-top: 1rem;">
+        <summary>Manage Transcription Models</summary>
+        <table id="modelsTable" style="margin-top: 0.5rem;">
+            <thead>
+                <tr>
+                    <th>Model ID</th>
+                    <th>Display Name</th>
+                    <th>Backend</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for model in transcription_models %}
+                <tr>
+                    <td><code>{{ model.id }}</code></td>
+                    <td>{{ model.display_name }}</td>
+                    <td>{{ model.backend }}</td>
+                    <td>
+                        <button type="button" class="outline secondary" style="padding: 0.25rem 0.5rem; font-size: 0.875rem;"
+                                onclick="deleteModel('{{ model.id }}')">Delete</button>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <details style="margin-top: 1rem;">
+            <summary>Add Custom Model</summary>
+            <div style="margin-top: 1rem;">
+                <div class="grid">
+                    <label>
+                        Model ID
+                        <input type="text" id="newModelId" placeholder="e.g., distil-large-v3">
+                    </label>
+                    <label>
+                        Display Name
+                        <input type="text" id="newModelDisplayName" placeholder="e.g., Whisper distil-large-v3">
+                    </label>
+                </div>
+                <div class="grid">
+                    <label>
+                        Backend
+                        <select id="newModelBackend">
+                            <option value="whisper">whisper</option>
+                            <option value="parakeet">parakeet</option>
+                        </select>
+                    </label>
+                    <div style="display: flex; align-items: flex-end; gap: 0.5rem;">
+                        <button type="button" onclick="addModel()" style="flex: 1;">Add Model</button>
+                        <button type="button" class="outline secondary" onclick="resetModels()">Reset to Defaults</button>
+                    </div>
+                </div>
+            </div>
+        </details>
+    </details>
 </article>
 
 <!-- Pod Run History -->
@@ -288,11 +344,11 @@
         <label>
             Transcription Model
             <select id="setting-whisper-model" name="runpod_whisper_model">
-                {% for model_id, model_label in transcription_models %}
-                <option value="{{ model_id }}" {% if model_id == settings.runpod_whisper_model %}selected{% endif %}>{{ model_label }}</option>
+                {% for model in transcription_models %}
+                <option value="{{ model.id }}" {% if model.id == settings.runpod_whisper_model %}selected{% endif %}>{{ model.display_name }}</option>
                 {% endfor %}
             </select>
-            <small>Parakeet (fast, English) or Whisper models</small>
+            <small>Parakeet (fast, 25 EU languages) or Whisper models</small>
         </label>
     </div>
     <div class="grid">
@@ -601,5 +657,89 @@ document.addEventListener('DOMContentLoaded', function() {
     setTimeout(() => window.location.reload(), 5000);
     {% endif %}
 });
+
+// Model management functions
+async function addModel() {
+    const modelId = document.getElementById('newModelId').value.trim();
+    const displayName = document.getElementById('newModelDisplayName').value.trim();
+    const backend = document.getElementById('newModelBackend').value;
+
+    if (!modelId || !displayName) {
+        showToast('Model ID and Display Name are required', 'error');
+        return;
+    }
+
+    try {
+        const response = await fetch('/api/runpod/models', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: modelId, display_name: displayName, backend: backend })
+        });
+        const data = await response.json();
+
+        if (response.ok) {
+            showToast(data.message, 'success');
+            setTimeout(() => window.location.reload(), 1000);
+        } else {
+            showToast('Error: ' + (data.detail || 'Failed to add model'), 'error');
+        }
+    } catch (err) {
+        showToast('Error: ' + err.message, 'error');
+    }
+}
+
+async function deleteModel(modelId) {
+    if (!await showConfirm(`Delete model "${modelId}"?`, 'Delete Model', 'Delete')) return;
+
+    try {
+        const response = await fetch(`/api/runpod/models/${encodeURIComponent(modelId)}`, { method: 'DELETE' });
+        const data = await response.json();
+
+        if (response.ok) {
+            showToast(data.message, 'success');
+            setTimeout(() => window.location.reload(), 1000);
+        } else {
+            showToast('Error: ' + (data.detail || 'Failed to delete'), 'error');
+        }
+    } catch (err) {
+        showToast('Error: ' + err.message, 'error');
+    }
+}
+
+async function resetModels() {
+    if (!await showConfirm('Reset models to defaults? This will remove all custom models.', 'Reset Models')) return;
+
+    try {
+        const response = await fetch('/api/runpod/models/reset', { method: 'POST' });
+        const data = await response.json();
+
+        if (response.ok) {
+            showToast(data.message, 'success');
+            setTimeout(() => window.location.reload(), 1000);
+        } else {
+            showToast('Error: ' + (data.detail || 'Failed to reset'), 'error');
+        }
+    } catch (err) {
+        showToast('Error: ' + err.message, 'error');
+    }
+}
+
+function showToast(message, type) {
+    const container = document.getElementById('toast-container');
+    if (!container) return;
+
+    const toast = document.createElement('div');
+    toast.className = 'toast toast-' + type;
+    toast.style.cssText = 'padding: 0.75rem 1rem; background: var(--pico-card-background-color); border: 1px solid var(--pico-muted-border-color); border-radius: 0.25rem; box-shadow: 0 4px 6px rgba(0,0,0,0.1);';
+    if (type === 'error') {
+        toast.style.borderColor = '#ef4444';
+    } else if (type === 'success') {
+        toast.style.borderColor = '#22c55e';
+    }
+    toast.textContent = message;
+    container.appendChild(toast);
+
+    setTimeout(() => toast.remove(), 5000);
+}
 </script>
 {% endblock %}
