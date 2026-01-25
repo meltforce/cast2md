@@ -207,12 +207,23 @@ class WorkerManager:
                 time.sleep(5.0)
 
     def _transcribe_worker(self):
-        """Worker thread for processing transcription jobs (sequential)."""
+        """Worker thread for processing transcription jobs (sequential).
+
+        When no transcription jobs are available, helps with embedding jobs
+        (work stealing) to speed up embedding backfills.
+        """
         while not self._stop_event.is_set():
             try:
                 job = self._claim_next_job(JobType.TRANSCRIBE)
                 if job is None:
-                    # No jobs, wait before checking again
+                    # No transcription jobs - try to help with embeddings
+                    embed_job = self._claim_next_job(JobType.EMBED)
+                    if embed_job is not None:
+                        logger.debug("Transcribe worker helping with embed job")
+                        self._process_embed_job(embed_job.id, embed_job.episode_id)
+                        continue
+
+                    # No jobs at all, wait before checking again
                     self._stop_event.wait(timeout=5.0)
                     continue
 
