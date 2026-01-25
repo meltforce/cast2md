@@ -519,11 +519,12 @@ update_install() {
 
     start_service
 
-    # Get version
-    VERSION=$("$VENV_DIR/bin/cast2md" --version 2>/dev/null || echo "unknown")
+    # Get version (git commit hash since package version isn't bumped often)
+    cd "$REPO_DIR"
+    GIT_VERSION=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 
     echo ""
-    print_success "Updated to $VERSION"
+    print_success "Updated to commit $GIT_VERSION"
     echo ""
     echo "Status UI: http://localhost:8001"
 }
