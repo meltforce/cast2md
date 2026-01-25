@@ -29,6 +29,15 @@ from cast2md.transcription.service import get_current_model_name, transcribe_aud
 logger = logging.getLogger(__name__)
 
 
+def is_embeddings_available() -> bool:
+    """Check if sentence-transformers is available for embedding generation."""
+    try:
+        from cast2md.search.embeddings import is_embeddings_available as check_embeddings
+        return check_embeddings()
+    except ImportError:
+        return False
+
+
 class TranscriberNodeWorker:
     """Worker that polls server for jobs and processes them.
 
@@ -360,6 +369,15 @@ class TranscriberNodeWorker:
                         self._consecutive_empty = 0  # Reset empty counter
                         self._process_job(job)
                     else:
+                        # No transcription job - try to help with embeddings
+                        if is_embeddings_available():
+                            embed_job = self._claim_embed_job()
+                            if embed_job:
+                                self._consecutive_empty = 0  # Reset empty counter
+                                logger.info("Helping with embed job (no transcription work)")
+                                self._process_embed_job(embed_job)
+                                continue
+
                         # No job available - track for empty queue termination
                         self._consecutive_empty += 1
                         if self._consecutive_empty == 1:
@@ -718,3 +736,167 @@ class TranscriberNodeWorker:
 
         except httpx.RequestError as e:
             logger.error(f"Fail error: {e}")
+
+    # === Embedding Job Support ===
+
+    def _claim_embed_job(self) -> Optional[dict]:
+        """Try to claim an embed job from the server.
+
+        Returns:
+            Job info dict if claimed, None otherwise.
+        """
+        try:
+            response = self._client.post(f"/api/nodes/{self._config.node_id}/claim-embed")
+
+            if response.status_code != 200:
+                logger.debug(f"Embed claim request failed: {response.status_code}")
+                return None
+
+            # Server responded - update last contact time
+            self._last_server_contact = time.time()
+
+            data = response.json()
+            if not data.get("has_job"):
+                return None
+
+            logger.info(f"Claimed embed job {data['job_id']}: {data.get('episode_title', 'Unknown')}")
+            return data
+
+        except httpx.RequestError as e:
+            logger.debug(f"Embed claim error: {e}")
+            return None
+
+    def _process_embed_job(self, job: dict):
+        """Process an embed job: download transcript, generate embeddings, upload.
+
+        Args:
+            job: Job info from claim-embed response.
+        """
+        job_id = job["job_id"]
+        episode_title = job.get("episode_title", "Unknown")
+        transcript_url = job["transcript_url"]
+
+        try:
+            logger.info(f"Processing embed job {job_id}: {episode_title}")
+
+            # Download transcript content
+            transcript_content = self._download_transcript(transcript_url)
+            if not transcript_content:
+                self._fail_job(job_id, "Failed to download transcript")
+                return
+
+            # Generate embeddings
+            embeddings = self._generate_embeddings(transcript_content)
+            if not embeddings:
+                self._fail_job(job_id, "Failed to generate embeddings")
+                return
+
+            # Upload embeddings to server
+            self._complete_embed_job(job_id, embeddings)
+
+        except Exception as e:
+            logger.error(f"Embed job {job_id} failed with exception: {e}")
+            self._fail_job(job_id, str(e))
+
+    def _download_transcript(self, transcript_url: str) -> Optional[str]:
+        """Download transcript content from server.
+
+        Args:
+            transcript_url: Relative URL to transcript endpoint.
+
+        Returns:
+            Transcript content string, or None on error.
+        """
+        try:
+            response = self._client.get(transcript_url, timeout=30.0)
+            if response.status_code != 200:
+                logger.error(f"Transcript download failed: HTTP {response.status_code}")
+                return None
+
+            data = response.json()
+            return data.get("transcript_content")
+
+        except httpx.RequestError as e:
+            logger.error(f"Transcript download error: {e}")
+            return None
+
+    def _generate_embeddings(self, transcript_content: str) -> Optional[list[dict]]:
+        """Generate embeddings for transcript segments.
+
+        Args:
+            transcript_content: Raw transcript content (markdown string).
+
+        Returns:
+            List of embedding dicts, or None on error.
+        """
+        from cast2md.search.embeddings import generate_embeddings_batch
+        from cast2md.search.parser import (
+            TranscriptSegment,
+            merge_word_level_segments,
+            parse_transcript_segments,
+        )
+
+        try:
+            # Parse transcript (markdown format with **[MM:SS]** timestamps)
+            segments = parse_transcript_segments(transcript_content)
+
+            # If no timestamped segments found, treat as plain text
+            if not segments:
+                segments = [TranscriptSegment(start=0.0, end=0.0, text=transcript_content)]
+
+            # Merge word-level segments into phrases
+            segments = merge_word_level_segments(segments)
+
+            if not segments:
+                logger.warning("No segments found in transcript")
+                return []
+
+            # Generate embeddings in batch
+            texts = [seg.text for seg in segments]
+            embeddings = generate_embeddings_batch(texts, as_numpy=False)  # Get as lists for JSON
+
+            # Build result list
+            result = []
+            for i, (segment, embedding) in enumerate(zip(segments, embeddings)):
+                result.append({
+                    "segment_index": i,
+                    "text": segment.text,
+                    "start": segment.start,
+                    "end": segment.end,
+                    "embedding": embedding if isinstance(embedding, list) else embedding.tolist(),
+                })
+
+            logger.info(f"Generated {len(result)} embeddings")
+            return result
+
+        except Exception as e:
+            logger.error(f"Embedding generation error: {e}")
+            import traceback
+            logger.debug(f"Traceback:\n{traceback.format_exc()}")
+            return None
+
+    def _complete_embed_job(self, job_id: int, embeddings: list[dict]):
+        """Submit completed embed job to server.
+
+        Args:
+            job_id: Job ID to complete.
+            embeddings: List of embedding dicts.
+        """
+        logger.info(f"Completing embed job {job_id} ({len(embeddings)} embeddings)")
+
+        try:
+            response = self._client.post(
+                f"/api/nodes/jobs/{job_id}/complete-embed",
+                json={"embeddings": embeddings},
+                timeout=120.0,  # Longer timeout for large uploads
+            )
+
+            if response.status_code == 200:
+                logger.info(f"Embed job {job_id} completed successfully")
+                # Reset idle timer on successful completion
+                self._last_job_time = time.time()
+            else:
+                logger.error(f"Complete embed request failed: {response.status_code} - {response.text}")
+
+        except httpx.RequestError as e:
+            logger.error(f"Complete embed error: {e}")
