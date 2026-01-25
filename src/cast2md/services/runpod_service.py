@@ -665,7 +665,7 @@ tail -f /dev/null
             self._update_state(instance_id, host_ip=host_ip, phase=PodSetupPhase.INSTALLING, message="Installing dependencies...")
 
             # SSH setup
-            self._setup_pod_via_ssh(host_ip, state.node_name)
+            self._setup_pod_via_ssh(instance_id, host_ip, state.node_name)
             self._update_state(instance_id, phase=PodSetupPhase.READY, message="Worker is running")
 
             # Record pod run in database
@@ -855,11 +855,13 @@ tail -f /dev/null
 
         return None
 
-    def _setup_pod_via_ssh(self, host_ip: str, node_name: str) -> None:
+    def _setup_pod_via_ssh(self, instance_id: str, host_ip: str, node_name: str) -> None:
         """Install cast2md and dependencies on the pod via Tailscale SSH."""
         from cast2md.services.pod_setup import PodSetupConfig, setup_pod
 
         def run_ssh(cmd: str, description: str, timeout: int = 300) -> str:
+            # Update status with current step
+            self._update_state(instance_id, message=description)
             # Use Tailscale SSH (pods don't have regular sshd)
             ssh_cmd = ["tailscale", "ssh", f"root@{host_ip}", cmd]
             try:
