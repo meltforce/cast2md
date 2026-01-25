@@ -78,7 +78,7 @@ class Settings(BaseSettings):
     # RunPod pod configuration
     runpod_gpu_type: str = "NVIDIA GeForce RTX 4090"
     runpod_whisper_model: str = "parakeet-tdt-0.6b-v3"
-    runpod_image_name: str = "ghcr.io/meltforce/cast2md-afterburner:latest"
+    runpod_image_name: str = "meltforce/cast2md-afterburner:latest"
     runpod_ts_hostname: str = "runpod-afterburner"  # Base hostname (instance ID appended)
     runpod_github_repo: str = "meltforce/cast2md"
 
@@ -144,7 +144,7 @@ _DEFAULTS = {
     "runpod_ts_auth_key": "",
     "runpod_gpu_type": "NVIDIA GeForce RTX 4090",
     "runpod_whisper_model": "parakeet-tdt-0.6b-v3",
-    "runpod_image_name": "ghcr.io/meltforce/cast2md-afterburner:latest",
+    "runpod_image_name": "meltforce/cast2md-afterburner:latest",
     "runpod_ts_hostname": "runpod-afterburner",
     "runpod_github_repo": "meltforce/cast2md",
     "runpod_server_url": "",
