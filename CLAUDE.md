@@ -460,6 +460,13 @@ Node workers have three auto-termination conditions (all respect persistent/dev 
 - Creating pods with `persistent=True` via API
 - Using `--keep-alive` flag with CLI afterburner
 
+**Server-Controlled Termination**: When a node worker decides to auto-terminate, it notifies the server via `POST /api/nodes/{node_id}/request-termination`. The server then:
+1. Identifies the pod from the node name (e.g., "RunPod Afterburner a3f2")
+2. Terminates the pod via RunPod API
+3. Cleans up setup state and node registration atomically
+
+This ensures the server's tracking stays consistent instead of becoming orphaned when pods self-terminate. The bash watchdog becomes a backup mechanism only.
+
 ### Tailscale Userspace Networking (Important Lessons)
 
 RunPod containers don't have `/dev/net/tun`, so Tailscale must run in **userspace mode**. This has significant implications:

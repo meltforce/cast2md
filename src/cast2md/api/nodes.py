@@ -246,6 +246,76 @@ def node_heartbeat(
     return HeartbeatResponse(status="ok", message="Heartbeat received")
 
 
+class TerminationRequestResponse(BaseModel):
+    """Response for termination request."""
+
+    status: str
+    message: str
+    terminated: bool
+
+
+@router.post("/{node_id}/request-termination", response_model=TerminationRequestResponse)
+def request_termination(
+    node_id: str,
+    api_key: str = Depends(verify_node_api_key),
+):
+    """Request termination of a RunPod worker pod.
+
+    Called by node workers before auto-terminating. This allows the server
+    to terminate the pod and clean up state atomically, preventing orphaned
+    setup states.
+
+    Only works for RunPod Afterburner nodes (name matches "RunPod Afterburner *").
+    """
+    import re
+
+    from cast2md.services.runpod_service import get_runpod_service
+
+    with get_db() as conn:
+        repo = TranscriberNodeRepository(conn)
+        node = repo.get_by_id(node_id)
+
+        if not node:
+            raise HTTPException(status_code=404, detail="Node not found")
+
+        if node.api_key != api_key:
+            raise HTTPException(status_code=401, detail="Invalid API key for this node")
+
+        # Check if this is a RunPod Afterburner node
+        match = re.match(r"RunPod Afterburner (\w+)", node.name)
+        if not match:
+            return TerminationRequestResponse(
+                status="ignored",
+                message="Not a RunPod Afterburner node, termination not applicable",
+                terminated=False,
+            )
+
+        instance_id = match.group(1)
+
+        # Get RunPod service and terminate
+        service = get_runpod_service()
+        if not service.is_available():
+            return TerminationRequestResponse(
+                status="unavailable",
+                message="RunPod service not available",
+                terminated=False,
+            )
+
+        success = service.terminate_by_instance_id(instance_id)
+        if success:
+            return TerminationRequestResponse(
+                status="ok",
+                message=f"Terminated pod for instance {instance_id}",
+                terminated=True,
+            )
+        else:
+            return TerminationRequestResponse(
+                status="failed",
+                message=f"Failed to terminate pod for instance {instance_id}",
+                terminated=False,
+            )
+
+
 @router.post("/{node_id}/claim", response_model=ClaimJobResponse)
 def claim_job(
     node_id: str,
