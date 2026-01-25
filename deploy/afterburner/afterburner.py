@@ -749,6 +749,17 @@ def setup_pod_via_ssh(config: Config, host_ip: str, node_name: str = "RunPod Aft
         "Verifying worker is running"
     )
 
+    # Start watchdog that terminates the pod when worker exits (unless persistent)
+    if not config.persistent:
+        run_ssh(
+            "nohup bash -c '"
+            "while pgrep -f \"cast2md node\" > /dev/null; do sleep 5; done; "
+            "echo \"Worker exited, terminating pod...\" >> /tmp/cast2md-node.log; "
+            "runpodctl stop"
+            "' > /tmp/watchdog.log 2>&1 &",
+            "Starting watchdog"
+        )
+
     log("Pod setup complete!")
 
 
