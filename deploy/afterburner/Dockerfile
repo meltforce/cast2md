@@ -1,11 +1,11 @@
 # cast2md Afterburner - Pre-configured RunPod image
 # Saves ~8 minutes of setup time by pre-installing dependencies
 #
-# Build and push (requires: docker login ghcr.io):
-#   docker build -t ghcr.io/meltforce/cast2md-afterburner:latest deploy/afterburner/
-#   docker push ghcr.io/meltforce/cast2md-afterburner:latest
+# Build and push manually:
+#   docker build -t meltforce/cast2md-afterburner:latest deploy/afterburner/
+#   docker push meltforce/cast2md-afterburner:latest
 #
-# The image must be public or RunPod needs registry credentials.
+# Or use GitHub Actions: .github/workflows/build-afterburner.yml
 
 # Same base image as before - RunPod's pytorch with CUDA
 FROM runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04

@@ -13,76 +13,88 @@ The pre-configured Docker image speeds up RunPod pod creation from ~8 minutes to
 
 Total image size: ~15GB (base pytorch image is ~10GB)
 
-## Prerequisites
+## Option 1: GitHub Actions (Recommended)
 
-- Docker installed
-- GitHub account with access to meltforce/cast2md
-- GitHub Personal Access Token with `write:packages` scope
+The image is built automatically via GitHub Actions when the Dockerfile changes.
 
-## Build Steps
+### Setup (one-time)
 
-### 1. Login to GitHub Container Registry
+1. Create a Docker Hub account at [hub.docker.com](https://hub.docker.com)
+
+2. Create an access token:
+   - Go to [Account Settings → Security](https://hub.docker.com/settings/security)
+   - Click "New Access Token"
+   - Name: `github-actions`
+   - Permissions: Read & Write
+
+3. Add secrets to your GitHub repo:
+   - Go to Settings → Secrets and variables → Actions
+   - Add `DOCKERHUB_USERNAME`: your Docker Hub username
+   - Add `DOCKERHUB_TOKEN`: the access token from step 2
+
+### Trigger a Build
+
+- **Automatic**: Push changes to `deploy/afterburner/Dockerfile`
+- **Manual**: Go to Actions → "Build Afterburner Image" → "Run workflow"
+
+Build takes ~20-30 minutes on GitHub's free runners.
+
+## Option 2: Build Locally
 
 ```bash
-# Create a token at https://github.com/settings/tokens
-# Required scope: write:packages
+# Login to Docker Hub
+docker login
 
-echo $GITHUB_TOKEN | docker login ghcr.io -u YOUR_USERNAME --password-stdin
+# Build (takes 10-15 minutes)
+docker build -t meltforce/cast2md-afterburner:latest deploy/afterburner/
+
+# Push
+docker push meltforce/cast2md-afterburner:latest
 ```
-
-### 2. Build the Image
-
-```bash
-cd /path/to/cast2md
-docker build -t ghcr.io/meltforce/cast2md-afterburner:latest deploy/afterburner/
-```
-
-Build takes 10-15 minutes (downloading NeMo dependencies and Parakeet model).
-
-### 3. Push to Registry
-
-```bash
-docker push ghcr.io/meltforce/cast2md-afterburner:latest
-```
-
-### 4. Make the Package Public
-
-By default, GitHub packages are private. RunPod can't pull private images without credentials.
-
-1. Go to https://github.com/orgs/meltforce/packages
-2. Click on `cast2md-afterburner`
-3. Click "Package settings"
-4. Scroll to "Danger Zone" → "Change visibility" → Public
 
 ## Updating the Image
 
 Rebuild when:
 - NeMo toolkit has a major update
 - Switching to a different Parakeet model
-- Base RunPod image changes
+- Base RunPod pytorch image changes
 
 No rebuild needed for:
 - cast2md code changes (installed at runtime)
 - Configuration changes
 
+## Verifying the Image
+
+After pushing, verify RunPod can pull it:
+
+```bash
+# Check image exists on Docker Hub
+docker pull meltforce/cast2md-afterburner:latest
+
+# Check size (should be ~15GB)
+docker images meltforce/cast2md-afterburner
+```
+
 ## Troubleshooting
 
-### Build fails with CUDA errors
+### GitHub Actions build fails
 
-The Parakeet model download requires CUDA. If building on a non-GPU machine, you may see warnings but the model should still download. If it fails, build on a GPU-enabled machine or RunPod itself.
+1. Check the Actions tab for error logs
+2. Verify Docker Hub secrets are set correctly
+3. Ensure Docker Hub username matches the image name (`meltforce/...`)
 
 ### RunPod can't pull the image
 
-1. Verify the image is public (see step 4)
-2. Check the image name matches exactly: `ghcr.io/meltforce/cast2md-afterburner:latest`
-3. Try pulling manually: `docker pull ghcr.io/meltforce/cast2md-afterburner:latest`
+1. Verify the image is public on Docker Hub
+2. Check the exact image name: `meltforce/cast2md-afterburner:latest`
+3. Try pulling manually: `docker pull meltforce/cast2md-afterburner:latest`
 
 ### Pod startup still slow
 
-If pods are still slow to start, check the logs - the pre-installed packages might not be detected:
+If pods are still slow to start, verify pre-installed packages:
 
 ```bash
-ssh root@<pod-ip> "which ffmpeg && python -c 'import nemo'"
+ssh root@<pod-ip> "which ffmpeg && python -c 'import nemo' && echo OK"
 ```
 
-Both should succeed without errors if the image is correct.
+If this fails, the wrong image may be in use. Check the RunPod template's image name.
