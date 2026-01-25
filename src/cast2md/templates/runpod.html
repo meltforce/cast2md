@@ -98,15 +98,27 @@
         </thead>
         <tbody>
             {% for state in runpod_status.setup_states %}
+            {% set phase_steps = {'creating': 1, 'starting': 2, 'connecting': 3, 'installing': 4, 'ready': 5, 'failed': 0} %}
+            {% set current_step = phase_steps.get(state.phase, 0) %}
             <tr>
                 <td>
                     <strong>{{ state.pod_name or state.instance_id }}</strong>
                     <br><small style="color: var(--pico-muted-color);">{{ state.ts_hostname }}</small>
                 </td>
                 <td>
-                    <span class="status-badge status-{{ state.phase }}">{{ state.phase }}</span>
+                    <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem;">
+                        <span class="status-badge status-{{ state.phase }}">{{ state.phase }}</span>
+                        {% if state.phase not in ['ready', 'failed'] %}
+                        <small style="color: var(--pico-muted-color);">Step {{ current_step }}/4</small>
+                        {% endif %}
+                    </div>
+                    {% if state.phase not in ['ready', 'failed'] %}
+                    <div style="background: var(--pico-muted-border-color); border-radius: 4px; height: 4px; width: 100%; max-width: 150px; margin-bottom: 0.25rem;">
+                        <div style="background: var(--pico-primary); height: 100%; border-radius: 4px; width: {{ (current_step / 4 * 100) | int }}%;"></div>
+                    </div>
+                    {% endif %}
                     {% if state.message %}
-                    <br><small style="color: var(--pico-muted-color);">{{ state.message }}</small>
+                    <small style="color: var(--pico-muted-color);">{{ state.message }}</small>
                     {% endif %}
                     {% if state.error %}
                     <br><small style="color: #ef4444;">{{ state.error }}</small>
