@@ -138,6 +138,17 @@ async def lifespan(app: FastAPI):
     if deleted > 0:
         logger.info(f"Cleaned up {deleted} orphaned temp files")
 
+    # Cleanup orphaned RunPod nodes (from pods that terminated without notifying server)
+    try:
+        from cast2md.services.runpod_service import get_runpod_service
+        runpod_service = get_runpod_service()
+        if runpod_service.is_available():
+            deleted = runpod_service.cleanup_orphaned_nodes()
+            if deleted > 0:
+                logger.info(f"Cleaned up {deleted} orphaned RunPod nodes")
+    except Exception as e:
+        logger.warning(f"Failed to cleanup orphaned RunPod nodes: {e}")
+
     # Reset any orphaned jobs from previous run
     reset_orphaned_jobs()
 
