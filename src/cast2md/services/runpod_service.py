@@ -56,6 +56,7 @@ class PodSetupState:
     started_at: datetime = field(default_factory=datetime.now)
     error: str | None = None
     host_ip: str | None = None
+    persistent: bool = False  # Dev mode: don't auto-terminate, allow code updates
 
 
 @dataclass
@@ -421,8 +422,13 @@ tail -f /dev/null
         with self._lock:
             return self._setup_states.get(instance_id)
 
-    def create_pod_async(self) -> str:
-        """Start pod creation in background. Returns instance_id."""
+    def create_pod_async(self, persistent: bool = False) -> str:
+        """Start pod creation in background. Returns instance_id.
+
+        Args:
+            persistent: If True, pod won't be auto-terminated and allows code updates.
+                       Use for development/debugging.
+        """
         can_create, reason = self.can_create_pod()
         if not can_create:
             raise RuntimeError(reason)
@@ -441,6 +447,7 @@ tail -f /dev/null
             node_name=node_name,
             phase=PodSetupPhase.CREATING,
             message="Starting pod creation...",
+            persistent=persistent,
         )
 
         with self._lock:
@@ -850,6 +857,63 @@ tail -f /dev/null
         except Exception as e:
             logger.error(f"Failed to cleanup orphaned nodes: {e}")
             return 0
+
+    def update_pod_code(self, instance_id: str) -> bool:
+        """Update cast2md code on a running pod (for development).
+
+        Stops the worker, reinstalls from git, and restarts.
+        Only works on pods in READY state.
+        """
+        state = self.get_setup_state(instance_id)
+        if not state:
+            logger.error(f"No setup state found for {instance_id}")
+            return False
+        if state.phase != PodSetupPhase.READY:
+            logger.error(f"Pod {instance_id} is not ready (phase: {state.phase})")
+            return False
+        if not state.host_ip:
+            logger.error(f"Pod {instance_id} has no host IP")
+            return False
+
+        def run_ssh(cmd: str, description: str, timeout: int = 300) -> str:
+            ssh_cmd = ["tailscale", "ssh", f"root@{state.host_ip}", cmd]
+            try:
+                result = subprocess.run(ssh_cmd, capture_output=True, text=True, timeout=timeout)
+            except subprocess.TimeoutExpired:
+                raise RuntimeError(f"SSH command timed out: {description}")
+            if result.returncode != 0:
+                raise RuntimeError(f"SSH command failed ({description}): {result.stderr}")
+            return result.stdout.strip()
+
+        settings = self.settings
+        try:
+            # Stop the worker
+            run_ssh("pkill -f 'cast2md node' || true", "Stopping worker")
+
+            # Reinstall from git
+            run_ssh(
+                f"pip install --no-cache-dir 'cast2md[node] @ git+https://github.com/{settings.runpod_github_repo}.git'",
+                "Updating cast2md",
+                timeout=600,
+            )
+
+            # Determine backend from model
+            model = settings.runpod_whisper_model
+            is_parakeet = "parakeet" in model.lower()
+            backend_env = "TRANSCRIPTION_BACKEND=parakeet" if is_parakeet else ""
+
+            # Restart worker
+            run_ssh(
+                f"http_proxy=http://localhost:1055 {backend_env} WHISPER_MODEL={model} "
+                "nohup cast2md node start > /tmp/cast2md-node.log 2>&1 &",
+                "Restarting worker",
+            )
+
+            logger.info(f"Updated code on pod {instance_id}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to update pod code: {e}")
+            return False
 
     def should_auto_scale(self, queue_depth: int) -> int:
         """Calculate how many pods to start based on queue depth.
