@@ -563,6 +563,43 @@ The server includes a RunPod service for managing GPU workers via API. This enab
 | `/api/runpod/pods/{instance_id}/setup-status` | GET | Track pod creation progress |
 | `/api/runpod/pods` | DELETE | Terminate all pods |
 | `/api/runpod/pods/{pod_id}` | DELETE | Terminate specific pod |
+| `/api/runpod/pods/{instance_id}/update-code` | POST | Update code on running pod (dev mode) |
+| `/api/runpod/setup-states/{instance_id}` | DELETE | Dismiss a setup state |
+
+#### Dev Mode
+
+For development and debugging, pods can be created in **persistent mode** which:
+- Prevents auto-termination after processing
+- Allows updating code without recreating the pod
+- Persists setup state across server restarts
+
+**Creating a persistent pod:**
+
+Currently via API only - the `create_pod_async(persistent=True)` method is available but not exposed in the UI. Useful for:
+- Testing code changes on a live pod
+- Debugging transcription issues
+- Extended monitoring
+
+**Updating code on a running pod:**
+
+```bash
+# Via API
+curl -X POST https://<your-tailnet>/api/runpod/pods/{instance_id}/update-code
+
+# What it does:
+# 1. Stops the worker process
+# 2. Reinstalls cast2md from git (pip install --no-cache-dir)
+# 3. Restarts the worker with correct environment (TRANSCRIPTION_BACKEND, WHISPER_MODEL)
+```
+
+This avoids the ~2 minute overhead of recreating the entire pod for each code change.
+
+**Setup state persistence:**
+
+Pod setup states are stored in the database (`pod_setup_states` table) and survive server restarts. This means:
+- Pods created before a restart are still tracked after restart
+- Failed states can be dismissed via the API
+- Persistent pods remain visible in the status UI
 
 #### Key Files
 

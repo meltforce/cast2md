@@ -76,6 +76,9 @@ class RunPodService:
     # Template name used for all afterburner pods
     TEMPLATE_NAME = "cast2md-afterburner"
 
+    # Flag to track if DB states have been loaded
+    _db_loaded: bool = False
+
     # Startup script for pods (minimal - just Tailscale setup)
     STARTUP_SCRIPT = '''#!/bin/bash
 set -e
@@ -128,6 +131,83 @@ tail -f /dev/null
         self._setup_states: dict[str, PodSetupState] = {}
         self._lock = threading.Lock()
         self._template_id: str | None = None
+        self._db_loaded = False
+
+    def _ensure_db_loaded(self) -> None:
+        """Load setup states from DB on first access."""
+        if self._db_loaded:
+            return
+
+        try:
+            from cast2md.db.connection import get_db
+            from cast2md.db.repository import PodSetupStateRepository
+
+            with get_db() as conn:
+                repo = PodSetupStateRepository(conn)
+                rows = repo.get_all()
+
+                with self._lock:
+                    for row in rows:
+                        state = PodSetupState(
+                            instance_id=row.instance_id,
+                            pod_id=row.pod_id,
+                            pod_name=row.pod_name,
+                            ts_hostname=row.ts_hostname,
+                            node_name=row.node_name,
+                            gpu_type=row.gpu_type,
+                            phase=PodSetupPhase(row.phase),
+                            message=row.message,
+                            started_at=row.started_at,
+                            error=row.error,
+                            host_ip=row.host_ip,
+                            persistent=row.persistent,
+                        )
+                        self._setup_states[row.instance_id] = state
+
+            self._db_loaded = True
+            if rows:
+                logger.info(f"Loaded {len(rows)} pod setup state(s) from database")
+        except Exception as e:
+            logger.warning(f"Failed to load pod setup states from DB: {e}")
+            self._db_loaded = True  # Don't retry on every access
+
+    def _persist_state(self, state: PodSetupState) -> None:
+        """Persist a setup state to the database."""
+        try:
+            from cast2md.db.connection import get_db
+            from cast2md.db.repository import PodSetupStateRepository, PodSetupStateRow
+
+            row = PodSetupStateRow(
+                instance_id=state.instance_id,
+                pod_id=state.pod_id,
+                pod_name=state.pod_name,
+                ts_hostname=state.ts_hostname,
+                node_name=state.node_name,
+                gpu_type=state.gpu_type,
+                phase=state.phase.value,
+                message=state.message,
+                started_at=state.started_at,
+                error=state.error,
+                host_ip=state.host_ip,
+                persistent=state.persistent,
+            )
+            with get_db() as conn:
+                repo = PodSetupStateRepository(conn)
+                repo.upsert(row)
+        except Exception as e:
+            logger.warning(f"Failed to persist pod setup state: {e}")
+
+    def _delete_persisted_state(self, instance_id: str) -> None:
+        """Delete a setup state from the database."""
+        try:
+            from cast2md.db.connection import get_db
+            from cast2md.db.repository import PodSetupStateRepository
+
+            with get_db() as conn:
+                repo = PodSetupStateRepository(conn)
+                repo.delete(instance_id)
+        except Exception as e:
+            logger.warning(f"Failed to delete persisted pod setup state: {e}")
 
     @property
     def settings(self) -> Settings:
@@ -211,6 +291,7 @@ tail -f /dev/null
         Returns:
             Tuple of (can_create, reason)
         """
+        self._ensure_db_loaded()
         if not self.is_available():
             return False, "RunPod not configured (missing API key)"
         if not self.settings.runpod_enabled:
@@ -414,11 +495,13 @@ tail -f /dev/null
 
     def get_setup_states(self) -> list[PodSetupState]:
         """Get all pod setup states (for status display)."""
+        self._ensure_db_loaded()
         with self._lock:
             return list(self._setup_states.values())
 
     def get_setup_state(self, instance_id: str) -> PodSetupState | None:
         """Get setup state for a specific instance."""
+        self._ensure_db_loaded()
         with self._lock:
             return self._setup_states.get(instance_id)
 
@@ -429,6 +512,7 @@ tail -f /dev/null
             persistent: If True, pod won't be auto-terminated and allows code updates.
                        Use for development/debugging.
         """
+        self._ensure_db_loaded()
         can_create, reason = self.can_create_pod()
         if not can_create:
             raise RuntimeError(reason)
@@ -453,6 +537,9 @@ tail -f /dev/null
         with self._lock:
             self._setup_states[instance_id] = state
 
+        # Persist to database
+        self._persist_state(state)
+
         # Start background thread for setup
         thread = threading.Thread(
             target=self._create_and_setup_pod,
@@ -464,12 +551,16 @@ tail -f /dev/null
         return instance_id
 
     def _update_state(self, instance_id: str, **kwargs: Any) -> None:
-        """Update setup state (thread-safe)."""
+        """Update setup state (thread-safe) and persist to DB."""
+        state = None
         with self._lock:
             if instance_id in self._setup_states:
                 state = self._setup_states[instance_id]
                 for key, value in kwargs.items():
                     setattr(state, key, value)
+        # Persist outside the lock to avoid holding it during DB operations
+        if state:
+            self._persist_state(state)
 
     def _create_and_setup_pod(self, instance_id: str) -> None:
         """Full pod setup in background thread."""
@@ -828,6 +919,7 @@ tail -f /dev/null
 
     def cleanup_orphaned_nodes(self) -> int:
         """Delete offline RunPod Afterburner nodes that don't have matching pods."""
+        self._ensure_db_loaded()
         from cast2md.db.connection import get_db
         from cast2md.db.repository import TranscriberNodeRepository
 
@@ -929,6 +1021,7 @@ tail -f /dev/null
         if queue_depth <= threshold:
             return 0
 
+        self._ensure_db_loaded()
         current_pods = len(self.list_pods())
         creating_pods = len([s for s in self._setup_states.values() if s.phase not in (PodSetupPhase.READY, PodSetupPhase.FAILED)])
         max_pods = self.settings.runpod_max_pods
@@ -973,39 +1066,51 @@ tail -f /dev/null
 
         Returns number of states removed.
         """
+        self._ensure_db_loaded()
         cutoff = datetime.now().timestamp() - (max_age_hours * 3600)
-        removed = 0
+        to_remove = []
 
         with self._lock:
             to_remove = [
                 instance_id
                 for instance_id, state in self._setup_states.items()
-                if state.started_at.timestamp() < cutoff and state.phase in (PodSetupPhase.READY, PodSetupPhase.FAILED)
+                if state.started_at.timestamp() < cutoff
+                and state.phase in (PodSetupPhase.READY, PodSetupPhase.FAILED)
+                and not state.persistent
             ]
             for instance_id in to_remove:
                 del self._setup_states[instance_id]
-                removed += 1
 
-        return removed
+        # Delete from DB outside the lock
+        for instance_id in to_remove:
+            self._delete_persisted_state(instance_id)
+
+        return len(to_remove)
 
     def dismiss_setup_state(self, instance_id: str) -> bool:
         """Dismiss/clear a setup state (typically a failed one).
 
         Returns True if state was found and removed.
         """
+        self._ensure_db_loaded()
+        found = False
         with self._lock:
             if instance_id in self._setup_states:
                 del self._setup_states[instance_id]
-                return True
-        return False
+                found = True
+
+        if found:
+            self._delete_persisted_state(instance_id)
+        return found
 
     def cleanup_orphaned_states(self) -> int:
         """Remove failed states whose pods no longer exist.
 
         Returns number of states removed.
         """
+        self._ensure_db_loaded()
         active_pod_ids = {p.id for p in self.list_pods()}
-        removed = 0
+        to_remove = []
 
         with self._lock:
             to_remove = [
@@ -1017,9 +1122,12 @@ tail -f /dev/null
             ]
             for instance_id in to_remove:
                 del self._setup_states[instance_id]
-                removed += 1
 
-        return removed
+        # Delete from DB outside the lock
+        for instance_id in to_remove:
+            self._delete_persisted_state(instance_id)
+
+        return len(to_remove)
 
     def get_pod_runs(self, limit: int = 20) -> list[dict]:
         """Get recent pod runs with cost info."""

@@ -60,6 +60,30 @@ MIGRATIONS: list[dict] = [
             """,
         ],
     },
+    {
+        "version": 14,
+        "description": "Add pod_setup_states table for persistent pod tracking",
+        "sql": [
+            """
+            CREATE TABLE IF NOT EXISTS pod_setup_states (
+                instance_id TEXT PRIMARY KEY,
+                pod_id TEXT,
+                pod_name TEXT NOT NULL,
+                ts_hostname TEXT NOT NULL,
+                node_name TEXT NOT NULL,
+                gpu_type TEXT NOT NULL DEFAULT '',
+                phase TEXT NOT NULL DEFAULT 'creating',
+                message TEXT NOT NULL DEFAULT '',
+                started_at TIMESTAMP NOT NULL,
+                error TEXT,
+                host_ip TEXT,
+                persistent BOOLEAN DEFAULT FALSE,
+                created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+                updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+            )
+            """,
+        ],
+    },
 ]
 
 
