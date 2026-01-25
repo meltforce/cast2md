@@ -765,28 +765,91 @@ tail -f /dev/null
             logger.error(f"Failed to end pod run: {e}")
 
     def terminate_pod(self, pod_id: str) -> bool:
-        """Terminate a specific pod."""
+        """Terminate a specific pod and clean up its node registration."""
         if not self.is_available():
             return False
 
         runpod.api_key = self.settings.runpod_api_key
         try:
+            # Find the instance_id from setup states to get the node name
+            instance_id = None
+            for state in self._setup_states.values():
+                if state.pod_id == pod_id:
+                    instance_id = state.instance_id
+                    break
+
             runpod.terminate_pod(pod_id)
             self._end_pod_run(pod_id)
+
+            # Delete the node registration (it will never reconnect)
+            if instance_id:
+                node_name = f"RunPod Afterburner {instance_id}"
+                self._delete_node_by_name(node_name)
+
             logger.info(f"Terminated pod {pod_id}")
             return True
         except Exception as e:
             logger.error(f"Failed to terminate pod {pod_id}: {e}")
             return False
 
+    def _delete_node_by_name(self, name: str) -> bool:
+        """Delete a node from the database by name."""
+        from cast2md.db.connection import get_db
+        from cast2md.db.repository import NodeRepository
+
+        try:
+            with get_db() as conn:
+                repo = NodeRepository(conn)
+                if repo.delete_by_name(name):
+                    logger.info(f"Deleted node '{name}'")
+                    return True
+        except Exception as e:
+            logger.error(f"Failed to delete node '{name}': {e}")
+        return False
+
     def terminate_all(self) -> int:
-        """Terminate all afterburner pods. Returns count terminated."""
+        """Terminate all afterburner pods and clean up nodes. Returns count terminated."""
         pods = self.list_pods()
         count = 0
         for pod in pods:
             if self.terminate_pod(pod.id):
                 count += 1
+
+        # Also clean up any orphaned RunPod nodes
+        self.cleanup_orphaned_nodes()
         return count
+
+    def cleanup_orphaned_nodes(self) -> int:
+        """Delete offline RunPod Afterburner nodes that don't have matching pods."""
+        from cast2md.db.connection import get_db
+        from cast2md.db.repository import NodeRepository
+
+        try:
+            with get_db() as conn:
+                repo = NodeRepository(conn)
+                nodes = repo.get_all()
+
+                # Get current pod instance IDs
+                current_instance_ids = set(self._setup_states.keys())
+
+                count = 0
+                for node in nodes:
+                    # Only clean up RunPod Afterburner nodes
+                    if not node.name.startswith("RunPod Afterburner"):
+                        continue
+                    # Extract instance_id from name (e.g., "RunPod Afterburner 6b9f" -> "6b9f")
+                    parts = node.name.split()
+                    if len(parts) >= 3:
+                        instance_id = parts[-1]
+                        # Delete if not in current setup states and offline
+                        if instance_id not in current_instance_ids and node.status == "offline":
+                            if repo.delete(node.id):
+                                logger.info(f"Cleaned up orphaned node: {node.name}")
+                                count += 1
+                return count
+        except Exception as e:
+            logger.error(f"Failed to cleanup orphaned nodes: {e}")
+            return 0
 
     def should_auto_scale(self, queue_depth: int) -> int:
         """Calculate how many pods to start based on queue depth.

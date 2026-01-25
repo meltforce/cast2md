@@ -227,6 +227,15 @@ def cleanup_orphaned_states():
     return {"removed": removed, "message": f"Removed {removed} orphaned setup state(s)"}
 
 
+@router.post("/nodes/cleanup-orphaned", response_model=dict)
+def cleanup_orphaned_nodes():
+    """Remove offline RunPod Afterburner nodes that don't have matching pods."""
+    service = _check_available()
+
+    removed = service.cleanup_orphaned_nodes()
+    return {"removed": removed, "message": f"Removed {removed} orphaned node(s)"}
+
+
 class GpuTypeInfo(BaseModel):
     """GPU type information."""
 
