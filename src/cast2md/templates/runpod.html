@@ -111,8 +111,8 @@
                     {% else %}
                     {% set phase_map = {'creating': 0, 'starting': 1, 'connecting': 2, 'installing': 2} %}
                     {% set step = phase_map.get(state.phase, 0) %}
-                    <span {% if step >= 1 %}style="color: var(--pico-muted-color);"{% else %}class="status-badge status-creating"{% endif %}>CREATED</span> &rarr;
-                    <span {% if step >= 2 %}style="color: var(--pico-muted-color);"{% elif step == 1 %}class="status-badge status-starting"{% else %}style="color: var(--pico-muted-color);"{% endif %}>SETUP</span> &rarr;
+                    <span {% if step == 0 %}class="status-badge status-creating"{% else %}style="color: var(--pico-muted-color);"{% endif %}>CREATED</span> &rarr;
+                    <span {% if step >= 1 %}class="status-badge status-installing"{% else %}style="color: var(--pico-muted-color);"{% endif %}>SETUP</span> &rarr;
                     <span style="color: var(--pico-muted-color);">RUNNING</span>
                     {% endif %}
                 </td>
