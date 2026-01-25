@@ -132,14 +132,6 @@
     <div class="transcript-container" id="transcript">
         {{ transcript_content|render_transcript|safe }}
     </div>
-    {% set is_external_transcript = episode.transcript_source and (episode.transcript_source.startswith('podcast2.0') or episode.transcript_source == 'pocketcasts') %}
-    {% if not is_external_transcript and current_model and (not episode.transcript_model or episode.transcript_model != current_model) %}
-    <footer style="margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--muted-border-color);">
-        <button class="outline secondary" onclick="confirmRetranscribe({{ episode.id }}, '{{ current_model }}')">
-            Re-transcribe with {{ current_model }}
-        </button>
-    </footer>
-    {% endif %}
 </article>
 {% endif %}
 {% endblock %}
@@ -181,26 +173,6 @@ async function queueTranscriptDownload(episodeId) {
 async function queueTranscribe(episodeId) {
     try {
         const response = await fetch(`/api/queue/episodes/${episodeId}/transcribe`, {method: 'POST'});
-        const data = await response.json();
-
-        if (response.ok) {
-            showSuccess(data.message);
-            setTimeout(() => window.location.reload(), 1500);
-        } else {
-            showError(data.detail);
-        }
-    } catch (error) {
-        showError(error.message);
-    }
-}
-
-async function confirmRetranscribe(episodeId, currentModel) {
-    if (!await showConfirm(`Re-transcribe this episode using "${currentModel}"? This will replace the existing transcript.`, 'Re-transcribe')) {
-        return;
-    }
-
-    try {
-        const response = await fetch(`/api/queue/episodes/${episodeId}/retranscribe`, {method: 'POST'});
         const data = await response.json();
 
         if (response.ok) {

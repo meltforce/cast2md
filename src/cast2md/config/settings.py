@@ -32,6 +32,9 @@ class Settings(BaseSettings):
     whisper_compute_type: Literal["int8", "float16", "float32"] = "int8"
     whisper_backend: Literal["auto", "faster-whisper", "mlx"] = "auto"
 
+    # Transcription backend: whisper (default) or parakeet (for GPU nodes)
+    transcription_backend: Literal["whisper", "parakeet"] = "whisper"
+
     # Download settings
     max_concurrent_downloads: int = 2
     max_transcript_download_workers: int = 4  # Parallel workers for fetching external transcripts
@@ -105,6 +108,7 @@ _DEFAULTS = {
     "whisper_device": "auto",
     "whisper_compute_type": "int8",
     "whisper_backend": "auto",
+    "transcription_backend": "whisper",
     "max_concurrent_downloads": 2,
     "max_transcript_download_workers": 4,
     "max_retry_attempts": 3,

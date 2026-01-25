@@ -93,7 +93,7 @@
 
 <details style="margin-bottom: 1rem;">
     <summary style="cursor: pointer; padding: 0.75rem 1rem; background: var(--card-background-color); border-radius: var(--border-radius); font-weight: 600;">
-        Actions (Batch Queue, Export, Re-transcribe)
+        Actions (Batch Queue, Export)
     </summary>
     <div style="padding: 1rem; background: var(--card-background-color); border-top: 1px solid var(--muted-border-color);">
         <div style="display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem;">
@@ -131,13 +131,6 @@
             </div>
         </div>
 
-        <div id="retranscribeSection" style="display: none; align-items: center; gap: 1rem; flex-wrap: wrap;">
-            <strong style="min-width: 100px;">Re-transcribe:</strong>
-            <span id="retranscribeInfo" style="color: var(--muted-color);"></span>
-            <button id="retranscribeBtn" class="outline" style="padding: 0.25rem 0.5rem; font-size: 0.875rem; margin: 0;" onclick="batchRetranscribe({{ feed.id }})">
-                Re-transcribe All Outdated
-            </button>
-        </div>
     </div>
 </details>
 
@@ -389,9 +382,6 @@ document.addEventListener('DOMContentLoaded', function() {
         window.location.search = params.toString();
     }
 
-    // Load retranscription info
-    loadRetranscribeInfo({{ feed.id }});
-
     // Start polling if there are queued/processing episodes
     startStatusPolling();
 });
@@ -529,42 +519,6 @@ function updateEpisodeRow(row, ep) {
 function startStatusPolling() {
     if (pollingInterval) return; // Already polling
     pollingInterval = setInterval(pollEpisodeStatus, 2000); // Poll every 2 seconds
-}
-
-async function loadRetranscribeInfo(feedId) {
-    try {
-        const response = await fetch(`/api/queue/retranscribe/info/${feedId}`);
-        const data = await response.json();
-
-        if (response.ok && data.needs_retranscription > 0) {
-            document.getElementById('retranscribeSection').style.display = 'flex';
-            document.getElementById('retranscribeInfo').textContent =
-                `${data.needs_retranscription} episode(s) can be updated to "${data.current_model}"`;
-        }
-    } catch (error) {
-        console.error('Failed to load retranscribe info:', error);
-    }
-}
-
-async function batchRetranscribe(feedId) {
-    const infoText = document.getElementById('retranscribeInfo').textContent;
-    if (!await showConfirm(`Re-transcribe all outdated episodes? ${infoText}. This will replace existing transcripts.`, 'Re-transcribe All')) {
-        return;
-    }
-
-    try {
-        const response = await fetch(`/api/queue/batch/feed/${feedId}/retranscribe`, {method: 'POST'});
-        const data = await response.json();
-
-        if (response.ok) {
-            showSuccess(data.message);
-            setTimeout(() => window.location.reload(), 1500);
-        } else {
-            showError(data.detail);
-        }
-    } catch (error) {
-        showError(error.message);
-    }
 }
 
 // Update export link when format changes
