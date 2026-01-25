@@ -128,7 +128,9 @@
                 </td>
             </tr>
             {% endfor %}
-            {% for pod in runpod_status.active_pods %}
+            {# Only show active_pods that don't have a setup_state (orphaned pods) #}
+            {% set setup_pod_ids = runpod_status.setup_states | map(attribute='pod_id') | list %}
+            {% for pod in runpod_status.active_pods if pod.id not in setup_pod_ids %}
             <tr>
                 <td>
                     <strong>{{ pod.name }}</strong>
