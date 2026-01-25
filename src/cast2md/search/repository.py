@@ -437,6 +437,72 @@ class TranscriptSearchRepository:
             # Table doesn't exist (embeddings not available)
             return 0
 
+    def store_embeddings_from_node(
+        self, episode_id: int, embeddings: list[dict]
+    ) -> int:
+        """Store embeddings received from a remote node.
+
+        Args:
+            episode_id: Episode ID the embeddings belong to.
+            embeddings: List of dicts with keys:
+                - segment_index: Index in the segment list
+                - text: Segment text
+                - start: Segment start time
+                - end: Segment end time
+                - embedding: List of floats (the embedding vector)
+
+        Returns:
+            Number of embeddings stored.
+        """
+        import numpy as np
+
+        from cast2md.db.repository import EpisodeRepository
+        from cast2md.search.embeddings import DEFAULT_MODEL_NAME, text_hash
+
+        if not embeddings:
+            return 0
+
+        # Get feed_id for the episode
+        episode_repo = EpisodeRepository(self.conn)
+        episode = episode_repo.get_by_id(episode_id)
+        if not episode:
+            raise ValueError(f"Episode {episode_id} not found")
+        feed_id = episode.feed_id
+
+        # Remove existing embeddings for this episode
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "DELETE FROM segment_embeddings WHERE episode_id = %s",
+            (episode_id,),
+        )
+
+        # Insert embeddings
+        for emb in embeddings:
+            # Convert embedding list to numpy array for pgvector
+            embedding_array = np.array(emb["embedding"], dtype=np.float32)
+
+            cursor.execute(
+                """
+                INSERT INTO segment_embeddings
+                (episode_id, feed_id, segment_start, segment_end, text_hash, model_name, embedding)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (episode_id, segment_start, segment_end)
+                DO UPDATE SET embedding = EXCLUDED.embedding, text_hash = EXCLUDED.text_hash
+                """,
+                (
+                    episode_id,
+                    feed_id,
+                    float(emb["start"]),
+                    float(emb["end"]),
+                    text_hash(emb["text"]),
+                    DEFAULT_MODEL_NAME,
+                    embedding_array,
+                ),
+            )
+
+        self.conn.commit()
+        return len(embeddings)
+
     def _vector_search(
         self,
         query_embedding,

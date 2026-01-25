@@ -105,6 +105,16 @@ class ClaimJobResponse(BaseModel):
     has_job: bool
 
 
+class ClaimEmbedJobResponse(BaseModel):
+    """Response when claiming an embed job."""
+
+    job_id: int | None
+    episode_id: int | None
+    episode_title: str | None
+    transcript_url: str
+    has_job: bool
+
+
 class JobCompleteRequest(BaseModel):
     """Request to mark a job as complete."""
 
@@ -122,6 +132,12 @@ class JobProgressRequest(BaseModel):
     """Request to update job progress."""
 
     progress_percent: int
+
+
+class EmbedCompleteRequest(BaseModel):
+    """Request to complete an embed job with embeddings."""
+
+    embeddings: list[dict]  # List of {segment_index, text, embedding}
 
 
 class MessageResponse(BaseModel):
@@ -608,6 +624,155 @@ def release_job(
         node_repo.update_status(node.id, NodeStatus.ONLINE, current_job_id=None)
 
     return MessageResponse(message="Job released back to queue")
+
+
+# === Embedding Job Endpoints (for distributed embedding) ===
+
+
+@router.post("/{node_id}/claim-embed", response_model=ClaimEmbedJobResponse)
+def claim_embed_job(
+    node_id: str,
+    api_key: str = Depends(verify_node_api_key),
+):
+    """Claim the next available embedding job.
+
+    Nodes can call this when idle to help with embedding backfills.
+    Returns transcript URL for download and embedding generation.
+    """
+    with get_db() as conn:
+        node_repo = TranscriberNodeRepository(conn)
+        job_repo = JobRepository(conn)
+        episode_repo = EpisodeRepository(conn)
+
+        node = node_repo.get_by_id(node_id)
+        if not node:
+            raise HTTPException(status_code=404, detail="Node not found")
+
+        if node.api_key != api_key:
+            raise HTTPException(status_code=401, detail="Invalid API key for this node")
+
+        # Update heartbeat
+        node_repo.update_heartbeat(node_id)
+
+        # Get next unclaimed embed job
+        job = job_repo.get_next_unclaimed_job(JobType.EMBED)
+
+        if not job:
+            return ClaimEmbedJobResponse(
+                job_id=None,
+                episode_id=None,
+                episode_title=None,
+                transcript_url="",
+                has_job=False,
+            )
+
+        # Claim the job
+        job_repo.claim_job(job.id, node_id)
+
+        # Get episode details
+        episode = episode_repo.get_by_id(job.episode_id)
+
+        return ClaimEmbedJobResponse(
+            job_id=job.id,
+            episode_id=job.episode_id,
+            episode_title=episode.title if episode else None,
+            transcript_url=f"/api/nodes/jobs/{job.id}/transcript",
+            has_job=True,
+        )
+
+
+@router.get("/jobs/{job_id}/transcript")
+def get_job_transcript(
+    job_id: int,
+    api_key: str = Depends(verify_node_api_key),
+):
+    """Get the transcript content for an embed job."""
+    with get_db() as conn:
+        job_repo = JobRepository(conn)
+        node_repo = TranscriberNodeRepository(conn)
+        episode_repo = EpisodeRepository(conn)
+
+        # Verify API key belongs to a valid node
+        node = node_repo.get_by_api_key(api_key)
+        if not node:
+            raise HTTPException(status_code=401, detail="Invalid API key")
+
+        job = job_repo.get_by_id(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="Job not found")
+
+        # Verify this node owns this job
+        if job.assigned_node_id != node.id:
+            raise HTTPException(status_code=403, detail="Job not assigned to this node")
+
+        episode = episode_repo.get_by_id(job.episode_id)
+        if not episode or not episode.transcript_path:
+            raise HTTPException(status_code=404, detail="Transcript not found")
+
+        transcript_path = Path(episode.transcript_path)
+        if not transcript_path.exists():
+            raise HTTPException(status_code=404, detail="Transcript file not found on disk")
+
+        # Return transcript content as JSON
+        content = transcript_path.read_text(encoding="utf-8")
+        return {"transcript_content": content}
+
+
+@router.post("/jobs/{job_id}/complete-embed", response_model=MessageResponse)
+def complete_embed_job(
+    job_id: int,
+    request: EmbedCompleteRequest,
+    api_key: str = Depends(verify_node_api_key),
+):
+    """Complete an embed job by uploading generated embeddings.
+
+    The node calls this after generating embeddings for the transcript.
+    """
+    import logging
+
+    from cast2md.search.repository import TranscriptSearchRepository
+
+    logger = logging.getLogger(__name__)
+
+    with get_db() as conn:
+        job_repo = JobRepository(conn)
+        node_repo = TranscriberNodeRepository(conn)
+        episode_repo = EpisodeRepository(conn)
+
+        node = node_repo.get_by_api_key(api_key)
+        if not node:
+            raise HTTPException(status_code=401, detail="Invalid API key")
+
+        job = job_repo.get_by_id(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="Job not found")
+
+        if job.assigned_node_id != node.id:
+            raise HTTPException(status_code=403, detail="Job not assigned to this node")
+
+        episode = episode_repo.get_by_id(job.episode_id)
+        if not episode:
+            raise HTTPException(status_code=404, detail="Episode not found")
+
+        # Store embeddings in database
+        try:
+            search_repo = TranscriptSearchRepository(conn)
+            count = search_repo.store_embeddings_from_node(
+                episode_id=job.episode_id,
+                embeddings=request.embeddings,
+            )
+            logger.info(f"Stored {count} embeddings for episode {job.episode_id} from node {node.name}")
+        except Exception as e:
+            logger.error(f"Failed to store embeddings: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to store embeddings: {e}")
+
+        # Mark job complete
+        job_repo.mark_completed(job_id)
+
+        # Update node status back to online (don't track embed jobs as current_job)
+        node_repo.update_status(node.id, NodeStatus.ONLINE, current_job_id=None)
+
+    return MessageResponse(message=f"Embed job completed, stored {count} embeddings")
 
 
 # === Admin Endpoints (for UI/management) ===
