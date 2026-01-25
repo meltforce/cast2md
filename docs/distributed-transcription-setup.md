@@ -63,7 +63,7 @@ You'll need the server's URL for node registration. Examples:
 
 Perform these steps on each machine you want to use as a transcriber node.
 
-### Quick Install (Recommended for macOS)
+### Quick Install (Recommended)
 
 The easiest way to set up a node is with the guided install script:
 
@@ -72,21 +72,17 @@ curl -fsSL https://raw.githubusercontent.com/meltforce/cast2md/main/scripts/cast
 ```
 
 This script:
-- Checks prerequisites (Python 3.11+, Homebrew, ffmpeg)
-- Handles GitHub authentication (for private repo access)
+- Supports **macOS** (launchd) and **Linux** (systemd)
+- Checks prerequisites (Python 3.11+, ffmpeg)
 - Clones the repo to `~/.cast2md/cast2md`
 - Creates a virtual environment with minimal dependencies (~280 MB vs ~600 MB full install)
 - Detects Apple Silicon and installs MLX backend automatically
 - Prompts for server URL and node name
-- Optionally sets up as a startup service via launchd
+- Offers three service options: auto-start service, shell script, or manual
 
-**Updating:** Run the same command again. The script detects existing installations and updates in place.
+**Updating:** Run the same command again. The script detects existing installations and offers to update.
 
-**For private repos:** Export your GitHub token first:
-```bash
-export GITHUB_TOKEN=ghp_your_token_here
-curl -fsSL https://raw.githubusercontent.com/meltforce/cast2md/main/scripts/cast2md-node.sh | bash
-```
+**Uninstalling:** Run the script and choose option 2 to uninstall.
 
 ### Manual Install
 
@@ -108,7 +104,7 @@ pip install --no-deps -e .
 
 # Install node dependencies directly
 pip install httpx pydantic-settings python-dotenv click fastapi \
-  'uvicorn[standard]' jinja2 feedparser python-multipart
+  'uvicorn[standard]' jinja2 python-multipart
 
 # Install transcription backend (choose one)
 pip install mlx-whisper      # Apple Silicon
@@ -305,6 +301,14 @@ cast2md node unregister
 curl -X DELETE http://localhost:8000/api/nodes/{node_id}
 ```
 
+### Rename a Node
+
+To change a node's display name:
+
+1. Edit `~/.cast2md/node.json` and change the `"name"` field
+2. Restart the node (`~/.cast2md/restart` on macOS, or `systemctl --user restart cast2md-node` on Linux)
+3. The server will see the new name within 30 seconds (synced via heartbeat)
+
 ### Add Node Manually (Without CLI Registration)
 
 If you can't run `cast2md node register` on the node machine, you can add it manually via the web UI:
@@ -331,7 +335,19 @@ Then on the node, manually create `~/.cast2md/node.json`:
 
 ## Part 5: Running as a Service
 
+If you used the install script and chose "Auto-start service", the service is already configured. The script creates helper scripts for easy management.
+
 ### macOS (launchd)
+
+**Service management (if installed via script):**
+```bash
+~/.cast2md/stop      # Stop the node
+~/.cast2md/start     # Start the node
+~/.cast2md/restart   # Restart the node
+~/.cast2md/logs      # Follow the log file
+```
+
+**Manual setup (if not using install script):**
 
 Create `~/Library/LaunchAgents/com.cast2md.node.plist`:
 
@@ -347,6 +363,7 @@ Create `~/Library/LaunchAgents/com.cast2md.node.plist`:
         <string>/path/to/venv/bin/cast2md</string>
         <string>node</string>
         <string>start</string>
+        <string>--no-browser</string>
     </array>
     <key>WorkingDirectory</key>
     <string>/path/to/cast2md</string>
@@ -355,9 +372,9 @@ Create `~/Library/LaunchAgents/com.cast2md.node.plist`:
     <key>KeepAlive</key>
     <true/>
     <key>StandardOutPath</key>
-    <string>/tmp/cast2md-node.log</string>
+    <string>~/.cast2md/node.log</string>
     <key>StandardErrorPath</key>
-    <string>/tmp/cast2md-node.log</string>
+    <string>~/.cast2md/node.log</string>
 </dict>
 </plist>
 ```
@@ -369,7 +386,19 @@ launchctl load ~/Library/LaunchAgents/com.cast2md.node.plist
 
 ### Linux (systemd)
 
-Create `/etc/systemd/system/cast2md-node.service`:
+**Service management (if installed via script):**
+```bash
+systemctl --user stop cast2md-node
+systemctl --user start cast2md-node
+systemctl --user restart cast2md-node
+systemctl --user status cast2md-node
+```
+
+**Log file:** `~/.cast2md/node.log`
+
+**Manual setup (if not using install script):**
+
+Create `~/.config/systemd/user/cast2md-node.service`:
 
 ```ini
 [Unit]
@@ -378,23 +407,22 @@ After=network.target
 
 [Service]
 Type=simple
-User=your-username
 WorkingDirectory=/path/to/cast2md
-ExecStart=/path/to/venv/bin/cast2md node start
+ExecStart=/path/to/venv/bin/cast2md node start --no-browser
 Restart=always
 RestartSec=10
 Environment=WHISPER_MODEL=large-v3-turbo
 Environment=WHISPER_BACKEND=faster-whisper
 
 [Install]
-WantedBy=multi-user.target
+WantedBy=default.target
 ```
 
 Enable and start:
 ```bash
-sudo systemctl daemon-reload
-sudo systemctl enable cast2md-node
-sudo systemctl start cast2md-node
+systemctl --user daemon-reload
+systemctl --user enable cast2md-node
+systemctl --user start cast2md-node
 ```
 
 ### Docker
