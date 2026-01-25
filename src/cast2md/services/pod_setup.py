@@ -66,27 +66,27 @@ def setup_pod(
     """
     # Add server to /etc/hosts (MagicDNS not available in userspace mode)
     run_ssh(
-        f"echo '{config.server_ip} {config.server_host}' >> /etc/hosts",
+        f"grep -q '{config.server_host}' /etc/hosts || echo '{config.server_ip} {config.server_host}' >> /etc/hosts",
         "Adding server to /etc/hosts",
         120,
     )
 
-    # Install ffmpeg
+    # Install ffmpeg (skip if already installed - pre-configured image)
     run_ssh(
-        "apt-get update -qq && apt-get install -y -qq ffmpeg > /dev/null 2>&1",
+        "which ffmpeg > /dev/null || (apt-get update -qq && apt-get install -y -qq ffmpeg > /dev/null 2>&1)",
         "Installing ffmpeg",
         120,
     )
 
-    # Install NeMo toolkit for Parakeet models
+    # Install NeMo toolkit for Parakeet models (skip if already installed - pre-configured image)
     if config.is_parakeet:
         run_ssh(
-            "pip install --no-cache-dir 'nemo_toolkit[asr]'",
+            "python -c 'import nemo' 2>/dev/null || pip install --no-cache-dir 'nemo_toolkit[asr]'",
             "Installing NeMo toolkit for Parakeet",
             900,
         )
 
-    # Install cast2md
+    # Install cast2md (always install to get latest code)
     run_ssh(
         f"pip install --no-cache-dir 'cast2md[node] @ git+https://github.com/{config.github_repo}.git'",
         "Installing cast2md",
