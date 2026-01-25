@@ -791,7 +791,7 @@ def admin_runpod_page(request: Request):
             }
             for p in active_pods
         ]
-        # Filter setup_states to exclude those already shown as active pods
+        # Include all setup_states - template will filter out duplicates from active_pods
         runpod_status["setup_states"] = [
             {
                 "instance_id": s.instance_id,
@@ -806,7 +806,6 @@ def admin_runpod_page(request: Request):
                 "host_ip": s.host_ip,
             }
             for s in service.get_setup_states()
-            if s.pod_id is None or s.pod_id not in active_pod_ids
         ]
 
     # Get transcribe queue count (only transcription jobs - what GPU workers handle)
