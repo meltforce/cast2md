@@ -76,7 +76,9 @@ class Settings(BaseSettings):
     runpod_ts_auth_key: str = ""  # Tailscale auth key for pods
 
     # RunPod pod configuration
-    runpod_gpu_type: str = "NVIDIA GeForce RTX 4090"
+    runpod_gpu_type: str = "NVIDIA RTX A5000"
+    # Comma-separated list of GPU types to exclude (e.g. RTX 4090 has CUDA issues with NeMo/Parakeet)
+    runpod_blocked_gpus: str = "NVIDIA GeForce RTX 4090,NVIDIA GeForce RTX 4080"
     runpod_whisper_model: str = "parakeet-tdt-0.6b-v3"
     runpod_image_name: str = "meltforce/cast2md-afterburner:latest"
     runpod_ts_hostname: str = "runpod-afterburner"  # Base hostname (instance ID appended)
