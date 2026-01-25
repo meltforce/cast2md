@@ -294,6 +294,35 @@ setup_autostart_service() {
     fi
 }
 
+create_macos_wrapper_scripts() {
+    # Create wrapper scripts for launchd service management
+    cat > "$INSTALL_DIR/stop" << 'SCRIPT'
+#!/bin/bash
+launchctl unload ~/Library/LaunchAgents/com.cast2md.node.plist 2>/dev/null
+echo "Stopped"
+SCRIPT
+
+    cat > "$INSTALL_DIR/start" << 'SCRIPT'
+#!/bin/bash
+launchctl load ~/Library/LaunchAgents/com.cast2md.node.plist 2>/dev/null
+echo "Started"
+SCRIPT
+
+    cat > "$INSTALL_DIR/restart" << 'SCRIPT'
+#!/bin/bash
+launchctl unload ~/Library/LaunchAgents/com.cast2md.node.plist 2>/dev/null
+launchctl load ~/Library/LaunchAgents/com.cast2md.node.plist 2>/dev/null
+echo "Restarted"
+SCRIPT
+
+    cat > "$INSTALL_DIR/logs" << SCRIPT
+#!/bin/bash
+tail -f "$LOG_FILE"
+SCRIPT
+
+    chmod +x "$INSTALL_DIR/stop" "$INSTALL_DIR/start" "$INSTALL_DIR/restart" "$INSTALL_DIR/logs"
+}
+
 setup_launchd_service() {
     # Create launchd plist for macOS
     cat > "$PLIST_PATH" << EOF
@@ -331,18 +360,19 @@ setup_launchd_service() {
 </plist>
 EOF
 
+    # Create wrapper scripts
+    create_macos_wrapper_scripts
+
     # Load the service
     launchctl load "$PLIST_PATH" 2>/dev/null || true
 
     print_success "launchd service installed"
     echo ""
     echo "  Service management:"
-    echo "    Stop:    launchctl unload ~/Library/LaunchAgents/com.cast2md.node.plist"
-    echo "    Start:   launchctl load ~/Library/LaunchAgents/com.cast2md.node.plist"
-    echo "    Restart: launchctl unload ~/Library/LaunchAgents/com.cast2md.node.plist && launchctl load ~/Library/LaunchAgents/com.cast2md.node.plist"
-    echo ""
-    echo "  Log file: $LOG_FILE"
-    echo "    tail -f $LOG_FILE"
+    echo "    ~/.cast2md/stop"
+    echo "    ~/.cast2md/start"
+    echo "    ~/.cast2md/restart"
+    echo "    ~/.cast2md/logs"
 }
 
 setup_systemd_service() {
@@ -473,6 +503,11 @@ update_install() {
     fi
 
     deactivate
+
+    # Ensure wrapper scripts exist (for upgrades from older versions)
+    if [ "$PLATFORM" = "macos" ] && [ -f "$PLIST_PATH" ]; then
+        create_macos_wrapper_scripts
+    fi
 
     start_service
 
