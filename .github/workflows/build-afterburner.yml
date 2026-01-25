@@ -26,11 +26,19 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
+      - name: Free up disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          docker system prune -af
+          df -h
+
       - name: Build and push
         uses: docker/build-push-action@v5
         with:
           context: deploy/afterburner
           push: true
           tags: meltforce/cast2md-afterburner:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          no-cache: true
