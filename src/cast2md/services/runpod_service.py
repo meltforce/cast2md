@@ -943,6 +943,7 @@ tail -f /dev/null
         if not self.is_available():
             return False
 
+        self._ensure_db_loaded()
         runpod.api_key = self.settings.runpod_api_key
         try:
             # Find the instance_id from setup states to get the node name
