@@ -566,9 +566,50 @@ tail -f /dev/null
             logger.error(f"Failed to get RunPod GPU types: {e}")
             return []
 
+    def reconcile_setup_states(self) -> None:
+        """Remove setup states for pods that no longer exist in RunPod.
+
+        This handles the case where pods are terminated externally (via RunPod API
+        directly, e.g., by the watchdog) and our tracked states become stale.
+        """
+        if not self.is_available():
+            return
+
+        try:
+            # Get actual pods from RunPod
+            actual_pods = self.list_pods()
+            actual_pod_ids = {p.id for p in actual_pods}
+
+            # Find stale states (ready/failed states whose pod_id no longer exists)
+            stale_instance_ids = []
+            with self._lock:
+                for instance_id, state in self._setup_states.items():
+                    # Only check states that have a pod_id and are in a terminal phase
+                    # Don't touch states still being set up (creating, starting, connecting, installing)
+                    if state.pod_id and state.phase in (PodSetupPhase.READY, PodSetupPhase.FAILED):
+                        if state.pod_id not in actual_pod_ids:
+                            stale_instance_ids.append(instance_id)
+                            logger.info(f"Reconcile: pod {state.pod_id} ({instance_id}) no longer exists in RunPod")
+
+            # Remove stale states
+            for instance_id in stale_instance_ids:
+                with self._lock:
+                    if instance_id in self._setup_states:
+                        del self._setup_states[instance_id]
+                self._delete_state_from_db(instance_id)
+                logger.info(f"Reconcile: removed stale setup state {instance_id}")
+
+        except Exception as e:
+            logger.warning(f"Failed to reconcile setup states: {e}")
+
     def get_setup_states(self) -> list[PodSetupState]:
-        """Get all pod setup states (for status display)."""
+        """Get all pod setup states (for status display).
+
+        Also reconciles states with RunPod to clean up terminated pods.
+        """
         self._ensure_db_loaded()
+        # Reconcile before returning - cleans up externally terminated pods
+        self.reconcile_setup_states()
         with self._lock:
             return list(self._setup_states.values())
 
