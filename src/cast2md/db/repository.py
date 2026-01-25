@@ -1276,6 +1276,24 @@ class JobRepository:
         )
         return [Job.from_row(row) for row in cursor.fetchall()]
 
+    def release_job(self, job_id: int) -> None:
+        """Release a job back to the queue for another worker to pick up.
+
+        Resets the job to queued status and clears assignment fields.
+        Does not increment attempts since the job wasn't actually processed.
+        """
+        execute(
+            self.conn,
+            """
+            UPDATE job_queue
+            SET status = %s, assigned_node_id = NULL, claimed_at = NULL,
+                started_at = NULL, progress_percent = NULL
+            WHERE id = %s
+            """,
+            (JobStatus.QUEUED.value, job_id),
+        )
+        self.conn.commit()
+
     def reclaim_stale_jobs(self, timeout_hours: int = 2) -> tuple[int, int]:
         """Reclaim jobs that have been running too long on a node.
 
