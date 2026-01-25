@@ -263,9 +263,11 @@ def node_heartbeat(
                 whisper_backend=request.whisper_backend or node.whisper_backend,
             )
 
-        # If node was offline, mark it as online
+        # Track effective status (may change from OFFLINE to ONLINE/BUSY)
+        effective_status = node.status
         if node.status == NodeStatus.OFFLINE:
-            repo.update_status(node_id, NodeStatus.ONLINE)
+            # Node came back online - set to BUSY if working, else ONLINE
+            effective_status = NodeStatus.BUSY if request.current_job_id else NodeStatus.ONLINE
 
         # Resync job assignment if node reports a job that lost its assignment
         # (can happen after server restart)
@@ -275,8 +277,11 @@ def node_heartbeat(
                 job_repo.resync_job(request.current_job_id, node_id)
                 logger.info(f"Resynced job {request.current_job_id} to node {node_id}")
 
-            # Update node's current_job_id so status page shows correct episode
-            repo.update_status(node_id, node.status, current_job_id=request.current_job_id)
+            # Update node's current_job_id and status
+            repo.update_status(node_id, effective_status, current_job_id=request.current_job_id)
+        elif effective_status != node.status:
+            # No current job but status changed (offline -> online)
+            repo.update_status(node_id, effective_status)
 
         # Release orphaned jobs: jobs assigned to this node but not in claimed_job_ids
         # This handles cases where node lost its prefetch queue (e.g., node restart)
