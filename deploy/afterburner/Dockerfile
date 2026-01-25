@@ -22,8 +22,8 @@ RUN curl -fsSL https://tailscale.com/install.sh | sh
 # Install NeMo toolkit for Parakeet transcription (~5-10 min build time)
 RUN pip install --no-cache-dir 'nemo_toolkit[asr]'
 
-# Note: Parakeet model (~600MB) is downloaded on first transcription
-# Pre-downloading here exceeds GitHub Actions disk limits
+# Pre-download Parakeet model (~600MB) to avoid download at runtime
+RUN python -c "import nemo.collections.asr as nemo_asr; nemo_asr.models.ASRModel.from_pretrained('nvidia/parakeet-tdt-0.6b-v3')"
 
 # Note: cast2md is installed at runtime to allow code updates without rebuilding
 # Startup flow:
