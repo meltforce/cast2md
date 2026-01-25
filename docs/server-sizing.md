@@ -22,10 +22,12 @@ Base memory usage:
 
 ### Transcription Memory
 
-**With chunked processing (default):**
+**With chunked processing (default for all backends):**
 - Episodes are split into 30-minute chunks
-- Peak memory: ~2 GB regardless of episode length
+- Peak memory: ~2-3 GB regardless of episode length
+- Works with faster-whisper, mlx-whisper, and Parakeet
 - Configured via `whisper_chunk_threshold_minutes` and `whisper_chunk_size_minutes`
+- Enables 8GB M1 Macs to run large-v3-turbo on 3+ hour episodes
 
 **Without chunking (episodes < 30 min):**
 - Memory scales with audio duration

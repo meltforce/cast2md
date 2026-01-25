@@ -389,7 +389,34 @@ class TranscriptionService:
         )
 
     def _transcribe_mlx(self, audio_path: Path) -> TranscriptResult:
-        """Transcribe using mlx-whisper backend."""
+        """Transcribe using mlx-whisper backend.
+
+        For long audio files (> chunk threshold), uses chunked processing
+        to avoid memory issues on limited RAM systems (e.g., 8GB M1).
+        """
+        settings = get_settings()
+        threshold_seconds = settings.whisper_chunk_threshold_minutes * 60
+
+        # Check duration without loading file into memory
+        try:
+            duration = get_audio_duration(audio_path)
+        except Exception as e:
+            logger.warning(f"Could not get audio duration, using non-chunked mode: {e}")
+            duration = 0
+
+        # Use chunked processing for long files
+        if duration > threshold_seconds:
+            logger.info(
+                f"Audio duration {duration / 60:.1f} min exceeds threshold "
+                f"({settings.whisper_chunk_threshold_minutes} min), using chunked processing"
+            )
+            return self._transcribe_mlx_chunked(audio_path, duration)
+
+        # Short audio - process whole file
+        return self._transcribe_mlx_single(audio_path)
+
+    def _transcribe_mlx_single(self, audio_path: Path) -> TranscriptResult:
+        """Transcribe a single audio file using mlx-whisper (non-chunked)."""
         import mlx_whisper
 
         model_name = self.model["model"]
@@ -428,6 +455,109 @@ class TranscriptionService:
             segments=segments,
             language=result.get("language", "unknown"),
             language_probability=1.0,  # mlx-whisper doesn't provide this
+        )
+
+    def _transcribe_mlx_chunked(
+        self,
+        audio_path: Path,
+        total_duration: float,
+    ) -> TranscriptResult:
+        """Transcribe long audio in chunks using mlx-whisper.
+
+        Uses ffmpeg to extract chunks without loading entire file,
+        then combines results with adjusted timestamps.
+        """
+        import mlx_whisper
+
+        settings = get_settings()
+        chunk_size_seconds = settings.whisper_chunk_size_minutes * 60
+        temp_dir = settings.temp_download_path
+        temp_dir.mkdir(parents=True, exist_ok=True)
+
+        model_name = self.model["model"]
+        model_map = {
+            "tiny": "mlx-community/whisper-tiny",
+            "tiny.en": "mlx-community/whisper-tiny.en-mlx",
+            "base": "mlx-community/whisper-base-mlx",
+            "base.en": "mlx-community/whisper-base.en-mlx",
+            "small": "mlx-community/whisper-small-mlx",
+            "small.en": "mlx-community/whisper-small.en-mlx",
+            "medium": "mlx-community/whisper-medium-mlx",
+            "medium.en": "mlx-community/whisper-medium.en-mlx",
+            "large-v2": "mlx-community/whisper-large-v2-mlx",
+            "large-v3": "mlx-community/whisper-large-v3-mlx",
+            "large-v3-turbo": "mlx-community/whisper-large-v3-turbo",
+        }
+        mlx_model = model_map.get(model_name, f"mlx-community/whisper-{model_name}-mlx")
+
+        # Calculate number of chunks
+        num_chunks = int((total_duration + chunk_size_seconds - 1) // chunk_size_seconds)
+        logger.info(
+            f"Splitting {total_duration / 60:.1f} min audio into {num_chunks} chunks "
+            f"of {settings.whisper_chunk_size_minutes} min each"
+        )
+
+        all_segments = []
+        detected_language = None
+        chunk_paths = []
+
+        try:
+            for i in range(num_chunks):
+                start_sec = i * chunk_size_seconds
+                # For last chunk, use remaining duration
+                this_chunk_duration = min(chunk_size_seconds, total_duration - start_sec)
+
+                # Generate unique chunk filename
+                chunk_filename = f"chunk_{uuid.uuid4().hex[:8]}_{i}.wav"
+                chunk_path = temp_dir / chunk_filename
+                chunk_paths.append(chunk_path)
+
+                # Extract chunk using ffmpeg (memory efficient)
+                logger.info(
+                    f"Extracting chunk {i + 1}/{num_chunks}: "
+                    f"{start_sec / 60:.1f}-{(start_sec + this_chunk_duration) / 60:.1f} min"
+                )
+                extract_audio_chunk(audio_path, start_sec, this_chunk_duration, chunk_path)
+
+                # Transcribe chunk
+                logger.info(f"Transcribing chunk {i + 1}/{num_chunks}")
+                result = mlx_whisper.transcribe(
+                    str(chunk_path),
+                    path_or_hf_repo=mlx_model,
+                )
+
+                # Capture language from first chunk
+                if detected_language is None:
+                    detected_language = result.get("language", "unknown")
+
+                # Process segments with timestamp offset
+                for seg in result.get("segments", []):
+                    all_segments.append(
+                        TranscriptSegment(
+                            start=seg["start"] + start_sec,  # Adjust for chunk offset
+                            end=seg["end"] + start_sec,
+                            text=seg["text"],
+                        )
+                    )
+
+                # Clean up chunk after processing
+                if chunk_path.exists():
+                    chunk_path.unlink()
+                    chunk_paths.remove(chunk_path)
+
+        finally:
+            # Clean up any remaining chunk files on error
+            for chunk_path in chunk_paths:
+                if chunk_path.exists():
+                    try:
+                        chunk_path.unlink()
+                    except Exception:
+                        pass
+
+        return TranscriptResult(
+            segments=all_segments,
+            language=detected_language or "unknown",
+            language_probability=1.0,
         )
 
     def _transcribe_parakeet(self, audio_path: Path) -> TranscriptResult:
