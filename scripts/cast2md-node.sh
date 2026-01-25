@@ -335,8 +335,14 @@ EOF
     launchctl load "$PLIST_PATH" 2>/dev/null || true
 
     print_success "launchd service installed"
+    echo ""
+    echo "  Service management:"
+    echo "    Stop:    launchctl unload ~/Library/LaunchAgents/com.cast2md.node.plist"
+    echo "    Start:   launchctl load ~/Library/LaunchAgents/com.cast2md.node.plist"
+    echo "    Restart: launchctl unload ~/Library/LaunchAgents/com.cast2md.node.plist && launchctl load ~/Library/LaunchAgents/com.cast2md.node.plist"
+    echo ""
     echo "  Log file: $LOG_FILE"
-    echo "  Control: launchctl load/unload $PLIST_PATH"
+    echo "    tail -f $LOG_FILE"
 }
 
 setup_systemd_service() {
@@ -372,8 +378,15 @@ EOF
     systemctl --user start cast2md-node.service
 
     print_success "systemd user service installed"
+    echo ""
+    echo "  Service management:"
+    echo "    Stop:    systemctl --user stop cast2md-node"
+    echo "    Start:   systemctl --user start cast2md-node"
+    echo "    Restart: systemctl --user restart cast2md-node"
+    echo "    Status:  systemctl --user status cast2md-node"
+    echo ""
     echo "  Log file: $LOG_FILE"
-    echo "  Control: systemctl --user start/stop/status cast2md-node"
+    echo "    tail -f $LOG_FILE"
 }
 
 setup_start_script() {
