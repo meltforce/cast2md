@@ -1039,6 +1039,67 @@ tail -f /dev/null
             logger.error(f"Failed to terminate pod {pod_id}: {e}")
             return False
 
+    def terminate_by_instance_id(self, instance_id: str) -> bool:
+        """Terminate a pod by its instance_id.
+
+        Used by node workers to request termination before exiting.
+        This allows the server to clean up state atomically.
+
+        Args:
+            instance_id: The instance ID (e.g., "a3f2")
+
+        Returns:
+            True if pod was terminated, False otherwise
+        """
+        state = self.get_setup_state(instance_id)
+        if not state:
+            logger.warning(f"No setup state found for instance {instance_id}")
+            return False
+
+        if not state.pod_id:
+            logger.warning(f"No pod_id in setup state for instance {instance_id}")
+            return False
+
+        # Release any jobs claimed by this node before terminating
+        self._release_node_jobs(state.node_name)
+
+        logger.info(f"Terminating pod for instance {instance_id} (pod_id={state.pod_id})")
+        return self.terminate_pod(state.pod_id)
+
+    def _release_node_jobs(self, node_name: str) -> int:
+        """Release all jobs claimed by a node back to queued status.
+
+        Args:
+            node_name: The node name to release jobs for
+
+        Returns:
+            Number of jobs released
+        """
+        from cast2md.db.connection import get_db
+        from cast2md.db.repository import JobRepository, TranscriberNodeRepository
+
+        released = 0
+        try:
+            with get_db() as conn:
+                node_repo = TranscriberNodeRepository(conn)
+                job_repo = JobRepository(conn)
+
+                node = node_repo.get_by_name(node_name)
+                if not node:
+                    return 0
+
+                jobs = job_repo.get_jobs_by_node(node.id)
+                for job in jobs:
+                    if job.status.value in ("running", "queued"):
+                        job_repo.unclaim_job(job.id)
+                        released += 1
+                        logger.info(f"Released job {job.id} from node {node_name}")
+
+        except Exception as e:
+            logger.warning(f"Failed to release jobs for node {node_name}: {e}")
+
+        return released
+
     def _delete_node_by_name(self, name: str) -> bool:
         """Delete a node from the database by name."""
         from cast2md.db.connection import get_db

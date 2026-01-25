@@ -309,6 +309,34 @@ class TranscriberNodeWorker:
 
         return False, ""
 
+    def _request_server_termination(self, reason: str):
+        """Request the server to terminate our pod.
+
+        For RunPod workers, this allows the server to terminate the pod
+        and clean up state atomically, preventing orphaned setup states.
+
+        Args:
+            reason: The termination reason to log
+        """
+        try:
+            logger.info(f"Requesting server to terminate pod (reason: {reason})")
+            response = self._client.post(
+                f"/api/nodes/{self._config.node_id}/request-termination",
+                timeout=10.0,
+            )
+            if response.status_code == 200:
+                data = response.json()
+                if data.get("terminated"):
+                    logger.info(f"Server confirmed termination: {data.get('message')}")
+                else:
+                    # Not a RunPod node or service unavailable - that's ok
+                    logger.info(f"Server response: {data.get('message')}")
+            else:
+                logger.warning(f"Termination request failed: {response.status_code}")
+        except httpx.RequestError as e:
+            # Server might be unreachable (which is one termination reason)
+            logger.warning(f"Failed to request termination: {e}")
+
     def _poll_loop(self):
         """Poll for jobs and process them."""
         while not self._stop_event.is_set():
@@ -345,6 +373,9 @@ class TranscriberNodeWorker:
                         should_terminate, reason = self._check_should_terminate()
                         if should_terminate:
                             logger.warning(f"Initiating shutdown: {reason}")
+                            # Request server to terminate our pod (if RunPod worker)
+                            # This allows the server to clean up state atomically
+                            self._request_server_termination(reason)
                             self._stop_event.set()
                             self._running = False
                             break
