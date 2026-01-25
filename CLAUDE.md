@@ -627,27 +627,28 @@ Pod setup states are stored in the database (`pod_setup_states` table) and survi
 | `runpod_auto_scale` | `false` | Auto-start on queue growth |
 | `runpod_scale_threshold` | `10` | Queue depth to trigger auto-scale |
 | `runpod_gpu_type` | `NVIDIA RTX A5000` | Preferred GPU |
-| `runpod_blocked_gpus` | `NVIDIA GeForce RTX 4090,NVIDIA GeForce RTX 4080` | Comma-separated GPU blocklist |
+| `runpod_blocked_gpus` | `NVIDIA GeForce RTX 4090,NVIDIA GeForce RTX 4080,NVIDIA L4` | Comma-separated GPU blocklist |
 | `runpod_whisper_model` | `parakeet-tdt-0.6b-v3` | Transcription model for pods |
 
 #### GPU Compatibility
 
-**Important:** RTX 40-series consumer GPUs (4090, 4080) have CUDA compatibility issues with NeMo/Parakeet, causing `CUDA error 35` during transcription. These GPUs work fine with Whisper but fail with Parakeet.
+**Important:** RTX 40-series consumer GPUs and certain datacenter GPUs have CUDA compatibility issues with NeMo/Parakeet, causing `CUDA error 35` during transcription. These GPUs work fine with Whisper but fail with Parakeet.
 
 **Working GPUs for Parakeet:**
 - NVIDIA RTX A5000 (~$0.20-0.25/hr, ~87x realtime)
 - NVIDIA RTX A6000
 - NVIDIA RTX A4000
 - NVIDIA GeForce RTX 3090
-- NVIDIA L4, L40
+- NVIDIA L40
 
 **Blocked GPUs (default blocklist):**
 - NVIDIA GeForce RTX 4090
 - NVIDIA GeForce RTX 4080
+- NVIDIA L4
 
 The blocklist is applied during pod creation and fallback selection. Blocked GPUs are automatically skipped. To modify:
 
 ```bash
 # Add to .env or systemd environment
-runpod_blocked_gpus="NVIDIA GeForce RTX 4090,NVIDIA GeForce RTX 4080,NVIDIA GeForce RTX 4070"
+runpod_blocked_gpus="NVIDIA GeForce RTX 4090,NVIDIA GeForce RTX 4080,NVIDIA L4"
 ```
