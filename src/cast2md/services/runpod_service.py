@@ -596,7 +596,7 @@ tail -f /dev/null
                 with self._lock:
                     if instance_id in self._setup_states:
                         del self._setup_states[instance_id]
-                self._delete_state_from_db(instance_id)
+                self._delete_persisted_state(instance_id)
                 logger.info(f"Reconcile: removed stale setup state {instance_id}")
 
         except Exception as e:
