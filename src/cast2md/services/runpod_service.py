@@ -1185,6 +1185,33 @@ tail -f /dev/null
             self._delete_persisted_state(instance_id)
         return found
 
+    def set_persistent(self, instance_id: str, persistent: bool) -> bool:
+        """Set the persistent (dev mode) flag for a pod.
+
+        When persistent=True, the pod won't be auto-terminated and allows code updates.
+        Returns True if the state was found and updated.
+        """
+        self._ensure_db_loaded()
+        with self._lock:
+            state = self._setup_states.get(instance_id)
+            if not state:
+                return False
+            state.persistent = persistent
+
+        # Update in database
+        try:
+            from cast2md.db.connection import get_db
+            from cast2md.db.repository import PodSetupStateRepository
+
+            with get_db() as conn:
+                repo = PodSetupStateRepository(conn)
+                repo.set_persistent(instance_id, persistent)
+            logger.info(f"Set pod {instance_id} persistent={persistent}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to set persistent for {instance_id}: {e}")
+            return False
+
     def cleanup_orphaned_states(self) -> int:
         """Remove failed states whose pods no longer exist.
 
