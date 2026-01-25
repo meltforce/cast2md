@@ -423,6 +423,57 @@ docker run -d --name cast2md-node \
   cast2md-node
 ```
 
+## Auto-Termination (RunPod / Cloud Nodes)
+
+Node workers automatically terminate to save costs when they have nothing to do. This is especially important for paid cloud instances like RunPod.
+
+### Termination Conditions
+
+Three conditions trigger automatic shutdown (checked continuously):
+
+| Condition | Default | Description |
+|-----------|---------|-------------|
+| **Empty Queue** | 2 checks × 60s | No claimable jobs available. Fastest termination (~2 min). |
+| **Idle Timeout** | 10 minutes | No jobs processed. Safety net for stuck jobs. |
+| **Server Unreachable** | 5 minutes | Can't reach server. Protects against server crash. |
+
+After setup completes, if the queue is empty, the worker will terminate in approximately 2 minutes (2 empty checks with 60-second waits).
+
+### Environment Variables
+
+Configure termination behavior via environment variables:
+
+```bash
+# Empty queue detection (default: terminate after 2 checks, 60s apart)
+NODE_REQUIRED_EMPTY_CHECKS=2
+NODE_EMPTY_QUEUE_WAIT=60
+
+# Idle timeout in minutes (default: 10, set to 0 to disable)
+NODE_IDLE_TIMEOUT_MINUTES=10
+
+# Server unreachable timeout in minutes (default: 5)
+NODE_SERVER_UNREACHABLE_MINUTES=5
+
+# Disable ALL auto-termination (for permanent/dev nodes)
+NODE_PERSISTENT=1
+```
+
+### Persistent Mode (Dev/Debug)
+
+To keep a node running indefinitely (useful for debugging):
+
+**CLI afterburner:**
+```bash
+python deploy/afterburner/afterburner.py --keep-alive
+```
+
+**Server API:**
+Create pod with `persistent=True`, or enable via:
+```bash
+curl -X PATCH https://server/api/runpod/pods/{instance_id}/persistent \
+  -H "Content-Type: application/json" -d '{"persistent": true}'
+```
+
 ## Troubleshooting
 
 ### Node Shows "Offline" on Server

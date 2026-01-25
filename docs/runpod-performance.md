@@ -126,3 +126,35 @@ curl -s https://server/api/queue/status | jq '.transcribe_queue.running'
 | Server CPU | ~1x | Free (electricity) |
 
 RunPod is ~6x faster than MacBook for $0.50 per 100 episodes.
+
+## Pod Lifecycle
+
+### Auto-Termination
+
+Pods automatically terminate to prevent runaway costs. Three conditions are checked:
+
+| Condition | Default | Trigger |
+|-----------|---------|---------|
+| **Empty Queue** | ~2 min | 2 consecutive empty checks (60s apart) |
+| **Idle Timeout** | 10 min | No jobs processed (safety net for stuck jobs) |
+| **Server Unreachable** | 5 min | Can't reach server (protects against server crash) |
+
+**Typical scenario:** Pod starts → setup (~2-3 min) → processes jobs → queue empties → terminates (~2 min after last job).
+
+### Persistent/Dev Mode
+
+To keep pods running for debugging, create with `persistent=True` or enable via API:
+
+```bash
+curl -X PATCH https://server/api/runpod/pods/{instance_id}/persistent \
+  -H "Content-Type: application/json" -d '{"persistent": true}'
+```
+
+This disables all auto-termination. Remember to terminate manually when done!
+
+### Cost Control Tips
+
+1. **Start pods only when queue has work** - Empty queue = 2 min of wasted billing
+2. **Use auto-scale wisely** - Only enable if you have regular large backlogs
+3. **Monitor stuck jobs** - 10-min idle timeout catches these
+4. **Server reliability** - 5-min unreachable timeout prevents orphaned pods
