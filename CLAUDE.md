@@ -563,6 +563,7 @@ The server includes a RunPod service for managing GPU workers via API. This enab
 | `/api/runpod/pods/{instance_id}/setup-status` | GET | Track pod creation progress |
 | `/api/runpod/pods` | DELETE | Terminate all pods |
 | `/api/runpod/pods/{pod_id}` | DELETE | Terminate specific pod |
+| `/api/runpod/pods/{instance_id}/persistent` | PATCH | Set dev mode (persistent) on/off |
 | `/api/runpod/pods/{instance_id}/update-code` | POST | Update code on running pod (dev mode) |
 | `/api/runpod/setup-states/{instance_id}` | DELETE | Dismiss a setup state |
 
@@ -573,9 +574,19 @@ For development and debugging, pods can be created in **persistent mode** which:
 - Allows updating code without recreating the pod
 - Persists setup state across server restarts
 
-**Creating a persistent pod:**
+**Enabling dev mode on a running pod:**
 
-Currently via API only - the `create_pod_async(persistent=True)` method is available but not exposed in the UI. Useful for:
+```bash
+# Set dev mode on (prevents auto-termination, allows code updates)
+curl -X PATCH https://<your-tailnet>/api/runpod/pods/{instance_id}/persistent \
+  -H "Content-Type: application/json" -d '{"persistent": true}'
+
+# Disable dev mode
+curl -X PATCH https://<your-tailnet>/api/runpod/pods/{instance_id}/persistent \
+  -H "Content-Type: application/json" -d '{"persistent": false}'
+```
+
+Dev mode is useful for:
 - Testing code changes on a live pod
 - Debugging transcription issues
 - Extended monitoring
