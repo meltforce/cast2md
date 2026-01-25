@@ -756,6 +756,18 @@
             gap: 1rem;
             margin-bottom: 2rem;
         }
+        .worker-cards-small {
+            grid-template-columns: repeat(3, 1fr);
+        }
+        .worker-cards-large {
+            grid-template-columns: repeat(2, 1fr);
+        }
+        @media (max-width: 900px) {
+            .worker-cards-small,
+            .worker-cards-large {
+                grid-template-columns: 1fr;
+            }
+        }
         .worker-card {
             border: 1px solid var(--pico-muted-border-color);
             border-radius: var(--pico-border-radius);

@@ -486,6 +486,25 @@ def admin_status_page(request: Request):
         }
         feeds = feed_repo.get_all()
 
+        # Performance stats (throughput)
+        hour_stats = job_repo.get_completed_jobs_stats(hours=1, job_type=JobType.TRANSCRIBE)
+        hour_audio = job_repo.get_audio_minutes_processed(hours=1)
+        day_stats = job_repo.get_completed_jobs_stats(hours=24, job_type=JobType.TRANSCRIBE)
+        day_audio = job_repo.get_audio_minutes_processed(hours=24)
+
+        def calc_throughput(audio_minutes: int, processing_seconds: int) -> float:
+            if processing_seconds <= 0:
+                return 0.0
+            wall_clock_minutes = processing_seconds / 60
+            return round(audio_minutes / wall_clock_minutes, 1) if wall_clock_minutes > 0 else 0.0
+
+        performance_stats = {
+            "hour_throughput": calc_throughput(hour_audio, hour_stats["total_duration_seconds"]),
+            "hour_episodes": hour_stats["count"],
+            "day_throughput": calc_throughput(day_audio, day_stats["total_duration_seconds"]),
+            "day_episodes": day_stats["count"],
+        }
+
         # Get running jobs for worker status display
         running_downloads = job_repo.get_running_jobs(JobType.DOWNLOAD)
         running_transcriptions = job_repo.get_running_jobs(JobType.TRANSCRIBE)
@@ -616,10 +635,12 @@ def admin_status_page(request: Request):
             })
 
     # Build worker_groups structure for template
+    # Limit orphaned lists to 3, include total count
+    max_orphaned_display = 3
     worker_groups = {
         "download": {
             "title": "Audio Download",
-            "workers": download_workers + orphaned_downloads,
+            "workers": download_workers + orphaned_downloads[:max_orphaned_display],
             "queued": queue_status["download_queue"]["queued"],
         },
         "transcript_fetch": {
@@ -627,13 +648,15 @@ def admin_status_page(request: Request):
             "active_count": active_tdl_count,
             "total_count": total_tdl_workers,
             "queued": queue_status["transcript_download_queue"]["queued"],
-            "orphaned": orphaned_transcript_downloads,
+            "orphaned": orphaned_transcript_downloads[:max_orphaned_display],
+            "orphaned_total": len(orphaned_transcript_downloads),
         },
         "transcription": {
             "title": "Transcription",
             "server": server_worker,
             "nodes": remote_nodes,
-            "orphaned": orphaned_transcriptions,
+            "orphaned": orphaned_transcriptions[:max_orphaned_display],
+            "orphaned_total": len(orphaned_transcriptions),
             "queued": queue_status["transcribe_queue"]["queued"],
             "distributed_enabled": queue_status.get("distributed_enabled", False),
         },
@@ -648,6 +671,7 @@ def admin_status_page(request: Request):
             "queue_status": queue_status,
             "worker_groups": worker_groups,
             "search_stats": search_stats,
+            "performance_stats": performance_stats,
         },
     )
 
