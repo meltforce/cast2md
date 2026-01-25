@@ -851,9 +851,9 @@ class TranscriberNodeWorker:
                 logger.warning("No segments found in transcript")
                 return []
 
-            # Generate embeddings in batch
+            # Generate embeddings in batch (as numpy arrays, then convert to lists for JSON)
             texts = [seg.text for seg in segments]
-            embeddings = generate_embeddings_batch(texts, as_numpy=False)  # Get as lists for JSON
+            embeddings = generate_embeddings_batch(texts, as_numpy=True)
 
             # Build result list
             result = []
@@ -863,7 +863,7 @@ class TranscriberNodeWorker:
                     "text": segment.text,
                     "start": segment.start,
                     "end": segment.end,
-                    "embedding": embedding if isinstance(embedding, list) else embedding.tolist(),
+                    "embedding": embedding.tolist(),
                 })
 
             logger.info(f"Generated {len(result)} embeddings")
