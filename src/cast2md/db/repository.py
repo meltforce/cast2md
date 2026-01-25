@@ -1294,17 +1294,17 @@ class JobRepository:
         )
         self.conn.commit()
 
-    def reclaim_stale_jobs(self, timeout_hours: int = 2) -> tuple[int, int]:
+    def reclaim_stale_jobs(self, timeout_minutes: int = 30) -> tuple[int, int]:
         """Reclaim jobs that have been running too long on a node.
 
-        Jobs that have been running longer than timeout_hours on a node
+        Jobs that have been running longer than timeout_minutes on a node
         are either reset to queued state (if retries remain) or marked as
         permanently failed (if max attempts exceeded).
 
         Returns:
             Tuple of (jobs_requeued, jobs_failed).
         """
-        threshold = (datetime.now() - timedelta(hours=timeout_hours)).isoformat()
+        threshold = (datetime.now() - timedelta(minutes=timeout_minutes)).isoformat()
         now = datetime.now().isoformat()
 
         # First, fail jobs that have exceeded max attempts

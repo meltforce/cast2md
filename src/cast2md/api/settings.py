@@ -118,12 +118,12 @@ def _get_configurable_settings() -> dict:
             "min": 30,
             "max": 300,
         },
-        "remote_job_timeout_hours": {
+        "remote_job_timeout_minutes": {
             "type": "int",
-            "label": "Remote Job Timeout (hours)",
-            "description": "Reclaim jobs from nodes after this many hours",
-            "min": 1,
-            "max": 24,
+            "label": "Remote Job Timeout (minutes)",
+            "description": "Reclaim jobs from nodes after this many minutes",
+            "min": 5,
+            "max": 120,
         },
         "itunes_country": {
             "type": "text",

@@ -141,7 +141,7 @@ class WorkerManager:
             self._coordinator = get_coordinator()
             self._coordinator.configure(
                 heartbeat_timeout_seconds=settings.node_heartbeat_timeout_seconds,
-                job_timeout_hours=settings.remote_job_timeout_hours,
+                job_timeout_minutes=settings.remote_job_timeout_minutes,
             )
             self._coordinator.start()
             logger.info("Started distributed transcription coordinator")

@@ -67,7 +67,7 @@ class Settings(BaseSettings):
     # Distributed transcription
     distributed_transcription_enabled: bool = False
     node_heartbeat_timeout_seconds: int = 60
-    remote_job_timeout_hours: int = 2
+    remote_job_timeout_minutes: int = 30
 
     # RunPod configuration (requires both tokens to be enabled)
     runpod_enabled: bool = False  # Master switch - must be True to use RunPod
@@ -143,7 +143,7 @@ _DEFAULTS = {
     "ntfy_topic": "",
     "distributed_transcription_enabled": False,
     "node_heartbeat_timeout_seconds": 60,
-    "remote_job_timeout_hours": 2,
+    "remote_job_timeout_minutes": 30,
     # RunPod settings
     "runpod_enabled": False,
     "runpod_max_pods": 3,
