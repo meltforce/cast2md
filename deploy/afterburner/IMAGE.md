@@ -9,9 +9,10 @@ The pre-configured Docker image speeds up RunPod pod creation from ~8 minutes to
 | Tailscale | ~50MB | 20s |
 | ffmpeg | ~100MB | 20s |
 | NeMo toolkit | ~5GB | 5-8 min |
-| Parakeet model | ~600MB | 1-2 min |
 
-Total image size: ~15GB (base pytorch image is ~10GB)
+The Parakeet model (~600MB) is downloaded on first transcription (not pre-installed due to GitHub Actions disk limits).
+
+Total image size: ~12GB
 
 ## Option 1: GitHub Actions (Recommended)
 
