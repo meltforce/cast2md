@@ -90,6 +90,7 @@ class HeartbeatRequest(BaseModel):
     whisper_model: str | None = None
     whisper_backend: str | None = None
     current_job_id: int | None = None  # Job currently being processed
+    claimed_job_ids: list[int] | None = None  # All jobs node has claimed (current + prefetch)
 
 
 class HeartbeatResponse(BaseModel):
@@ -276,6 +277,16 @@ def node_heartbeat(
 
             # Update node's current_job_id so status page shows correct episode
             repo.update_status(node_id, node.status, current_job_id=request.current_job_id)
+
+        # Release orphaned jobs: jobs assigned to this node but not in claimed_job_ids
+        # This handles cases where node lost its prefetch queue (e.g., node restart)
+        if request.claimed_job_ids is not None:
+            assigned_jobs = job_repo.get_jobs_by_node(node_id)
+            claimed_set = set(request.claimed_job_ids)
+            for job in assigned_jobs:
+                if job.id not in claimed_set and job.status == JobStatus.RUNNING:
+                    job_repo.release_job(job.id)
+                    logger.info(f"Released orphaned job {job.id} from node {node_id}")
 
     return HeartbeatResponse(status="ok", message="Heartbeat received")
 

@@ -266,6 +266,16 @@ class TranscriberNodeWorker:
 
         while not self._stop_event.is_set():
             try:
+                # Collect all claimed job IDs (current + prefetch queue)
+                claimed_job_ids = []
+                if self._current_job_id:
+                    claimed_job_ids.append(self._current_job_id)
+                with self._prefetch_lock:
+                    for prefetched in self._prefetch_queue:
+                        job_id = prefetched.job.get("job_id")
+                        if job_id:
+                            claimed_job_ids.append(job_id)
+
                 response = self._client.post(
                     f"/api/nodes/{self._config.node_id}/heartbeat",
                     json={
@@ -273,6 +283,7 @@ class TranscriberNodeWorker:
                         "whisper_model": model_name,
                         "whisper_backend": settings.transcription_backend,
                         "current_job_id": self._current_job_id,
+                        "claimed_job_ids": claimed_job_ids,
                     },
                 )
                 if response.status_code == 200:
