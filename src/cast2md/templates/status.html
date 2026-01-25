@@ -40,9 +40,9 @@
     </div>
 </article>
 
-<!-- Worker Cards -->
+<!-- Small Worker Cards (top row) -->
 <article>
-<div class="worker-cards" style="margin-bottom: 0;">
+<div class="worker-cards worker-cards-small" style="margin-bottom: 0;">
     <!-- Audio Download Card -->
     <div class="worker-card">
         <h4>{{ worker_groups.download.title }}</h4>
@@ -88,7 +88,9 @@
 
         {% if worker_groups.transcript_fetch.orphaned %}
         <div class="card-section">
-            <a href="/admin/queue?filter=stuck" class="section-label" style="color: #ef4444;">Stuck →</a>
+            <a href="/admin/queue?filter=stuck" class="section-label" style="color: #ef4444;">
+                Stuck{% if worker_groups.transcript_fetch.orphaned_total > 3 %} ({{ worker_groups.transcript_fetch.orphaned_total }}){% endif %} &rarr;
+            </a>
             {% for item in worker_groups.transcript_fetch.orphaned %}
             <div class="worker-row">
                 <span class="worker-dot dot-stuck"></span>
@@ -99,6 +101,34 @@
         {% endif %}
     </div>
 
+    <!-- Search Index Card -->
+    <div class="worker-card">
+        <h4>Search Index</h4>
+
+        <div class="card-section">
+            <div class="section-label">Full-text</div>
+            <div class="queued-count">{{ search_stats.indexed_episodes }}</div>
+        </div>
+
+        <div class="card-section">
+            <div class="section-label">Semantic</div>
+            <div class="queued-count">{{ search_stats.embedded_episodes }}</div>
+        </div>
+
+        {% set pending = search_stats.indexed_episodes - search_stats.embedded_episodes %}
+        {% if pending > 0 %}
+        <div class="card-section">
+            <div class="section-label">Pending</div>
+            <div style="color: var(--pico-muted-color);">{{ pending }} episode{% if pending != 1 %}s{% endif %}</div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+</article>
+
+<!-- Large Worker Cards (bottom row) -->
+<article>
+<div class="worker-cards worker-cards-large" style="margin-bottom: 0;">
     <!-- Transcription Card -->
     <div class="worker-card">
         <h4>{{ worker_groups.transcription.title }}</h4>
@@ -144,7 +174,9 @@
 
         {% if worker_groups.transcription.orphaned %}
         <div class="card-section">
-            <a href="/admin/queue?filter=stuck" class="section-label" style="color: #ef4444;">Stuck →</a>
+            <a href="/admin/queue?filter=stuck" class="section-label" style="color: #ef4444;">
+                Stuck{% if worker_groups.transcription.orphaned_total > 3 %} ({{ worker_groups.transcription.orphaned_total }}){% endif %} &rarr;
+            </a>
             {% for item in worker_groups.transcription.orphaned %}
             <div class="worker-row">
                 <span class="worker-dot dot-stuck"></span>
@@ -158,27 +190,26 @@
         {% endif %}
     </div>
 
-    <!-- Search Index Card -->
+    <!-- Performance Card -->
     <div class="worker-card">
-        <h4>Search Index</h4>
+        <h4>Performance</h4>
 
         <div class="card-section">
-            <div class="section-label">Full-text</div>
-            <div class="queued-count">{{ search_stats.indexed_episodes }}</div>
+            <div class="section-label">Last Hour</div>
+            <div class="queued-count">{{ performance_stats.hour_throughput }}x</div>
+            <div style="color: var(--pico-muted-color); font-size: 0.8rem;">{{ performance_stats.hour_episodes }} episodes</div>
         </div>
 
         <div class="card-section">
-            <div class="section-label">Semantic</div>
-            <div class="queued-count">{{ search_stats.embedded_episodes }}</div>
+            <div class="section-label">Last 24h</div>
+            <div class="queued-count">{{ performance_stats.day_throughput }}x</div>
+            <div style="color: var(--pico-muted-color); font-size: 0.8rem;">{{ performance_stats.day_episodes }} episodes</div>
         </div>
 
-        {% set pending = search_stats.indexed_episodes - search_stats.embedded_episodes %}
-        {% if pending > 0 %}
         <div class="card-section">
-            <div class="section-label">Pending</div>
-            <div style="color: var(--pico-muted-color);">{{ pending }} episode{% if pending != 1 %}s{% endif %}</div>
+            <div class="section-label" style="color: var(--pico-muted-color);">Throughput</div>
+            <div style="color: var(--pico-muted-color); font-size: 0.75rem;">podcast min / wall-clock min</div>
         </div>
-        {% endif %}
     </div>
 </div>
 <p style="color: var(--pico-muted-color); text-align: center; margin-bottom: 0;">
