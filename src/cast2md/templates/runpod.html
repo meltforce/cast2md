@@ -172,8 +172,8 @@
         <label>
             Transcription Model
             <select id="setting-whisper-model" name="runpod_whisper_model">
-                {% for model in ['parakeet-tdt-0.6b-v3', 'large-v3-turbo', 'large-v3', 'large-v2', 'medium', 'small'] %}
-                <option value="{{ model }}" {% if model == settings.runpod_whisper_model %}selected{% endif %}>{{ model }}</option>
+                {% for model_id, model_label in transcription_models %}
+                <option value="{{ model_id }}" {% if model_id == settings.runpod_whisper_model %}selected{% endif %}>{{ model_label }}</option>
                 {% endfor %}
             </select>
             <small>Parakeet (fast, English) or Whisper models</small>
@@ -288,8 +288,8 @@
         <label>
             Transcription Model
             <select id="setting-whisper-model" name="runpod_whisper_model">
-                {% for model in ['parakeet-tdt-0.6b-v3', 'large-v3-turbo', 'large-v3', 'large-v2', 'medium', 'small'] %}
-                <option value="{{ model }}" {% if model == settings.runpod_whisper_model %}selected{% endif %}>{{ model }}</option>
+                {% for model_id, model_label in transcription_models %}
+                <option value="{{ model_id }}" {% if model_id == settings.runpod_whisper_model %}selected{% endif %}>{{ model_label }}</option>
                 {% endfor %}
             </select>
             <small>Parakeet (fast, English) or Whisper models</small>
