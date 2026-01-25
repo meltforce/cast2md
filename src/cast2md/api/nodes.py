@@ -83,6 +83,7 @@ class NodesListResponse(BaseModel):
 class HeartbeatRequest(BaseModel):
     """Heartbeat request from node."""
 
+    name: str | None = None
     whisper_model: str | None = None
     whisper_backend: str | None = None
 
@@ -230,9 +231,10 @@ def node_heartbeat(
             # Fallback: direct DB write
             repo.update_heartbeat(node_id)
 
-        if request.whisper_model or request.whisper_backend:
+        if request.name or request.whisper_model or request.whisper_backend:
             repo.update_info(
                 node_id,
+                name=request.name or node.name,
                 whisper_model=request.whisper_model or node.whisper_model,
                 whisper_backend=request.whisper_backend or node.whisper_backend,
             )
