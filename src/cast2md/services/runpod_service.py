@@ -886,6 +886,39 @@ tail -f /dev/null
 
         return removed
 
+    def dismiss_setup_state(self, instance_id: str) -> bool:
+        """Dismiss/clear a setup state (typically a failed one).
+
+        Returns True if state was found and removed.
+        """
+        with self._lock:
+            if instance_id in self._setup_states:
+                del self._setup_states[instance_id]
+                return True
+        return False
+
+    def cleanup_orphaned_states(self) -> int:
+        """Remove failed states whose pods no longer exist.
+
+        Returns number of states removed.
+        """
+        active_pod_ids = {p.id for p in self.list_pods()}
+        removed = 0
+
+        with self._lock:
+            to_remove = [
+                instance_id
+                for instance_id, state in self._setup_states.items()
+                if state.phase == PodSetupPhase.FAILED
+                and state.pod_id is not None
+                and state.pod_id not in active_pod_ids
+            ]
+            for instance_id in to_remove:
+                del self._setup_states[instance_id]
+                removed += 1
+
+        return removed
+
     def get_pod_runs(self, limit: int = 20) -> list[dict]:
         """Get recent pod runs with cost info."""
         from cast2md.db.connection import get_db
