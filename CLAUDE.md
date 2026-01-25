@@ -479,6 +479,11 @@ The bash watchdog (created during pod setup) becomes a backup mechanism only - i
 - Returns `{"status": "ignored", "terminated": false}` for non-RunPod nodes
 - Jobs are released before termination to prevent orphaned work
 
+**Automatic Cleanup**: Orphaned RunPod nodes are cleaned up automatically:
+- On server startup (`main.py:lifespan()`)
+- Manual trigger: `POST /api/runpod/nodes/cleanup-orphaned`
+- Catches pods that crashed or terminated without notifying server
+
 ### Tailscale Userspace Networking (Important Lessons)
 
 RunPod containers don't have `/dev/net/tun`, so Tailscale must run in **userspace mode**. This has significant implications:
