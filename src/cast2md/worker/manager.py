@@ -816,6 +816,7 @@ class WorkerManager:
                 "failed": embed_counts.get(JobStatus.FAILED.value, 0),
             },
             "distributed_enabled": _is_distributed_enabled(),
+            "transcribe_workers_standby": self._should_defer_transcription(),
         }
 
         # Add coordinator status if running
