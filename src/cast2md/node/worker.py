@@ -1,6 +1,8 @@
 """Transcriber node worker for processing remote transcription jobs."""
 
 import logging
+import os
+import sys
 import tempfile
 import threading
 import time
@@ -75,6 +77,13 @@ class TranscriberNodeWorker:
         self._prefetch_lock = threading.Lock()
         self._prefetch_thread: Optional[threading.Thread] = None
         self._prefetch_stop = threading.Event()  # Signal to stop prefetch thread
+
+        # Idle timeout - auto-terminate if no jobs for this many minutes
+        # Set to 0 to disable (for permanent workers)
+        # Default: read from NODE_IDLE_TIMEOUT_MINUTES env var, or 10 minutes
+        self._idle_timeout_minutes = int(os.environ.get("NODE_IDLE_TIMEOUT_MINUTES", "10"))
+        self._last_job_time: Optional[float] = None  # Time of last job completion/failure
+        self._worker_start_time: float = time.time()
 
     @property
     def config(self) -> NodeConfig:
@@ -249,10 +258,42 @@ class TranscriberNodeWorker:
 
             self._stop_event.wait(timeout=self._heartbeat_interval)
 
+    def _check_idle_timeout(self) -> bool:
+        """Check if we've been idle too long and should terminate.
+
+        Returns:
+            True if worker should terminate due to idle timeout.
+        """
+        if self._idle_timeout_minutes <= 0:
+            return False  # Disabled
+
+        now = time.time()
+        idle_seconds = self._idle_timeout_minutes * 60
+
+        # Use last job time if we've processed any jobs, otherwise use start time
+        reference_time = self._last_job_time or self._worker_start_time
+        idle_duration = now - reference_time
+
+        if idle_duration > idle_seconds:
+            logger.warning(
+                f"Idle timeout reached: no jobs for {int(idle_duration / 60)} minutes "
+                f"(threshold: {self._idle_timeout_minutes} min). Terminating worker."
+            )
+            return True
+        return False
+
     def _poll_loop(self):
         """Poll for jobs and process them."""
         while not self._stop_event.is_set():
             try:
+                # Check for idle timeout (only when not processing)
+                if self._check_idle_timeout():
+                    logger.info("Initiating shutdown due to idle timeout")
+                    self._stop_event.set()
+                    # Signal to main run() loop to exit
+                    self._running = False
+                    break
+
                 # Check for prefetched job first
                 prefetched = None
                 with self._prefetch_lock:
@@ -570,6 +611,8 @@ class TranscriberNodeWorker:
 
             if response.status_code == 200:
                 logger.info(f"Job {job_id} completed successfully")
+                # Reset idle timer on successful completion
+                self._last_job_time = time.time()
             else:
                 logger.error(f"Complete request failed: {response.status_code} - {response.text}")
 
@@ -594,6 +637,8 @@ class TranscriberNodeWorker:
 
             if response.status_code == 200:
                 logger.info(f"Job {job_id} marked as failed")
+                # Reset idle timer even on failure (we did work)
+                self._last_job_time = time.time()
             else:
                 logger.error(f"Fail request failed: {response.status_code}")
 

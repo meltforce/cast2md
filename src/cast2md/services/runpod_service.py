@@ -896,6 +896,7 @@ tail -f /dev/null
             node_name=node_name,
             model=self.settings.runpod_whisper_model,
             github_repo=self.settings.runpod_github_repo,
+            idle_timeout_minutes=self.settings.runpod_idle_timeout_minutes,
         )
         setup_pod(config, run_ssh)
 
@@ -1092,10 +1093,11 @@ tail -f /dev/null
             model = settings.runpod_whisper_model
             is_parakeet = "parakeet" in model.lower()
             backend_env = "TRANSCRIPTION_BACKEND=parakeet" if is_parakeet else ""
+            idle_env = f"NODE_IDLE_TIMEOUT_MINUTES={settings.runpod_idle_timeout_minutes}"
 
             # Restart worker
             run_ssh(
-                f"http_proxy=http://localhost:1055 {backend_env} WHISPER_MODEL={model} "
+                f"http_proxy=http://localhost:1055 {backend_env} {idle_env} WHISPER_MODEL={model} "
                 "nohup cast2md node start > /tmp/cast2md-node.log 2>&1 &",
                 "Restarting worker",
             )

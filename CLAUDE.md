@@ -440,6 +440,15 @@ Default models:
 
 The node worker uses a **3-slot prefetch queue** to keep audio ready for instant transcription. This is important for Parakeet which transcribes faster than download speed.
 
+### Idle Timeout
+
+Node workers auto-terminate when idle to save costs. Controlled by `NODE_IDLE_TIMEOUT_MINUTES` environment variable (default: 10 minutes, set to 0 to disable).
+
+The worker checks idle time each poll cycle. If no job has been processed within the timeout period, the worker gracefully shuts down. This prevents pods from running idle and accumulating costs when:
+- The queue is empty
+- Jobs are stuck or failing
+- No jobs are available for the worker to claim
+
 ### Tailscale Userspace Networking (Important Lessons)
 
 RunPod containers don't have `/dev/net/tun`, so Tailscale must run in **userspace mode**. This has significant implications:
@@ -629,6 +638,7 @@ Pod setup states are stored in the database (`pod_setup_states` table) and survi
 | `runpod_gpu_type` | `NVIDIA RTX A5000` | Preferred GPU |
 | `runpod_blocked_gpus` | `NVIDIA GeForce RTX 4090,NVIDIA GeForce RTX 4080,NVIDIA L4` | Comma-separated GPU blocklist |
 | `runpod_whisper_model` | `parakeet-tdt-0.6b-v3` | Transcription model for pods |
+| `runpod_idle_timeout_minutes` | `10` | Auto-terminate pods after idle for N minutes (0 to disable) |
 
 #### GPU Compatibility
 
