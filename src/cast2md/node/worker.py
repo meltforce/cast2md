@@ -260,6 +260,7 @@ class TranscriberNodeWorker:
                 response = self._client.post(
                     f"/api/nodes/{self._config.node_id}/heartbeat",
                     json={
+                        "name": self._config.name,
                         "whisper_model": model_name,
                         "whisper_backend": settings.transcription_backend,
                     },

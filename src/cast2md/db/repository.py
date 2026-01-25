@@ -2368,19 +2368,20 @@ class TranscriberNodeRepository:
     def update_info(
         self,
         node_id: str,
+        name: str | None = None,
         whisper_model: str | None = None,
         whisper_backend: str | None = None,
     ) -> None:
-        """Update node whisper info."""
+        """Update node info (name, whisper model/backend)."""
         now = datetime.now().isoformat()
         execute(
             self.conn,
             """
             UPDATE transcriber_node
-            SET whisper_model = %s, whisper_backend = %s, updated_at = %s
+            SET name = %s, whisper_model = %s, whisper_backend = %s, updated_at = %s
             WHERE id = %s
             """,
-            (whisper_model, whisper_backend, now, node_id),
+            (name, whisper_model, whisper_backend, now, node_id),
         )
         self.conn.commit()
 
