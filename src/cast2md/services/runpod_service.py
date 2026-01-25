@@ -424,11 +424,10 @@ tail -f /dev/null
             logger.error(f"Failed to list RunPod pods: {e}")
             return []
 
-    # GPUs suitable for Whisper transcription (good price/performance, sufficient VRAM)
-    # Excludes datacenter-class GPUs (A100, H100, MI300X) that are overkill
+    # GPUs suitable for transcription (good price/performance, sufficient VRAM)
+    # Note: RTX 40xx consumer GPUs have CUDA compatibility issues with NeMo/Parakeet
+    # Use runpod_blocked_gpus setting to exclude specific GPUs
     ALLOWED_GPU_PREFIXES = [
-        "NVIDIA GeForce RTX 4090",
-        "NVIDIA GeForce RTX 4080",
         "NVIDIA GeForce RTX 3090",
         "NVIDIA GeForce RTX 3080",
         "NVIDIA RTX A4000",
@@ -736,20 +735,38 @@ tail -f /dev/null
         """Create a RunPod pod. Returns (pod_id, gpu_type)."""
         runpod.api_key = self.settings.runpod_api_key
 
+        # Parse blocked GPUs (comma-separated list)
+        blocked_gpus = set(
+            gpu.strip()
+            for gpu in self.settings.runpod_blocked_gpus.split(",")
+            if gpu.strip()
+        )
+
+        def is_blocked(gpu_id: str) -> bool:
+            """Check if GPU is in blocklist."""
+            return any(blocked in gpu_id for blocked in blocked_gpus)
+
+        if blocked_gpus:
+            logger.info(f"GPU blocklist: {blocked_gpus}")
+
         # Build GPU fallback list: selected GPU first, then others sorted by price
         selected_gpu = self.settings.runpod_gpu_type
-        gpu_types = [selected_gpu]
+        if is_blocked(selected_gpu):
+            logger.warning(f"Preferred GPU {selected_gpu} is in blocklist, skipping")
+            gpu_types = []
+        else:
+            gpu_types = [selected_gpu]
 
-        # Add cached GPUs (sorted by price) as fallbacks
+        # Add cached GPUs (sorted by price) as fallbacks, excluding blocked ones
         cached_gpus = self.get_available_gpus()
         for gpu in cached_gpus:
-            if gpu["id"] not in gpu_types:
+            if gpu["id"] not in gpu_types and not is_blocked(gpu["id"]):
                 gpu_types.append(gpu["id"])
 
-        # Hardcoded fallback if cache is empty
-        if len(gpu_types) == 1:
-            for fb in ["NVIDIA GeForce RTX 4090", "NVIDIA GeForce RTX 3090", "NVIDIA RTX A4000"]:
-                if fb not in gpu_types:
+        # Hardcoded fallback if list is empty (excluding blocked GPUs)
+        if len(gpu_types) == 0:
+            for fb in ["NVIDIA RTX A5000", "NVIDIA RTX A6000", "NVIDIA GeForce RTX 3090", "NVIDIA RTX A4000"]:
+                if fb not in gpu_types and not is_blocked(fb):
                     gpu_types.append(fb)
 
         last_error = None
