@@ -753,17 +753,18 @@ def setup_pod_via_ssh(config: Config, host_ip: str, node_name: str = "RunPod Aft
     if not config.persistent and pod_id:
         # Create terminate script that calls RunPod API directly
         # This works even if the server/CLI is down
-        terminate_script = (
-            f'#!/bin/bash\\n'
-            f'echo "Terminating pod via RunPod API..." >> /tmp/cast2md-node.log\\n'
-            f'curl -s -X POST https://api.runpod.io/graphql '
-            f'-H "Content-Type: application/json" '
-            f'-H "Authorization: Bearer {config.runpod_api_key}" '
-            f'-d \'{{"query": "mutation {{ podTerminate(input: {{podId: \\"{pod_id}\\"}}) }}"}}\' '
-            f'>> /tmp/cast2md-node.log 2>&1\\n'
-        )
+        # Use heredoc to avoid quote escaping issues
         run_ssh(
-            f"echo -e '{terminate_script}' > /tmp/terminate-pod.sh && chmod +x /tmp/terminate-pod.sh",
+            f"""cat > /tmp/terminate-pod.sh << 'TERMINATE_EOF'
+#!/bin/bash
+echo "Terminating pod via RunPod API..." >> /tmp/cast2md-node.log
+curl -s -X POST https://api.runpod.io/graphql \\
+  -H "Content-Type: application/json" \\
+  -H "Authorization: Bearer {config.runpod_api_key}" \\
+  -d '{{"query": "mutation {{ podTerminate(input: {{podId: \\"{pod_id}\\"}}) }}"}}' \\
+  >> /tmp/cast2md-node.log 2>&1
+TERMINATE_EOF
+chmod +x /tmp/terminate-pod.sh""",
             "Creating terminate script"
         )
 
