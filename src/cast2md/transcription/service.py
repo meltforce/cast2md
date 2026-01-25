@@ -300,14 +300,79 @@ class TranscriptionService:
 
         Uses NeMo toolkit with the nvidia/parakeet-tdt-0.6b-v3 model from HuggingFace.
         This is optimized for GPU transcription on RunPod workers.
+
+        Long audio is processed in chunks to avoid GPU OOM errors.
         """
+        import tempfile
+
         import nemo.collections.asr as nemo_asr
+        from pydub import AudioSegment
 
         model_name = self.model["model"]
         logger.info(f"Loading Parakeet model: {model_name}")
 
         # Load the model from HuggingFace
         asr_model = nemo_asr.models.ASRModel.from_pretrained(model_name)
+
+        # Check audio duration and chunk if needed
+        # 10 minutes per chunk is safe for 24GB VRAM
+        CHUNK_DURATION_MS = 10 * 60 * 1000  # 10 minutes in milliseconds
+
+        audio = AudioSegment.from_file(str(audio_path))
+        duration_ms = len(audio)
+        logger.info(f"Audio duration: {duration_ms / 1000 / 60:.1f} minutes")
+
+        all_segments = []
+
+        if duration_ms <= CHUNK_DURATION_MS:
+            # Short audio - process whole file
+            all_segments = self._transcribe_parakeet_file(asr_model, audio_path)
+        else:
+            # Long audio - process in chunks
+            num_chunks = (duration_ms + CHUNK_DURATION_MS - 1) // CHUNK_DURATION_MS
+            logger.info(f"Splitting into {num_chunks} chunks for GPU memory")
+
+            with tempfile.TemporaryDirectory() as tmpdir:
+                for i in range(num_chunks):
+                    start_ms = i * CHUNK_DURATION_MS
+                    end_ms = min((i + 1) * CHUNK_DURATION_MS, duration_ms)
+                    chunk = audio[start_ms:end_ms]
+
+                    # Export chunk to temp file
+                    chunk_path = Path(tmpdir) / f"chunk_{i}.wav"
+                    chunk.export(str(chunk_path), format="wav")
+
+                    logger.info(f"Transcribing chunk {i + 1}/{num_chunks}")
+                    chunk_segments = self._transcribe_parakeet_file(asr_model, chunk_path)
+
+                    # Adjust timestamps for chunk offset
+                    offset_seconds = start_ms / 1000
+                    for seg in chunk_segments:
+                        seg.start += offset_seconds
+                        seg.end += offset_seconds
+                        all_segments.append(seg)
+
+        return TranscriptResult(
+            segments=all_segments,
+            language="en",  # Parakeet supports 25 EU languages but defaults to English
+            language_probability=1.0,
+        )
+
+    def _transcribe_parakeet_file(self, asr_model, audio_path: Path) -> list[TranscriptSegment]:
+        """Transcribe a single audio file with Parakeet.
+
+        Args:
+            asr_model: Loaded NeMo ASR model
+            audio_path: Path to audio file
+
+        Returns:
+            List of transcript segments
+        """
+        import torch
+
+        # Clear GPU cache before transcription
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
 
         # Transcribe with timestamps
         output = asr_model.transcribe(
@@ -351,11 +416,7 @@ class TranscriptionService:
                     )
                 )
 
-        return TranscriptResult(
-            segments=segments,
-            language="en",  # Parakeet is English-only
-            language_probability=1.0,
-        )
+        return segments
 
 
 def get_transcription_service() -> TranscriptionService:
