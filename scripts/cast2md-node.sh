@@ -225,6 +225,10 @@ install_deps() {
         pip install --quiet faster-whisper 2>/dev/null
     fi
 
+    # Install sentence-transformers for distributed embedding support
+    echo "  Installing sentence-transformers..."
+    pip install --quiet sentence-transformers 2>/dev/null
+
     deactivate
 
     print_success "Dependencies installed"
@@ -502,6 +506,9 @@ update_install() {
     else
         pip install --quiet faster-whisper 2>/dev/null
     fi
+
+    # Install sentence-transformers for distributed embedding support
+    pip install --quiet sentence-transformers 2>/dev/null
 
     deactivate
 
