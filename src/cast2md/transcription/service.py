@@ -100,8 +100,14 @@ def _is_apple_silicon() -> bool:
     return platform.system() == "Darwin" and platform.machine() == "arm64"
 
 
-def _get_backend() -> str:
-    """Determine which backend to use."""
+def _get_transcription_backend() -> str:
+    """Determine which transcription backend to use (whisper or parakeet)."""
+    settings = get_settings()
+    return settings.transcription_backend
+
+
+def _get_whisper_backend() -> str:
+    """Determine which Whisper backend to use (faster-whisper or mlx)."""
     settings = get_settings()
     backend = settings.whisper_backend
 
@@ -132,12 +138,13 @@ class TranscriptionService:
                     cls._instance = super().__new__(cls)
                     cls._instance._model = None
                     cls._instance._model_lock = threading.Lock()
-                    cls._instance._backend = None
+                    cls._instance._whisper_backend = None
+                    cls._instance._transcription_backend = None
         return cls._instance
 
     @property
     def model(self):
-        """Lazy-load the Whisper model."""
+        """Lazy-load the transcription model."""
         if self._model is None:
             with self._model_lock:
                 if self._model is None:
@@ -145,18 +152,28 @@ class TranscriptionService:
         return self._model
 
     @property
-    def backend(self) -> str:
-        """Get the active backend name."""
-        if self._backend is None:
-            self._backend = _get_backend()
-        return self._backend
+    def transcription_backend(self) -> str:
+        """Get the transcription backend (whisper or parakeet)."""
+        if self._transcription_backend is None:
+            self._transcription_backend = _get_transcription_backend()
+        return self._transcription_backend
+
+    @property
+    def whisper_backend(self) -> str:
+        """Get the Whisper backend name (faster-whisper or mlx)."""
+        if self._whisper_backend is None:
+            self._whisper_backend = _get_whisper_backend()
+        return self._whisper_backend
 
     def _load_model(self) -> None:
-        """Load the Whisper model based on settings."""
+        """Load the transcription model based on settings."""
         settings = get_settings()
-        backend = self.backend
 
-        if backend == "mlx":
+        if self.transcription_backend == "parakeet":
+            # Parakeet loads per-call via NeMo, store config only
+            logger.info("Using Parakeet TDT 0.6B v3 backend")
+            self._model = {"backend": "parakeet", "model": "nvidia/parakeet-tdt-0.6b-v3"}
+        elif self.whisper_backend == "mlx":
             # mlx-whisper doesn't need a model object, it loads per-call
             # but we'll store the model name for transcribe()
             logger.info(f"Using mlx-whisper backend with model: {settings.whisper_model}")
@@ -188,7 +205,9 @@ class TranscriptionService:
         processed_path = preprocess_audio(audio_path)
 
         try:
-            if self.backend == "mlx":
+            if self.transcription_backend == "parakeet":
+                return self._transcribe_parakeet(processed_path)
+            elif self.whisper_backend == "mlx":
                 # mlx-whisper returns all segments at once, no streaming progress
                 return self._transcribe_mlx(processed_path)
             else:
@@ -276,10 +295,85 @@ class TranscriptionService:
             language_probability=1.0,  # mlx-whisper doesn't provide this
         )
 
+    def _transcribe_parakeet(self, audio_path: Path) -> TranscriptResult:
+        """Transcribe using NVIDIA Parakeet TDT 0.6B v3 backend.
+
+        Uses NeMo toolkit with the nvidia/parakeet-tdt-0.6b-v3 model from HuggingFace.
+        This is optimized for GPU transcription on RunPod workers.
+        """
+        import nemo.collections.asr as nemo_asr
+
+        model_name = self.model["model"]
+        logger.info(f"Loading Parakeet model: {model_name}")
+
+        # Load the model from HuggingFace
+        asr_model = nemo_asr.models.ASRModel.from_pretrained(model_name)
+
+        # Transcribe with timestamps
+        output = asr_model.transcribe(
+            [str(audio_path)],
+            timestamps=True,
+        )
+
+        # Parse the output - Parakeet returns a list of hypotheses
+        segments = []
+        if output and len(output) > 0:
+            # output[0] is the transcription result
+            result = output[0]
+
+            # Handle different output formats from NeMo
+            if hasattr(result, "timestamp") and result.timestamp:
+                # Word-level timestamps available
+                for ts in result.timestamp:
+                    segments.append(
+                        TranscriptSegment(
+                            start=ts["start"],
+                            end=ts["end"],
+                            text=ts["word"],
+                        )
+                    )
+            elif hasattr(result, "text"):
+                # No timestamps, just text
+                segments.append(
+                    TranscriptSegment(
+                        start=0.0,
+                        end=0.0,
+                        text=result.text,
+                    )
+                )
+            elif isinstance(result, str):
+                # Plain string result
+                segments.append(
+                    TranscriptSegment(
+                        start=0.0,
+                        end=0.0,
+                        text=result,
+                    )
+                )
+
+        return TranscriptResult(
+            segments=segments,
+            language="en",  # Parakeet is English-only
+            language_probability=1.0,
+        )
+
 
 def get_transcription_service() -> TranscriptionService:
     """Get the singleton transcription service instance."""
     return TranscriptionService()
+
+
+def get_current_model_name() -> str:
+    """Get the name of the currently configured transcription model.
+
+    Returns the appropriate model name based on the active backend:
+    - For Parakeet: "parakeet-tdt-0.6b-v3"
+    - For Whisper: the configured whisper_model setting
+    """
+    settings = get_settings()
+    if settings.transcription_backend == "parakeet":
+        return "parakeet-tdt-0.6b-v3"
+    return settings.whisper_model
 
 
 def transcribe_audio(
@@ -369,9 +463,9 @@ def transcribe_episode(
             transcript_path.write_text(markdown, encoding="utf-8")
 
             # Update episode with transcript path and model name
-            settings = get_settings()
+            model_name = get_current_model_name()
             repo.update_transcript_path_and_model(
-                episode.id, str(transcript_path), settings.whisper_model
+                episode.id, str(transcript_path), model_name
             )
             repo.update_status(episode.id, EpisodeStatus.COMPLETED)
 

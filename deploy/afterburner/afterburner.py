@@ -680,8 +680,16 @@ def setup_pod_via_ssh(config: Config, host_ip: str, node_name: str = "RunPod Aft
 
     # Install system dependencies
     run_ssh(
-        "apt-get update -qq && apt-get install -y -qq ffmpeg > /dev/null 2>&1",
-        "Installing ffmpeg"
+        "apt-get update -qq && apt-get install -y -qq ffmpeg libsndfile1 > /dev/null 2>&1",
+        "Installing ffmpeg and libsndfile"
+    )
+
+    # Install NeMo toolkit for Parakeet TDT support
+    # Note: nemo_toolkit[asr] installs pytorch-lightning, transformers, and other dependencies
+    run_ssh(
+        "pip install --no-cache-dir 'nemo_toolkit[asr]'",
+        "Installing NeMo toolkit for Parakeet",
+        timeout=900  # 15 minutes for NeMo install (large dependencies)
     )
 
     # Install cast2md from GitHub (longer timeout for pip install)
@@ -713,11 +721,12 @@ def setup_pod_via_ssh(config: Config, host_ip: str, node_name: str = "RunPod Aft
     )
 
     # Start node worker in background (use HTTP proxy for Tailscale traffic)
+    # Set TRANSCRIPTION_BACKEND=parakeet to use Parakeet TDT instead of Whisper
     run_ssh(
         f"http_proxy=http://localhost:1055 "
-        f"WHISPER_MODEL={config.whisper_model} "
+        f"TRANSCRIPTION_BACKEND=parakeet "
         "nohup cast2md node start > /tmp/cast2md-node.log 2>&1 &",
-        "Starting node worker"
+        "Starting node worker with Parakeet backend"
     )
 
     # Verify worker started successfully
