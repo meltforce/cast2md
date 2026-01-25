@@ -143,7 +143,7 @@
             <!-- Server worker -->
             <div class="worker-row">
                 <span class="worker-dot dot-{{ worker_groups.transcription.server.status }}"></span>
-                <span class="worker-name">Server</span>
+                <span class="worker-name">Server{% if worker_groups.transcription.server.status == 'standby' %} <span class="muted">(standby)</span>{% endif %}</span>
                 {% if worker_groups.transcription.server.episode %}
                 <span class="worker-job">
                     <a href="/episodes/{{ worker_groups.transcription.server.episode.id }}">{{ worker_groups.transcription.server.episode.title[:20] }}...</a>
