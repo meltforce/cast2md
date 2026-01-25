@@ -795,11 +795,11 @@ tail -f /dev/null
     def _delete_node_by_name(self, name: str) -> bool:
         """Delete a node from the database by name."""
         from cast2md.db.connection import get_db
-        from cast2md.db.repository import NodeRepository
+        from cast2md.db.repository import TranscriberNodeRepository
 
         try:
             with get_db() as conn:
-                repo = NodeRepository(conn)
+                repo = TranscriberNodeRepository(conn)
                 if repo.delete_by_name(name):
                     logger.info(f"Deleted node '{name}'")
                     return True
@@ -822,11 +822,11 @@ tail -f /dev/null
     def cleanup_orphaned_nodes(self) -> int:
         """Delete offline RunPod Afterburner nodes that don't have matching pods."""
         from cast2md.db.connection import get_db
-        from cast2md.db.repository import NodeRepository
+        from cast2md.db.repository import TranscriberNodeRepository
 
         try:
             with get_db() as conn:
-                repo = NodeRepository(conn)
+                repo = TranscriberNodeRepository(conn)
                 nodes = repo.get_all()
 
                 # Get current pod instance IDs
