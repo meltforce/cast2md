@@ -1108,6 +1108,18 @@ tail -f /dev/null
                 "Restarting worker",
             )
 
+            # Restart watchdog (unless persistent)
+            if not state.persistent:
+                run_ssh(
+                    "pkill -f 'while pgrep' || true; "  # Kill old watchdog if any
+                    "nohup bash -c '"
+                    "while pgrep -f \"cast2md node\" > /dev/null; do sleep 5; done; "
+                    "echo \"Worker exited, terminating pod...\" >> /tmp/cast2md-node.log; "
+                    "runpodctl stop"
+                    "' > /tmp/watchdog.log 2>&1 &",
+                    "Restarting watchdog",
+                )
+
             logger.info(f"Updated code on pod {instance_id}")
             return True
         except Exception as e:
