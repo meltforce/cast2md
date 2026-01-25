@@ -69,9 +69,11 @@ class QueueStatusResponse(BaseModel):
     download_workers: int
     transcript_download_workers: int
     transcribe_workers: int
+    embed_workers: int
     download_queue: QueueDetails
     transcript_download_queue: QueueDetails
     transcribe_queue: QueueDetails
+    embed_queue: QueueDetails
 
 
 class MessageResponse(BaseModel):
@@ -155,6 +157,8 @@ def get_queue_status():
         transcript_download_queued = job_repo.get_queued_jobs(JobType.TRANSCRIPT_DOWNLOAD, limit=20)
         transcribe_running = job_repo.get_running_jobs(JobType.TRANSCRIBE)
         transcribe_queued = job_repo.get_queued_jobs(JobType.TRANSCRIBE, limit=20)
+        embed_running = job_repo.get_running_jobs(JobType.EMBED)
+        embed_queued = job_repo.get_queued_jobs(JobType.EMBED, limit=20)
 
         download_queue = QueueDetails(
             queued=status["download_queue"]["queued"],
@@ -183,14 +187,25 @@ def get_queue_status():
             queued_jobs=_get_job_infos(transcribe_queued, episode_repo),
         )
 
+        embed_queue = QueueDetails(
+            queued=status["embed_queue"]["queued"],
+            running=status["embed_queue"]["running"],
+            completed=status["embed_queue"]["completed"],
+            failed=status["embed_queue"]["failed"],
+            running_jobs=_get_job_infos(embed_running, episode_repo),
+            queued_jobs=_get_job_infos(embed_queued, episode_repo),
+        )
+
     return QueueStatusResponse(
         running=status["running"],
         download_workers=status["download_workers"],
         transcript_download_workers=status["transcript_download_workers"],
         transcribe_workers=status["transcribe_workers"],
+        embed_workers=status["embed_workers"],
         download_queue=download_queue,
         transcript_download_queue=transcript_download_queue,
         transcribe_queue=transcribe_queue,
+        embed_queue=embed_queue,
     )
 
 
@@ -1076,6 +1091,63 @@ def batch_retry_failed():
         queued=count,
         skipped=0,
         message=f"Retrying {count} failed jobs",
+    )
+
+
+@router.post("/batch/embeddings/backfill", response_model=BatchQueueResponse)
+def batch_backfill_embeddings():
+    """Queue embedding jobs for all episodes missing embeddings.
+
+    Finds completed episodes that have transcripts but no embeddings,
+    and queues EMBED jobs for them. Uses low priority (10) so these
+    don't interfere with normal operations.
+    """
+    from cast2md.db.models import EpisodeStatus
+    from cast2md.search.embeddings import is_embeddings_available
+    from cast2md.search.repository import TranscriptSearchRepository
+
+    if not is_embeddings_available():
+        raise HTTPException(
+            status_code=503,
+            detail="Embeddings not available (sentence-transformers not installed)"
+        )
+
+    with get_db() as conn:
+        episode_repo = EpisodeRepository(conn)
+        job_repo = JobRepository(conn)
+        search_repo = TranscriptSearchRepository(conn)
+
+        # Get all completed episodes with transcripts
+        completed_episodes = episode_repo.get_by_status(EpisodeStatus.COMPLETED, limit=100000)
+        episodes_with_transcripts = [e for e in completed_episodes if e.transcript_path]
+
+        # Get episodes that already have embeddings
+        embedded_episode_ids = search_repo.get_embedded_episodes()
+
+        queued = 0
+        skipped = 0
+
+        for episode in episodes_with_transcripts:
+            if episode.id in embedded_episode_ids:
+                skipped += 1
+                continue
+
+            # Check if already has pending embed job
+            if job_repo.has_pending_job(episode.id, JobType.EMBED):
+                skipped += 1
+                continue
+
+            job_repo.create(
+                episode_id=episode.id,
+                job_type=JobType.EMBED,
+                priority=10,  # Low priority for backfill
+            )
+            queued += 1
+
+    return BatchQueueResponse(
+        queued=queued,
+        skipped=skipped,
+        message=f"Queued {queued} embedding jobs for backfill ({skipped} skipped)",
     )
 
 

@@ -620,6 +620,96 @@ def cmd_reindex_episodes():
     click.echo("Episode search now uses word-boundary matching")
 
 
+@cli.command("backfill-embeddings")
+@click.option("--feed-id", "-f", type=int, help="Only backfill embeddings for this feed")
+@click.option("--limit", "-n", type=int, help="Maximum number of episodes to process")
+def cmd_backfill_embeddings(feed_id: int | None, limit: int | None):
+    """Backfill embeddings for episodes missing them.
+
+    Finds completed episodes that have transcripts but no embeddings,
+    and generates embeddings for semantic search.
+
+    Use --feed-id to limit to a specific feed.
+    Use --limit for testing with a smaller batch.
+    """
+    from cast2md.db.connection import get_db, init_db
+    from cast2md.search.embeddings import is_embeddings_available
+    from cast2md.search.repository import TranscriptSearchRepository
+
+    if not is_embeddings_available():
+        click.echo("Error: Embeddings not available (sentence-transformers not installed)", err=True)
+        raise SystemExit(1)
+
+    init_db()
+
+    with get_db() as conn:
+        search_repo = TranscriptSearchRepository(conn)
+
+        # Build query for episodes with transcripts
+        cursor = conn.cursor()
+        if feed_id:
+            cursor.execute(
+                """
+                SELECT id, transcript_path FROM episode
+                WHERE feed_id = %s AND transcript_path IS NOT NULL AND status = 'completed'
+                """,
+                (feed_id,),
+            )
+        else:
+            cursor.execute(
+                """
+                SELECT id, transcript_path FROM episode
+                WHERE transcript_path IS NOT NULL AND status = 'completed'
+                """
+            )
+
+        episode_transcripts = {row[0]: row[1] for row in cursor.fetchall()}
+
+        if not episode_transcripts:
+            click.echo("No transcripts found to embed")
+            return
+
+        # Get episodes that already have embeddings
+        embedded_episode_ids = search_repo.get_embedded_episodes()
+
+        # Filter to episodes missing embeddings
+        missing = {
+            ep_id: path
+            for ep_id, path in episode_transcripts.items()
+            if ep_id not in embedded_episode_ids
+        }
+
+        if not missing:
+            click.echo(f"All {len(episode_transcripts)} episodes already have embeddings")
+            return
+
+        click.echo(f"Found {len(missing)} episodes missing embeddings (out of {len(episode_transcripts)} total)")
+
+        # Apply limit if specified
+        if limit:
+            missing = dict(list(missing.items())[:limit])
+            click.echo(f"Processing {len(missing)} episodes (limited)")
+
+        # Generate embeddings with progress bar
+        with click.progressbar(
+            missing.items(),
+            label="Generating embeddings",
+            length=len(missing),
+        ) as items:
+            embedded_count = 0
+            for episode_id, transcript_path in items:
+                try:
+                    count = search_repo.index_episode_embeddings(episode_id, transcript_path)
+                    if count > 0:
+                        embedded_count += 1
+                except Exception as e:
+                    click.echo(f"\nWarning: Failed to embed episode {episode_id}: {e}", err=True)
+
+    click.echo()
+    click.echo(f"Generated embeddings for {embedded_count} episodes")
+    click.echo("Semantic search index updated")
+
+
 @cli.command("serve")
 @click.option("--host", "-h", default="0.0.0.0", help="Host to bind to")
 @click.option("--port", "-p", default=8000, help="Port to bind to")

@@ -699,7 +699,13 @@ class WorkerManager:
         from cast2md.search.embeddings import is_embeddings_available
 
         # Check if embedding infrastructure is available
-        if not is_embeddings_available() or not is_pgvector_available():
+        embeddings_available = is_embeddings_available()
+        pgvector_available = is_pgvector_available()
+        if not embeddings_available or not pgvector_available:
+            logger.debug(
+                f"Skipping embedding for episode {episode_id}: "
+                f"embeddings_available={embeddings_available}, pgvector_available={pgvector_available}"
+            )
             return
 
         job_repo = JobRepository(conn)
