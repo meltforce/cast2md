@@ -1656,16 +1656,16 @@ class JobRepository:
         self.conn.commit()
         return cursor.rowcount
 
-    def get_stuck_jobs(self, threshold_hours: int = 2) -> list[Job]:
+    def get_stuck_jobs(self, threshold_minutes: int = 2) -> list[Job]:
         """Get jobs that have been running longer than threshold.
 
         Args:
-            threshold_hours: Hours after which a running job is considered stuck.
+            threshold_minutes: Hours after which a running job is considered stuck.
 
         Returns:
             List of stuck jobs.
         """
-        threshold = (datetime.now() - timedelta(hours=threshold_hours)).isoformat()
+        threshold = (datetime.now() - timedelta(minutes=threshold_minutes)).isoformat()
         cursor = execute(
             self.conn,
             """
@@ -1708,7 +1708,7 @@ class JobRepository:
         job_type: JobType | None = None,
         limit: int = 100,
         include_stuck: bool = False,
-        stuck_threshold_hours: int = 2,
+        stuck_threshold_minutes: int = 2,
     ) -> list[Job]:
         """Get all jobs with optional filters.
 
@@ -1717,7 +1717,7 @@ class JobRepository:
             job_type: Filter by job type.
             limit: Maximum number of jobs to return.
             include_stuck: If True and status is None, includes stuck indicator.
-            stuck_threshold_hours: Hours after which running job is stuck.
+            stuck_threshold_minutes: Hours after which running job is stuck.
 
         Returns:
             List of jobs ordered by priority, then scheduled time.
@@ -1801,16 +1801,16 @@ class JobRepository:
         self.conn.commit()
         return cursor.rowcount > 0
 
-    def batch_force_reset_stuck(self, threshold_hours: int = 2) -> tuple[int, int]:
+    def batch_force_reset_stuck(self, threshold_minutes: int = 2) -> tuple[int, int]:
         """Reset all stuck jobs back to queued state or fail them if max attempts exceeded.
 
         Args:
-            threshold_hours: Hours after which a running job is considered stuck.
+            threshold_minutes: Hours after which a running job is considered stuck.
 
         Returns:
             Tuple of (jobs_requeued, jobs_failed).
         """
-        threshold = (datetime.now() - timedelta(hours=threshold_hours)).isoformat()
+        threshold = (datetime.now() - timedelta(minutes=threshold_minutes)).isoformat()
         now = datetime.now().isoformat()
 
         # First, fail jobs that have exceeded max attempts
@@ -1860,16 +1860,16 @@ class JobRepository:
         self.conn.commit()
         return cursor.rowcount
 
-    def count_stuck_jobs(self, threshold_hours: int = 2) -> int:
+    def count_stuck_jobs(self, threshold_minutes: int = 2) -> int:
         """Count jobs that have been running longer than threshold.
 
         Args:
-            threshold_hours: Hours after which a running job is considered stuck.
+            threshold_minutes: Hours after which a running job is considered stuck.
 
         Returns:
             Number of stuck jobs.
         """
-        threshold = (datetime.now() - timedelta(hours=threshold_hours)).isoformat()
+        threshold = (datetime.now() - timedelta(minutes=threshold_minutes)).isoformat()
         cursor = execute(
             self.conn,
             """

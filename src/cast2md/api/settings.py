@@ -65,12 +65,12 @@ def _get_configurable_settings() -> dict:
             "min": 1,
             "max": 20,
         },
-        "stuck_threshold_hours": {
+        "stuck_threshold_minutes": {
             "type": "int",
-            "label": "Stuck Job Threshold (hours)",
+            "label": "Stuck Job Threshold (minutes)",
             "description": "Jobs running longer than this are considered stuck",
-            "min": 1,
-            "max": 48,
+            "min": 5,
+            "max": 120,
         },
         "transcript_unavailable_age_days": {
             "type": "int",

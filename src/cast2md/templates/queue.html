@@ -50,7 +50,7 @@
 {% if stuck_count > 0 %}
 <article style="background: #fef3c7; border-color: #f59e0b; margin-bottom: 1rem;">
     <strong style="color: #92400e;">Warning:</strong>
-    <span style="color: #92400e;">{{ stuck_count }} job{% if stuck_count > 1 %}s{% endif %} stuck (running > {{ stuck_threshold_hours }}h)</span>
+    <span style="color: #92400e;">{{ stuck_count }} job{% if stuck_count > 1 %}s{% endif %} stuck (running > {{ stuck_threshold_minutes }}min)</span>
     <button class="outline" style="margin-left: 1rem; padding: 0.25rem 0.5rem; font-size: 0.875rem;"
             onclick="resetAllStuck()">Reset All Stuck</button>
 </article>

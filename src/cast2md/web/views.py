@@ -717,7 +717,7 @@ def admin_queue_page(request: Request, status: str | None = None):
     from cast2md.config.settings import get_settings
     from cast2md.db.models import JobStatus
 
-    stuck_threshold_hours = get_settings().stuck_threshold_hours
+    stuck_threshold_minutes = get_settings().stuck_threshold_minutes
 
     with get_db() as conn:
         job_repo = JobRepository(conn)
@@ -726,11 +726,11 @@ def admin_queue_page(request: Request, status: str | None = None):
 
         # Get job counts
         job_counts = job_repo.count_by_status()
-        stuck_count = job_repo.count_stuck_jobs(stuck_threshold_hours)
+        stuck_count = job_repo.count_stuck_jobs(stuck_threshold_minutes)
 
         # Get jobs based on filter
         if status == "stuck":
-            jobs = job_repo.get_stuck_jobs(stuck_threshold_hours)
+            jobs = job_repo.get_stuck_jobs(stuck_threshold_minutes)
         elif status:
             try:
                 job_status = JobStatus(status)
@@ -741,7 +741,7 @@ def admin_queue_page(request: Request, status: str | None = None):
             jobs = job_repo.get_all_jobs(limit=100)
 
         # Build job info with episode and feed details
-        stuck_threshold = datetime.now() - timedelta(hours=stuck_threshold_hours)
+        stuck_threshold = datetime.now() - timedelta(minutes=stuck_threshold_minutes)
         job_list = []
         for job in jobs:
             episode = episode_repo.get_by_id(job.episode_id)
@@ -772,7 +772,7 @@ def admin_queue_page(request: Request, status: str | None = None):
             "job_counts": job_counts,
             "stuck_count": stuck_count,
             "current_filter": status or "all",
-            "stuck_threshold_hours": stuck_threshold_hours,
+            "stuck_threshold_minutes": stuck_threshold_minutes,
         },
     )
 

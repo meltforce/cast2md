@@ -47,7 +47,7 @@ class Settings(BaseSettings):
     request_timeout: int = 30
 
     # Queue management
-    stuck_threshold_hours: int = 2  # Jobs running longer than this are considered stuck
+    stuck_threshold_minutes: int = 30  # Jobs running longer than this are considered stuck
 
     # Transcript discovery
     transcript_unavailable_age_days: int = 14  # Episodes older than this without external URLs marked unavailable
@@ -136,7 +136,7 @@ _DEFAULTS = {
     "max_transcript_download_workers": 4,
     "max_retry_attempts": 3,
     "request_timeout": 30,
-    "stuck_threshold_hours": 2,
+    "stuck_threshold_minutes": 30,
     "itunes_country": "de",
     "ntfy_enabled": False,
     "ntfy_url": "https://ntfy.sh",
