@@ -685,6 +685,7 @@ tail -f /dev/null
 
     def _setup_pod_via_ssh(self, host_ip: str, node_name: str) -> None:
         """Install cast2md and dependencies on the pod via Tailscale SSH."""
+        from cast2md.services.pod_setup import PodSetupConfig, setup_pod
 
         def run_ssh(cmd: str, description: str, timeout: int = 300) -> str:
             # Use Tailscale SSH (pods don't have regular sshd)
@@ -697,41 +698,15 @@ tail -f /dev/null
                 raise RuntimeError(f"SSH command failed ({description}): {result.stderr}")
             return result.stdout.strip()
 
-        settings = self.settings
-        server_url = self.get_effective_server_url()
-        server_ip = self.get_effective_server_ip()
-
-        # Add server to /etc/hosts
-        server_host = server_url.replace("https://", "").replace("http://", "").split("/")[0]
-        run_ssh(f"echo '{server_ip} {server_host}' >> /etc/hosts", "Adding server to /etc/hosts")
-
-        # Install ffmpeg
-        run_ssh("apt-get update -qq && apt-get install -y -qq ffmpeg > /dev/null 2>&1", "Installing ffmpeg")
-
-        # Install cast2md
-        run_ssh(
-            f"pip install --no-cache-dir 'cast2md[node] @ git+https://github.com/{settings.runpod_github_repo}.git'",
-            "Installing cast2md",
-            timeout=600,
+        # Use shared setup logic
+        config = PodSetupConfig(
+            server_url=self.get_effective_server_url(),
+            server_ip=self.get_effective_server_ip(),
+            node_name=node_name,
+            model=self.settings.runpod_whisper_model,
+            github_repo=self.settings.runpod_github_repo,
         )
-
-        # Convert URL to HTTP:8000 for internal Tailscale traffic
-        internal_url = server_url
-        if internal_url.startswith("https://"):
-            internal_url = "http://" + internal_url[8:]
-        elif not internal_url.startswith("http://"):
-            internal_url = "http://" + internal_url
-        if ":8000" not in internal_url:
-            internal_url = internal_url.rstrip("/") + ":8000"
-
-        # Register node
-        run_ssh(f"http_proxy=http://localhost:1055 cast2md node register --server '{internal_url}' --name '{node_name}'", "Registering node")
-
-        # Start worker
-        run_ssh(
-            f"http_proxy=http://localhost:1055 WHISPER_MODEL={settings.runpod_whisper_model} nohup cast2md node start > /tmp/cast2md-node.log 2>&1 &",
-            "Starting worker",
-        )
+        setup_pod(config, run_ssh)
 
         # Verify worker started
         time.sleep(3)
