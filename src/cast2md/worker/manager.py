@@ -54,6 +54,7 @@ class WorkerManager:
         self._embed_thread: Optional[threading.Thread] = None
         self._stop_event = threading.Event()
         self._coordinator = None
+        self._started_at: Optional[float] = None  # For startup grace period
 
         # Pause mechanism for transcript download workers
         self._tdl_pause_event = threading.Event()
@@ -90,6 +91,7 @@ class WorkerManager:
 
         self._running = True
         self._stop_event.clear()
+        self._started_at = time.time()
 
         # Start download workers (audio downloads)
         for i in range(self._max_download_workers):
@@ -253,10 +255,19 @@ class WorkerManager:
     def _should_defer_transcription(self) -> bool:
         """Check if local transcription should defer to external workers.
 
-        Returns True if external workers (nodes or RunPod pods) are available.
+        Returns True if:
+        - Within startup grace period (30s) when distributed transcription is enabled
+        - External workers (nodes or RunPod pods) are available
         """
         if not _is_distributed_enabled():
             return False
+
+        # Grace period after startup to let nodes send their first heartbeat
+        # This prevents the server from grabbing jobs before nodes can announce
+        startup_grace_seconds = 30
+        if self._started_at and (time.time() - self._started_at) < startup_grace_seconds:
+            logger.debug("Within startup grace period, deferring to potential external workers")
+            return True
 
         try:
             from cast2md.distributed.coordinator import get_coordinator
