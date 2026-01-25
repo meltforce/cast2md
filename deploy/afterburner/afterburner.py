@@ -126,6 +126,8 @@ class Config:
     whisper_model: str = "large-v3-turbo"
     # Idle timeout for workers (minutes, 0 to disable)
     idle_timeout_minutes: int = 10
+    # Persistent mode (dev mode) - disable worker auto-termination
+    persistent: bool = False
 
     @classmethod
     def from_env(cls) -> "Config":
@@ -729,11 +731,13 @@ def setup_pod_via_ssh(config: Config, host_ip: str, node_name: str = "RunPod Aft
 
     # Start node worker in background (use HTTP proxy for Tailscale traffic)
     # Set TRANSCRIPTION_BACKEND=parakeet to use Parakeet TDT instead of Whisper
-    # Set NODE_IDLE_TIMEOUT_MINUTES to auto-terminate when idle (saves money)
+    # Set termination settings (empty queue check + idle timeout + server unreachable)
+    persistent_val = "1" if config.persistent else "0"
     run_ssh(
         f"http_proxy=http://localhost:1055 "
         f"TRANSCRIPTION_BACKEND=parakeet "
         f"NODE_IDLE_TIMEOUT_MINUTES={config.idle_timeout_minutes} "
+        f"NODE_PERSISTENT={persistent_val} "
         "nohup cast2md node start > /tmp/cast2md-node.log 2>&1 &",
         "Starting node worker with Parakeet backend"
     )
@@ -797,6 +801,11 @@ def main():
     except ValueError as e:
         log(str(e), "ERROR")
         sys.exit(1)
+
+    # Set persistent mode from --keep-alive flag
+    # When persistent, worker won't auto-terminate on empty queue
+    if args.keep_alive:
+        config.persistent = True
 
     # Generate unique instance ID for parallel execution
     instance_id = secrets.token_hex(2)  # e.g., "a3f2"

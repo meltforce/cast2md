@@ -28,6 +28,7 @@ class PodSetupConfig:
 
     # Worker behavior
     idle_timeout_minutes: int = 10  # Auto-terminate after this many minutes idle (0 to disable)
+    persistent: bool = False  # Dev mode: disable auto-termination
 
     @property
     def is_parakeet(self) -> bool:
@@ -103,11 +104,12 @@ def setup_pod(
         120,
     )
 
-    # Start worker with appropriate backend and idle timeout
+    # Start worker with appropriate backend and termination settings
     backend_env = f"TRANSCRIPTION_BACKEND={config.transcription_backend}"
     idle_env = f"NODE_IDLE_TIMEOUT_MINUTES={config.idle_timeout_minutes}"
+    persistent_env = f"NODE_PERSISTENT={'1' if config.persistent else '0'}"
     run_ssh(
-        f"http_proxy=http://localhost:1055 {backend_env} {idle_env} WHISPER_MODEL={config.model} "
+        f"http_proxy=http://localhost:1055 {backend_env} {idle_env} {persistent_env} WHISPER_MODEL={config.model} "
         "nohup cast2md node start > /tmp/cast2md-node.log 2>&1 &",
         "Starting worker",
         120,

@@ -440,14 +440,25 @@ Default models:
 
 The node worker uses a **3-slot prefetch queue** to keep audio ready for instant transcription. This is important for Parakeet which transcribes faster than download speed.
 
-### Idle Timeout
+### Auto-Termination
 
-Node workers auto-terminate when idle to save costs. Controlled by `NODE_IDLE_TIMEOUT_MINUTES` environment variable (default: 10 minutes, set to 0 to disable).
+Node workers have three auto-termination conditions (all respect persistent/dev mode):
 
-The worker checks idle time each poll cycle. If no job has been processed within the timeout period, the worker gracefully shuts down. This prevents pods from running idle and accumulating costs when:
-- The queue is empty
-- Jobs are stuck or failing
-- No jobs are available for the worker to claim
+1. **Empty Queue** - Terminate after N consecutive empty queue checks (default: 2 checks, 60s apart)
+   - Same behavior as CLI afterburner
+   - Env: `NODE_REQUIRED_EMPTY_CHECKS=2`, `NODE_EMPTY_QUEUE_WAIT=60`
+
+2. **Idle Timeout** - Safety net if jobs exist but can't be claimed (default: 10 minutes)
+   - Catches stuck/failing jobs, node assignment issues
+   - Env: `NODE_IDLE_TIMEOUT_MINUTES=10` (0 to disable)
+
+3. **Server Unreachable** - Terminate if server crashes (default: 5 minutes)
+   - Protects against burning money if server goes down
+   - Env: `NODE_SERVER_UNREACHABLE_MINUTES=5`
+
+**Persistent/Dev Mode**: Set `NODE_PERSISTENT=1` to disable all auto-termination. This is automatically set when:
+- Creating pods with `persistent=True` via API
+- Using `--keep-alive` flag with CLI afterburner
 
 ### Tailscale Userspace Networking (Important Lessons)
 
