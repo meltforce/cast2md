@@ -67,20 +67,45 @@ print_error() {
     echo -e "  ${RED}✗${NC} $1"
 }
 
-# Find Python 3.11+
+# Find Python 3.11+ (but not 3.14+ which may have compatibility issues)
 find_python() {
     local candidates=()
 
     if [ "$PLATFORM" = "macos" ]; then
-        # Try Homebrew Python first on macOS
-        candidates=(/opt/homebrew/bin/python3 /usr/local/bin/python3 python3)
+        # Try Homebrew versioned Pythons first (prefer 3.12/3.13 over 3.14+)
+        candidates=(
+            /opt/homebrew/bin/python3.12
+            /opt/homebrew/bin/python3.13
+            /opt/homebrew/bin/python3.11
+            /usr/local/bin/python3.12
+            /usr/local/bin/python3.13
+            /usr/local/bin/python3.11
+            /opt/homebrew/bin/python3
+            /usr/local/bin/python3
+            python3
+        )
     else
-        # Linux: try common locations
-        candidates=(python3.12 python3.11 python3)
+        # Linux: try versioned pythons first
+        candidates=(python3.12 python3.13 python3.11 python3)
     fi
 
     for py in "${candidates[@]}"; do
-        if command -v "$py" &> /dev/null; then
+        if [ -x "$py" ] || command -v "$py" &> /dev/null; then
+            version=$("$py" --version 2>&1 | cut -d' ' -f2)
+            major=$(echo "$version" | cut -d. -f1)
+            minor=$(echo "$version" | cut -d. -f2)
+            # Accept 3.11, 3.12, 3.13 (skip 3.14+ for now due to potential compatibility issues)
+            if [ "$major" -eq 3 ] && [ "$minor" -ge 11 ] && [ "$minor" -le 13 ]; then
+                PYTHON_BIN="$py"
+                PYTHON_VERSION="$version"
+                return 0
+            fi
+        fi
+    done
+
+    # Fallback: accept any 3.11+
+    for py in "${candidates[@]}"; do
+        if [ -x "$py" ] || command -v "$py" &> /dev/null; then
             version=$("$py" --version 2>&1 | cut -d' ' -f2)
             major=$(echo "$version" | cut -d. -f1)
             minor=$(echo "$version" | cut -d. -f2)
