@@ -2,26 +2,25 @@
 #
 # cast2md Node Setup Script
 # =========================
-# Single script for installing and updating cast2md transcriber nodes on macOS.
+# Single script for installing, updating, and uninstalling cast2md transcriber nodes.
+# Supports macOS (launchd) and Linux (systemd).
 #
-# Usage (public repo):
+# Usage:
 #   curl -fsSL https://raw.githubusercontent.com/meltforce/cast2md/main/scripts/cast2md-node.sh | bash
 #
-# Usage (private repo):
-#   export GITHUB_TOKEN=ghp_xxx
-#   curl -fsSL https://gist.githubusercontent.com/.../cast2md-node.sh | bash
-#
-# The script auto-detects install vs update:
-#   - If ~/.cast2md/cast2md doesn't exist → Install mode
-#   - If it exists → Update mode
+# The script prompts for action: Install/Update or Uninstall
 
 set -e
 
 INSTALL_DIR="$HOME/.cast2md"
 REPO_DIR="$INSTALL_DIR/cast2md"
 VENV_DIR="$INSTALL_DIR/venv"
-TOKEN_FILE="$INSTALL_DIR/.github-token"
+LOG_FILE="$INSTALL_DIR/node.log"
+
+# Platform-specific paths
 PLIST_PATH="$HOME/Library/LaunchAgents/com.cast2md.node.plist"
+SYSTEMD_USER_DIR="$HOME/.config/systemd/user"
+SYSTEMD_SERVICE="$SYSTEMD_USER_DIR/cast2md-node.service"
 
 # Colors for output
 RED='\033[0;31m'
@@ -29,6 +28,21 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
+
+# Platform detection
+detect_platform() {
+    case "$(uname -s)" in
+        Darwin)
+            PLATFORM="macos"
+            ;;
+        Linux)
+            PLATFORM="linux"
+            ;;
+        *)
+            PLATFORM="unknown"
+            ;;
+    esac
+}
 
 print_header() {
     echo ""
@@ -53,11 +67,20 @@ print_error() {
     echo -e "  ${RED}✗${NC} $1"
 }
 
-# Find Python 3.11+ (prefer Homebrew over system)
+# Find Python 3.11+
 find_python() {
-    # Try Homebrew Python first
-    for py in /opt/homebrew/bin/python3 /usr/local/bin/python3; do
-        if [ -x "$py" ]; then
+    local candidates=()
+
+    if [ "$PLATFORM" = "macos" ]; then
+        # Try Homebrew Python first on macOS
+        candidates=(/opt/homebrew/bin/python3 /usr/local/bin/python3 python3)
+    else
+        # Linux: try common locations
+        candidates=(python3.12 python3.11 python3)
+    fi
+
+    for py in "${candidates[@]}"; do
+        if command -v "$py" &> /dev/null; then
             version=$("$py" --version 2>&1 | cut -d' ' -f2)
             major=$(echo "$version" | cut -d. -f1)
             minor=$(echo "$version" | cut -d. -f2)
@@ -69,122 +92,74 @@ find_python() {
         fi
     done
 
-    # Fall back to system python3
-    if command -v python3 &> /dev/null; then
-        version=$(python3 --version 2>&1 | cut -d' ' -f2)
-        major=$(echo "$version" | cut -d. -f1)
-        minor=$(echo "$version" | cut -d. -f2)
-        if [ "$major" -ge 3 ] && [ "$minor" -ge 11 ]; then
-            PYTHON_BIN="python3"
-            PYTHON_VERSION="$version"
-            return 0
-        fi
-    fi
-
     return 1
 }
 
 check_prerequisites() {
-    print_step "1/7" "Checking prerequisites..."
+    print_step "1/6" "Checking prerequisites..."
 
     # Check Python
     if find_python; then
         print_success "Python $PYTHON_VERSION ($PYTHON_BIN)"
     else
-        print_error "Python 3.11+ required. Install with: brew install python@3.12"
+        if [ "$PLATFORM" = "macos" ]; then
+            print_error "Python 3.11+ required. Install with: brew install python@3.12"
+        else
+            print_error "Python 3.11+ required. Install with: sudo apt install python3.11 python3.11-venv"
+        fi
         exit 1
     fi
 
-    # Check Homebrew
-    if command -v brew &> /dev/null; then
-        print_success "Homebrew"
-    else
-        print_error "Homebrew not found. Install from https://brew.sh"
-        exit 1
-    fi
-
-    # Check ffmpeg
+    # Check/install ffmpeg
     if command -v ffmpeg &> /dev/null; then
         print_success "ffmpeg"
     else
         print_warning "ffmpeg not found. Installing..."
-        brew install ffmpeg
+        if [ "$PLATFORM" = "macos" ]; then
+            if command -v brew &> /dev/null; then
+                brew install ffmpeg
+            else
+                print_error "Homebrew not found. Install ffmpeg manually or install Homebrew from https://brew.sh"
+                exit 1
+            fi
+        else
+            if command -v apt-get &> /dev/null; then
+                sudo apt-get update && sudo apt-get install -y ffmpeg
+            elif command -v dnf &> /dev/null; then
+                sudo dnf install -y ffmpeg
+            elif command -v pacman &> /dev/null; then
+                sudo pacman -S --noconfirm ffmpeg
+            else
+                print_error "Could not install ffmpeg. Please install it manually."
+                exit 1
+            fi
+        fi
         print_success "ffmpeg installed"
     fi
 
-    # Detect architecture
-    if [ "$(uname -m)" = "arm64" ]; then
+    # Detect architecture for whisper backend
+    if [ "$PLATFORM" = "macos" ] && [ "$(uname -m)" = "arm64" ]; then
         print_success "Apple Silicon detected (will use MLX backend)"
         USE_MLX=true
+        WHISPER_BACKEND="mlx"
     else
-        print_success "Intel Mac (will use faster-whisper backend)"
+        print_success "Using faster-whisper backend"
         USE_MLX=false
+        WHISPER_BACKEND="faster-whisper"
     fi
-}
-
-check_github_auth() {
-    print_step "2/7" "GitHub authentication"
-
-    # Try to access repo without auth first (in case it's public)
-    # GIT_TERMINAL_PROMPT=0 prevents git from asking for credentials
-    if GIT_TERMINAL_PROMPT=0 git ls-remote https://github.com/meltforce/cast2md.git HEAD &> /dev/null; then
-        print_success "Repository is public, no auth needed"
-        GITHUB_TOKEN=""
-        return
-    fi
-
-    # Check for GITHUB_TOKEN env variable
-    if [ -n "$GITHUB_TOKEN" ]; then
-        if GIT_TERMINAL_PROMPT=0 git ls-remote "https://oauth2:${GITHUB_TOKEN}@github.com/meltforce/cast2md.git" HEAD &> /dev/null; then
-            # Save token for future updates
-            mkdir -p "$INSTALL_DIR"
-            echo "$GITHUB_TOKEN" > "$TOKEN_FILE"
-            chmod 600 "$TOKEN_FILE"
-            print_success "Using token from environment"
-            return
-        else
-            print_error "GITHUB_TOKEN is invalid"
-            exit 1
-        fi
-    fi
-
-    # Check for saved token
-    if [ -f "$TOKEN_FILE" ]; then
-        GITHUB_TOKEN=$(cat "$TOKEN_FILE")
-        if GIT_TERMINAL_PROMPT=0 git ls-remote "https://oauth2:${GITHUB_TOKEN}@github.com/meltforce/cast2md.git" HEAD &> /dev/null; then
-            print_success "Using saved token"
-            return
-        else
-            print_warning "Saved token is invalid"
-            rm -f "$TOKEN_FILE"
-        fi
-    fi
-
-    # No token available
-    print_error "Repository is private. Set GITHUB_TOKEN environment variable:"
-    echo ""
-    echo "  export GITHUB_TOKEN=your_token_here"
-    echo "  curl -fsSL ... | bash"
-    echo ""
-    exit 1
 }
 
 clone_repo() {
-    print_step "3/7" "Cloning repository..."
+    print_step "2/6" "Cloning repository..."
 
     mkdir -p "$INSTALL_DIR"
-
-    if [ -n "$GITHUB_TOKEN" ]; then
-        GIT_TERMINAL_PROMPT=0 git clone "https://oauth2:${GITHUB_TOKEN}@github.com/meltforce/cast2md.git" "$REPO_DIR" 2>/dev/null
-    else
-        git clone "https://github.com/meltforce/cast2md.git" "$REPO_DIR" 2>/dev/null
-    fi
+    git clone "https://github.com/meltforce/cast2md.git" "$REPO_DIR" 2>/dev/null
 
     print_success "Cloned to $REPO_DIR"
 }
 
 create_venv() {
-    print_step "4/7" "Creating virtual environment..."
+    print_step "3/6" "Creating virtual environment..."
 
     "$PYTHON_BIN" -m venv "$VENV_DIR"
 
@@ -192,7 +167,7 @@ create_venv() {
 }
 
 install_deps() {
-    print_step "5/7" "Installing dependencies..."
+    print_step "4/6" "Installing dependencies..."
 
     source "$VENV_DIR/bin/activate"
 
@@ -203,8 +178,7 @@ install_deps() {
     cd "$REPO_DIR"
     pip install --quiet --no-deps -e .
 
-    # Install node dependencies directly (not using extras which are additive)
-    # Core deps needed by all nodes
+    # Install node dependencies directly (minimal set for nodes)
     echo "  Installing core dependencies..."
     pip install --quiet \
         httpx \
@@ -214,7 +188,6 @@ install_deps() {
         fastapi \
         'uvicorn[standard]' \
         jinja2 \
-        feedparser \
         python-multipart
 
     # Install transcription backend based on architecture
@@ -222,7 +195,7 @@ install_deps() {
         echo "  Installing MLX Whisper (Apple Silicon)..."
         pip install --quiet mlx-whisper
     else
-        echo "  Installing faster-whisper (Intel)..."
+        echo "  Installing faster-whisper..."
         pip install --quiet faster-whisper
     fi
 
@@ -232,7 +205,7 @@ install_deps() {
 }
 
 register_node() {
-    print_step "6/7" "Node registration"
+    print_step "5/6" "Node registration"
 
     source "$VENV_DIR/bin/activate"
 
@@ -256,21 +229,49 @@ register_node() {
 }
 
 setup_service() {
-    print_step "7/7" "Install as startup service?"
+    print_step "6/6" "Service setup"
 
-    printf "  Install as startup service? [Y/n] "
-    read INSTALL_SERVICE < /dev/tty
+    echo ""
+    echo "  How would you like to run the node?"
+    echo "    [1] Auto-start service (default)"
+    echo "    [2] Shell script"
+    echo "    [3] Manual"
+    echo ""
+    printf "  Choice [1]: "
+    read SERVICE_CHOICE < /dev/tty
 
-    # Determine whisper backend for env var
-    if [ "$USE_MLX" = true ]; then
-        WHISPER_BACKEND="mlx"
+    # Default to 1 if empty
+    SERVICE_CHOICE="${SERVICE_CHOICE:-1}"
+
+    case "$SERVICE_CHOICE" in
+        1)
+            setup_autostart_service
+            ;;
+        2)
+            setup_start_script
+            ;;
+        3)
+            print_warning "Skipped service installation"
+            echo "  Start manually with: $VENV_DIR/bin/cast2md node start --no-browser"
+            ;;
+        *)
+            print_warning "Invalid choice. Skipping service setup."
+            echo "  Start manually with: $VENV_DIR/bin/cast2md node start --no-browser"
+            ;;
+    esac
+}
+
+setup_autostart_service() {
+    if [ "$PLATFORM" = "macos" ]; then
+        setup_launchd_service
     else
-        WHISPER_BACKEND="faster-whisper"
+        setup_systemd_service
     fi
+}
 
-    if [ "$INSTALL_SERVICE" != "n" ] && [ "$INSTALL_SERVICE" != "N" ]; then
-        # Create launchd plist
-        cat > "$PLIST_PATH" << EOF
+setup_launchd_service() {
+    # Create launchd plist for macOS
+    cat > "$PLIST_PATH" << EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -282,6 +283,7 @@ setup_service() {
         <string>$VENV_DIR/bin/cast2md</string>
         <string>node</string>
         <string>start</string>
+        <string>--no-browser</string>
     </array>
     <key>WorkingDirectory</key>
     <string>$REPO_DIR</string>
@@ -290,9 +292,9 @@ setup_service() {
     <key>KeepAlive</key>
     <true/>
     <key>StandardOutPath</key>
-    <string>$INSTALL_DIR/node.log</string>
+    <string>$LOG_FILE</string>
     <key>StandardErrorPath</key>
-    <string>$INSTALL_DIR/node.log</string>
+    <string>$LOG_FILE</string>
     <key>EnvironmentVariables</key>
     <dict>
         <key>PATH</key>
@@ -304,28 +306,97 @@ setup_service() {
 </plist>
 EOF
 
-        # Load the service
-        launchctl load "$PLIST_PATH" 2>/dev/null || true
+    # Load the service
+    launchctl load "$PLIST_PATH" 2>/dev/null || true
 
-        print_success "Service installed"
-        echo "  Log file: $INSTALL_DIR/node.log"
-    else
-        print_warning "Skipped service installation"
-        echo "  Start manually with: $VENV_DIR/bin/cast2md node start"
-    fi
+    print_success "launchd service installed"
+    echo "  Log file: $LOG_FILE"
+    echo "  Control: launchctl load/unload $PLIST_PATH"
+}
+
+setup_systemd_service() {
+    # Create systemd user service for Linux
+    mkdir -p "$SYSTEMD_USER_DIR"
+
+    cat > "$SYSTEMD_SERVICE" << EOF
+[Unit]
+Description=cast2md Transcriber Node
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=$REPO_DIR
+Environment=WHISPER_BACKEND=$WHISPER_BACKEND
+Environment=PATH=$VENV_DIR/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=$VENV_DIR/bin/cast2md node start --no-browser
+Restart=always
+RestartSec=10
+StandardOutput=append:$LOG_FILE
+StandardError=append:$LOG_FILE
+
+[Install]
+WantedBy=default.target
+EOF
+
+    # Enable lingering so user services start at boot
+    loginctl enable-linger "$USER" 2>/dev/null || true
+
+    # Reload and enable the service
+    systemctl --user daemon-reload
+    systemctl --user enable cast2md-node.service
+    systemctl --user start cast2md-node.service
+
+    print_success "systemd user service installed"
+    echo "  Log file: $LOG_FILE"
+    echo "  Control: systemctl --user start/stop/status cast2md-node"
+}
+
+setup_start_script() {
+    local script_path="$INSTALL_DIR/start-node.sh"
+
+    cat > "$script_path" << EOF
+#!/bin/bash
+# cast2md node start script
+# Run: $script_path
+
+export WHISPER_BACKEND=$WHISPER_BACKEND
+cd "$REPO_DIR"
+exec "$VENV_DIR/bin/cast2md" node start "\$@"
+EOF
+
+    chmod +x "$script_path"
+
+    print_success "Start script created"
+    echo "  Run: $script_path"
+    echo "  (Add --no-browser to run without opening browser)"
 }
 
 stop_service() {
-    if [ -f "$PLIST_PATH" ]; then
-        echo "Stopping service..."
-        launchctl unload "$PLIST_PATH" 2>/dev/null || true
+    if [ "$PLATFORM" = "macos" ]; then
+        if [ -f "$PLIST_PATH" ]; then
+            echo "Stopping launchd service..."
+            launchctl unload "$PLIST_PATH" 2>/dev/null || true
+        fi
+    else
+        if systemctl --user is-active cast2md-node.service &>/dev/null; then
+            echo "Stopping systemd service..."
+            systemctl --user stop cast2md-node.service 2>/dev/null || true
+            systemctl --user disable cast2md-node.service 2>/dev/null || true
+        fi
     fi
 }
 
 start_service() {
-    if [ -f "$PLIST_PATH" ]; then
-        echo "Starting service..."
-        launchctl load "$PLIST_PATH" 2>/dev/null || true
+    if [ "$PLATFORM" = "macos" ]; then
+        if [ -f "$PLIST_PATH" ]; then
+            echo "Starting launchd service..."
+            launchctl load "$PLIST_PATH" 2>/dev/null || true
+        fi
+    else
+        if [ -f "$SYSTEMD_SERVICE" ]; then
+            echo "Starting systemd service..."
+            systemctl --user start cast2md-node.service 2>/dev/null || true
+        fi
     fi
 }
 
@@ -336,18 +407,8 @@ update_install() {
 
     stop_service
 
-    # Load saved token if available
-    if [ -f "$TOKEN_FILE" ]; then
-        GITHUB_TOKEN=$(cat "$TOKEN_FILE")
-    else
-        GITHUB_TOKEN=""
-    fi
-
     echo "Pulling latest changes..."
     cd "$REPO_DIR"
-    if [ -n "$GITHUB_TOKEN" ]; then
-        git remote set-url origin "https://oauth2:${GITHUB_TOKEN}@github.com/meltforce/cast2md.git"
-    fi
     git pull
 
     echo "Reinstalling dependencies..."
@@ -355,7 +416,7 @@ update_install() {
     pip install --quiet --upgrade pip
     pip install --quiet --no-deps -e .
 
-    # Reinstall node deps
+    # Reinstall node deps (minimal set)
     pip install --quiet \
         httpx \
         pydantic-settings \
@@ -364,11 +425,10 @@ update_install() {
         fastapi \
         'uvicorn[standard]' \
         jinja2 \
-        feedparser \
         python-multipart
 
     # Check for MLX
-    if [ "$(uname -m)" = "arm64" ]; then
+    if [ "$PLATFORM" = "macos" ] && [ "$(uname -m)" = "arm64" ]; then
         pip install --quiet mlx-whisper
     else
         pip install --quiet faster-whisper
@@ -389,11 +449,10 @@ update_install() {
 
 fresh_install() {
     print_header
-    echo "No existing installation found. Starting install..."
+    echo "Installing cast2md transcriber node..."
     echo ""
 
     check_prerequisites
-    check_github_auth
     clone_repo
     create_venv
     install_deps
@@ -406,9 +465,109 @@ fresh_install() {
     echo "Status UI: http://localhost:8001"
 }
 
+uninstall() {
+    print_header
+    echo -e "${YELLOW}Uninstalling cast2md node...${NC}"
+    echo ""
+
+    if [ ! -d "$INSTALL_DIR" ]; then
+        print_warning "No installation found at $INSTALL_DIR"
+        exit 0
+    fi
+
+    # Confirm uninstall
+    echo "This will:"
+    echo "  - Stop and remove the service"
+    echo "  - Delete $INSTALL_DIR (repo, venv, logs, config)"
+    echo ""
+    printf "Continue? [y/N] "
+    read CONFIRM < /dev/tty
+
+    if [ "$CONFIRM" != "y" ] && [ "$CONFIRM" != "Y" ]; then
+        echo "Cancelled."
+        exit 0
+    fi
+
+    # Try to unregister from server first
+    if [ -f "$INSTALL_DIR/node.json" ] && [ -f "$VENV_DIR/bin/cast2md" ]; then
+        echo ""
+        echo "Unregistering from server..."
+        source "$VENV_DIR/bin/activate"
+        "$VENV_DIR/bin/cast2md" node unregister --force 2>/dev/null || true
+        deactivate
+    fi
+
+    # Stop service
+    stop_service
+
+    # Remove service files
+    if [ "$PLATFORM" = "macos" ]; then
+        if [ -f "$PLIST_PATH" ]; then
+            rm -f "$PLIST_PATH"
+            print_success "Removed launchd plist"
+        fi
+    else
+        if [ -f "$SYSTEMD_SERVICE" ]; then
+            rm -f "$SYSTEMD_SERVICE"
+            systemctl --user daemon-reload 2>/dev/null || true
+            print_success "Removed systemd service"
+        fi
+    fi
+
+    # Remove installation directory
+    rm -rf "$INSTALL_DIR"
+    print_success "Removed $INSTALL_DIR"
+
+    echo ""
+    print_success "Uninstall complete!"
+}
+
+show_menu() {
+    print_header
+
+    # Check if already installed
+    if [ -d "$REPO_DIR" ]; then
+        echo "Existing installation found."
+        echo ""
+        echo "What would you like to do?"
+        echo "  [1] Update"
+        echo "  [2] Uninstall"
+        echo ""
+        printf "Choice [1]: "
+    else
+        echo "No existing installation found."
+        echo ""
+        echo "What would you like to do?"
+        echo "  [1] Install"
+        echo "  [2] Uninstall (nothing to uninstall)"
+        echo ""
+        printf "Choice [1]: "
+    fi
+
+    read MENU_CHOICE < /dev/tty
+    MENU_CHOICE="${MENU_CHOICE:-1}"
+
+    case "$MENU_CHOICE" in
+        1)
+            if [ -d "$REPO_DIR" ]; then
+                detect_platform
+                update_install
+            else
+                detect_platform
+                fresh_install
+            fi
+            ;;
+        2)
+            detect_platform
+            uninstall
+            ;;
+        *)
+            echo "Invalid choice."
+            exit 1
+            ;;
+    esac
+}
+
 # Main
-if [ -d "$REPO_DIR" ]; then
-    update_install
-else
-    fresh_install
-fi
+detect_platform
+show_menu

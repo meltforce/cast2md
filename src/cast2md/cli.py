@@ -10,15 +10,6 @@ from pathlib import Path
 
 import click
 
-from cast2md.config.settings import get_settings
-from cast2md.db.connection import get_db, init_db
-from cast2md.db.models import EpisodeStatus
-from cast2md.db.repository import EpisodeRepository, FeedRepository
-from cast2md.download.downloader import download_episode
-from cast2md.feed.discovery import discover_new_episodes, validate_feed_url
-from cast2md.feed.parser import parse_feed
-from cast2md.transcription.service import transcribe_episode
-
 
 @click.group()
 @click.version_option(version="0.1.0")
@@ -33,6 +24,9 @@ def cli():
 @cli.command("init-db")
 def cmd_init_db():
     """Initialize the database."""
+    from cast2md.config.settings import get_settings
+    from cast2md.db.connection import init_db
+
     settings = get_settings()
     settings.ensure_directories()
 
@@ -47,6 +41,10 @@ def cmd_add_feed(url: str):
 
     URL should be an RSS feed URL for a podcast.
     """
+    from cast2md.db.connection import get_db
+    from cast2md.db.repository import FeedRepository
+    from cast2md.feed.discovery import validate_feed_url
+
     click.echo(f"Validating feed: {url}")
 
     is_valid, message, parsed = validate_feed_url(url)
@@ -80,6 +78,9 @@ def cmd_add_feed(url: str):
 @cli.command("list-feeds")
 def cmd_list_feeds():
     """List all podcast feeds."""
+    from cast2md.db.connection import get_db
+    from cast2md.db.repository import FeedRepository
+
     with get_db() as conn:
         repo = FeedRepository(conn)
         feeds = repo.get_all()
@@ -104,6 +105,10 @@ def cmd_poll(feed_id: int):
 
     FEED_ID is the numeric ID of the feed to poll.
     """
+    from cast2md.db.connection import get_db
+    from cast2md.db.repository import FeedRepository
+    from cast2md.feed.discovery import discover_new_episodes
+
     with get_db() as conn:
         repo = FeedRepository(conn)
         feed = repo.get_by_id(feed_id)
@@ -130,6 +135,9 @@ def cmd_list_episodes(feed_id: int, limit: int):
 
     FEED_ID is the numeric ID of the feed.
     """
+    from cast2md.db.connection import get_db
+    from cast2md.db.repository import EpisodeRepository, FeedRepository
+
     with get_db() as conn:
         feed_repo = FeedRepository(conn)
         feed = feed_repo.get_by_id(feed_id)
@@ -163,6 +171,10 @@ def cmd_download(episode_id: int):
 
     EPISODE_ID is the numeric ID of the episode.
     """
+    from cast2md.db.connection import get_db
+    from cast2md.db.repository import EpisodeRepository, FeedRepository
+    from cast2md.download.downloader import download_episode
+
     with get_db() as conn:
         episode_repo = EpisodeRepository(conn)
         episode = episode_repo.get_by_id(episode_id)
@@ -194,6 +206,10 @@ def cmd_transcribe(episode_id: int, timestamps: bool):
     EPISODE_ID is the numeric ID of the episode.
     The episode must be downloaded first.
     """
+    from cast2md.db.connection import get_db
+    from cast2md.db.repository import EpisodeRepository, FeedRepository
+    from cast2md.transcription.service import transcribe_episode
+
     with get_db() as conn:
         episode_repo = EpisodeRepository(conn)
         episode = episode_repo.get_by_id(episode_id)
@@ -229,6 +245,11 @@ def cmd_process(episode_id: int, timestamps: bool):
     EPISODE_ID is the numeric ID of the episode.
     This combines the download and transcribe commands.
     """
+    from cast2md.db.connection import get_db
+    from cast2md.db.repository import EpisodeRepository, FeedRepository
+    from cast2md.download.downloader import download_episode
+    from cast2md.transcription.service import transcribe_episode
+
     with get_db() as conn:
         episode_repo = EpisodeRepository(conn)
         episode = episode_repo.get_by_id(episode_id)
@@ -272,6 +293,11 @@ def cmd_process(episode_id: int, timestamps: bool):
 @cli.command("status")
 def cmd_status():
     """Show system status and statistics."""
+    from cast2md.config.settings import get_settings
+    from cast2md.db.connection import get_db
+    from cast2md.db.models import EpisodeStatus
+    from cast2md.db.repository import EpisodeRepository, FeedRepository
+
     settings = get_settings()
 
     click.echo("cast2md Status")
@@ -321,6 +347,7 @@ def cmd_backup(output: str | None):
 
     Requires pg_dump to be installed and DATABASE_URL to be set.
     """
+    from cast2md.config.settings import get_settings
     from cast2md.db.config import get_database_config
 
     config = get_database_config()
@@ -381,6 +408,7 @@ def cmd_restore(backup_file: str, force: bool):
     WARNING: This will overwrite the current database!
     Requires psql to be installed and DATABASE_URL to be set.
     """
+    from cast2md.config.settings import get_settings
     from cast2md.db.config import get_database_config
 
     config = get_database_config()
@@ -451,6 +479,8 @@ def cmd_restore(backup_file: str, force: bool):
 @cli.command("list-backups")
 def cmd_list_backups():
     """List available database backups."""
+    from cast2md.config.settings import get_settings
+
     settings = get_settings()
     backup_dir = settings.storage_path.parent / "backups"
 
@@ -485,6 +515,8 @@ def cmd_reindex_transcripts(feed_id: int | None, embeddings: bool):
     Use --feed-id to limit reindexing to a specific feed.
     Use --embeddings to also regenerate embeddings for semantic search.
     """
+    from cast2md.db.connection import get_db, init_db
+    from cast2md.db.repository import EpisodeRepository
     from cast2md.search.repository import TranscriptSearchRepository
 
     init_db()
@@ -573,6 +605,9 @@ def cmd_reindex_episodes():
 
     Run this after upgrading if search isn't working correctly.
     """
+    from cast2md.db.connection import init_db, get_db
+    from cast2md.db.repository import EpisodeRepository
+
     init_db()
 
     with get_db() as conn:
@@ -645,6 +680,7 @@ def cmd_node_register(server: str, name: str):
     """
     import httpx
 
+    from cast2md.config.settings import get_settings
     from cast2md.node.config import get_config_path, load_config, save_config, NodeConfig
 
     # Check if already registered
@@ -706,7 +742,8 @@ def cmd_node_register(server: str, name: str):
 
 @node.command("start")
 @click.option("--port", "-p", default=8001, help="Port for node status UI")
-def cmd_node_start(port: int):
+@click.option("--no-browser", is_flag=True, help="Don't open browser automatically")
+def cmd_node_start(port: int, no_browser: bool):
     """Start the transcriber node worker.
 
     The node will poll the server for jobs, download audio files,
@@ -758,9 +795,10 @@ def cmd_node_start(port: int):
     )
     server_thread.start()
 
-    # Give server time to start, then open browser
-    time.sleep(0.5)
-    webbrowser.open(f"http://localhost:{port}")
+    # Give server time to start, then optionally open browser
+    if not no_browser:
+        time.sleep(0.5)
+        webbrowser.open(f"http://localhost:{port}")
 
     # Run worker (blocking)
     try:
