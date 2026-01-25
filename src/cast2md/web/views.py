@@ -588,7 +588,14 @@ def admin_status_page(request: Request):
             })
 
     # Transcription card - server worker
-    server_worker = {"status": "idle", "job": None, "episode": None, "progress": None}
+    # Check if server is in standby mode (deferring to external workers)
+    server_standby = queue_status.get("transcribe_workers_standby", False)
+    server_worker = {
+        "status": "standby" if server_standby else "idle",
+        "job": None,
+        "episode": None,
+        "progress": None,
+    }
     for item in running_transcribe_episodes:
         node_id = item["job"].assigned_node_id
         if not node_id or node_id == "local":
