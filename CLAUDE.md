@@ -440,6 +440,30 @@ Default models:
 
 The node worker uses a **3-slot prefetch queue** to keep audio ready for instant transcription. This is important for Parakeet which transcribes faster than download speed.
 
+### Job State Synchronization
+
+When the server restarts while nodes are processing jobs, the system maintains job state consistency:
+
+**Server Restart Handling:**
+- `reset_running_jobs()` only resets jobs with `assigned_node_id IS NULL` (local server jobs)
+- Remote node jobs keep their assignment - the coordinator's timeout handles truly dead nodes
+- This prevents the old bug where restarts caused nodes to get 403 "Job not assigned to this node" errors
+
+**Heartbeat Resync:**
+Nodes report their state in each heartbeat (every 30s):
+- `current_job_id` - The job currently being transcribed
+- `claimed_job_ids` - All jobs the node has claimed (current + prefetch queue)
+
+The server uses this to:
+1. **Resync lost assignments** - If a node reports a job that lost its `assigned_node_id` (e.g., after server restart), the assignment is restored
+2. **Release orphaned jobs** - Jobs assigned to a node but not in its `claimed_job_ids` are released back to the queue (handles node restarts losing prefetch state)
+3. **Update node status** - Nodes marked offline come back to busy/online after heartbeat
+
+**Key Files:**
+- `db/repository.py` - `reset_running_jobs()`, `resync_job()`, `release_job()`
+- `api/nodes.py` - Heartbeat handler with resync and orphan detection
+- `node/worker.py` - `_heartbeat_loop()` sends job state
+
 ### Auto-Termination
 
 Node workers have three auto-termination conditions (all respect persistent/dev mode):
