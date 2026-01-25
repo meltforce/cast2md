@@ -369,6 +369,8 @@ ssh root@<pod-ip> "tailscale status"
 - `afterburner.py` - Main orchestration script (startup script embedded inline)
 - `startup.sh` - Reference copy of startup script (actual script is in afterburner.py)
 - `.env.example` - Example environment configuration
+- `Dockerfile` - Pre-configured Docker image (see IMAGE.md)
+- `IMAGE.md` - Instructions for building the Docker image
 
 ## Security
 
