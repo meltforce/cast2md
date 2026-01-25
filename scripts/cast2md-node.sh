@@ -204,6 +204,7 @@ install_deps() {
     pip install --quiet --no-deps -e . 2>/dev/null
 
     # Install node dependencies directly (minimal set for nodes)
+    # Suppress resolver warnings about server-side deps we intentionally skip
     echo "  Installing core dependencies..."
     pip install --quiet \
         httpx \
@@ -213,15 +214,15 @@ install_deps() {
         fastapi \
         'uvicorn[standard]' \
         jinja2 \
-        python-multipart
+        python-multipart 2>/dev/null
 
     # Install transcription backend based on architecture
     if [ "$USE_MLX" = true ]; then
         echo "  Installing MLX Whisper (Apple Silicon)..."
-        pip install --quiet mlx-whisper
+        pip install --quiet mlx-whisper 2>/dev/null
     else
         echo "  Installing faster-whisper..."
-        pip install --quiet faster-whisper
+        pip install --quiet faster-whisper 2>/dev/null
     fi
 
     deactivate
@@ -482,7 +483,7 @@ update_install() {
     echo "Reinstalling dependencies..."
     source "$VENV_DIR/bin/activate"
     pip install --quiet --upgrade pip
-    pip install --quiet --no-deps -e .
+    pip install --quiet --no-deps -e . 2>/dev/null
 
     # Reinstall node deps (minimal set)
     pip install --quiet \
@@ -493,13 +494,13 @@ update_install() {
         fastapi \
         'uvicorn[standard]' \
         jinja2 \
-        python-multipart
+        python-multipart 2>/dev/null
 
     # Check for MLX
     if [ "$PLATFORM" = "macos" ] && [ "$(uname -m)" = "arm64" ]; then
-        pip install --quiet mlx-whisper
+        pip install --quiet mlx-whisper 2>/dev/null
     else
-        pip install --quiet faster-whisper
+        pip install --quiet faster-whisper 2>/dev/null
     fi
 
     deactivate
