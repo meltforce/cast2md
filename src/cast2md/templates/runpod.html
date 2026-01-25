@@ -170,13 +170,13 @@
             <small>Sorted by price - fallback uses next cheapest available</small>
         </label>
         <label>
-            Whisper Model
+            Transcription Model
             <select id="setting-whisper-model" name="runpod_whisper_model">
-                {% for model in ['large-v3-turbo', 'large-v3', 'large-v2', 'medium', 'small'] %}
+                {% for model in ['parakeet-tdt-0.6b-v3', 'large-v3-turbo', 'large-v3', 'large-v2', 'medium', 'small'] %}
                 <option value="{{ model }}" {% if model == settings.runpod_whisper_model %}selected{% endif %}>{{ model }}</option>
                 {% endfor %}
             </select>
-            <small>Transcription model for GPU pods</small>
+            <small>Parakeet (fast, English) or Whisper models</small>
         </label>
     </div>
     <div class="grid">
@@ -286,13 +286,13 @@
             <small>Sorted by price - fallback uses next cheapest available</small>
         </label>
         <label>
-            Whisper Model
+            Transcription Model
             <select id="setting-whisper-model" name="runpod_whisper_model">
-                {% for model in ['large-v3-turbo', 'large-v3', 'large-v2', 'medium', 'small'] %}
+                {% for model in ['parakeet-tdt-0.6b-v3', 'large-v3-turbo', 'large-v3', 'large-v2', 'medium', 'small'] %}
                 <option value="{{ model }}" {% if model == settings.runpod_whisper_model %}selected{% endif %}>{{ model }}</option>
                 {% endfor %}
             </select>
-            <small>Transcription model for GPU pods</small>
+            <small>Parakeet (fast, English) or Whisper models</small>
         </label>
     </div>
     <div class="grid">
