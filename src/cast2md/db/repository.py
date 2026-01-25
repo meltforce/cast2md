@@ -2773,3 +2773,17 @@ class PodSetupStateRepository:
         )
         self.conn.commit()
         return cursor.rowcount
+
+    def set_persistent(self, instance_id: str, persistent: bool) -> bool:
+        """Set the persistent flag for a pod setup state."""
+        cursor = execute(
+            self.conn,
+            """
+            UPDATE pod_setup_states
+            SET persistent = %s, updated_at = %s
+            WHERE instance_id = %s
+            """,
+            (persistent, datetime.now().isoformat(), instance_id),
+        )
+        self.conn.commit()
+        return cursor.rowcount > 0

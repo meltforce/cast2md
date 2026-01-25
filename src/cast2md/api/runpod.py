@@ -29,6 +29,7 @@ class PodSetupStateResponse(BaseModel):
     started_at: str
     error: str | None
     host_ip: str | None
+    persistent: bool = False
 
 
 class PodInfoResponse(BaseModel):
@@ -83,6 +84,7 @@ def _state_to_response(state: PodSetupState) -> PodSetupStateResponse:
         started_at=state.started_at.isoformat(),
         error=state.error,
         host_ip=state.host_ip,
+        persistent=state.persistent,
     )
 
 
@@ -249,6 +251,28 @@ def update_pod_code(instance_id: str):
         raise HTTPException(status_code=500, detail=f"Failed to update code on pod {instance_id}")
 
     return {"message": f"Code updated on pod {instance_id}"}
+
+
+class SetPersistentRequest(BaseModel):
+    """Request to set persistent mode."""
+
+    persistent: bool
+
+
+@router.patch("/pods/{instance_id}/persistent", response_model=dict)
+def set_pod_persistent(instance_id: str, request: SetPersistentRequest):
+    """Set persistent (dev mode) flag for a pod.
+
+    When persistent=True, the pod won't be auto-terminated and allows code updates.
+    """
+    service = _check_available()
+
+    success = service.set_persistent(instance_id, request.persistent)
+    if not success:
+        raise HTTPException(status_code=404, detail=f"Pod {instance_id} not found")
+
+    mode = "dev mode (persistent)" if request.persistent else "normal mode"
+    return {"message": f"Pod {instance_id} set to {mode}"}
 
 
 class GpuTypeInfo(BaseModel):
