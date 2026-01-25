@@ -30,6 +30,10 @@ class PodSetupConfig:
     idle_timeout_minutes: int = 10  # Auto-terminate after this many minutes idle (0 to disable)
     persistent: bool = False  # Dev mode: disable auto-termination
 
+    # RunPod self-termination (optional - for watchdog to terminate pod directly)
+    runpod_api_key: str | None = None  # RunPod API key
+    runpod_pod_id: str | None = None  # Pod ID for self-termination
+
     @property
     def is_parakeet(self) -> bool:
         """Check if this is a Parakeet model."""
@@ -116,12 +120,32 @@ def setup_pod(
     )
 
     # Start watchdog that terminates the pod when worker exits (unless persistent)
-    if not config.persistent:
+    if not config.persistent and config.runpod_api_key and config.runpod_pod_id:
+        # Create terminate script that calls RunPod API directly
+        # This works even if the server is down
+        terminate_script = (
+            f'#!/bin/bash\\n'
+            f'echo "Terminating pod via RunPod API..." >> /tmp/cast2md-node.log\\n'
+            f'curl -s -X POST https://api.runpod.io/graphql '
+            f'-H "Content-Type: application/json" '
+            f'-H "Authorization: Bearer {config.runpod_api_key}" '
+            f'-d \'{{"query": "mutation {{ podTerminate(input: {{podId: \\"{config.runpod_pod_id}\\"}}) }}"}}\' '
+            f'>> /tmp/cast2md-node.log 2>&1\\n'
+        )
+        run_ssh(
+            f"echo -e '{terminate_script}' > /tmp/terminate-pod.sh && chmod +x /tmp/terminate-pod.sh",
+            "Creating terminate script",
+            120,
+        )
+
+        # Watchdog monitors worker and calls terminate script when it exits
+        # Note: pgrep matches itself, so we exclude grep patterns
         run_ssh(
             "nohup bash -c '"
-            "while pgrep -f \"cast2md node\" > /dev/null; do sleep 5; done; "
+            "sleep 10; "  # Initial delay to let worker start
+            "while ps aux | grep -v grep | grep -q \"cast2md node start\"; do sleep 5; done; "
             "echo \"Worker exited, terminating pod...\" >> /tmp/cast2md-node.log; "
-            "runpodctl stop"
+            "/tmp/terminate-pod.sh"
             "' > /tmp/watchdog.log 2>&1 &",
             "Starting watchdog",
             120,

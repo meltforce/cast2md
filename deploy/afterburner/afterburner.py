@@ -646,7 +646,7 @@ def estimate_cost(start_time: datetime, gpu_type: str) -> tuple[float, str]:
     return cost, runtime_str
 
 
-def setup_pod_via_ssh(config: Config, host_ip: str, node_name: str = "RunPod Afterburner") -> None:
+def setup_pod_via_ssh(config: Config, host_ip: str, node_name: str = "RunPod Afterburner", pod_id: str | None = None) -> None:
     """Install cast2md and dependencies on the pod via SSH.
 
     Args:
@@ -750,12 +750,30 @@ def setup_pod_via_ssh(config: Config, host_ip: str, node_name: str = "RunPod Aft
     )
 
     # Start watchdog that terminates the pod when worker exits (unless persistent)
-    if not config.persistent:
+    if not config.persistent and pod_id:
+        # Create terminate script that calls RunPod API directly
+        # This works even if the server/CLI is down
+        terminate_script = (
+            f'#!/bin/bash\\n'
+            f'echo "Terminating pod via RunPod API..." >> /tmp/cast2md-node.log\\n'
+            f'curl -s -X POST https://api.runpod.io/graphql '
+            f'-H "Content-Type: application/json" '
+            f'-H "Authorization: Bearer {config.runpod_api_key}" '
+            f'-d \'{{"query": "mutation {{ podTerminate(input: {{podId: \\"{pod_id}\\"}}) }}"}}\' '
+            f'>> /tmp/cast2md-node.log 2>&1\\n'
+        )
+        run_ssh(
+            f"echo -e '{terminate_script}' > /tmp/terminate-pod.sh && chmod +x /tmp/terminate-pod.sh",
+            "Creating terminate script"
+        )
+
+        # Watchdog monitors worker and calls terminate script when it exits
         run_ssh(
             "nohup bash -c '"
-            "while pgrep -f \"cast2md node\" > /dev/null; do sleep 5; done; "
+            "sleep 10; "  # Initial delay to let worker start
+            "while ps aux | grep -v grep | grep -q \"cast2md node start\"; do sleep 5; done; "
             "echo \"Worker exited, terminating pod...\" >> /tmp/cast2md-node.log; "
-            "runpodctl stop"
+            "/tmp/terminate-pod.sh"
             "' > /tmp/watchdog.log 2>&1 &",
             "Starting watchdog"
         )
@@ -988,7 +1006,7 @@ def main():
             return
 
         # Install dependencies via SSH (safer than in startup script)
-        setup_pod_via_ssh(config, host_ip, node_name)
+        setup_pod_via_ssh(config, host_ip, node_name, pod_id=pod_id)
 
         notify(
             config,

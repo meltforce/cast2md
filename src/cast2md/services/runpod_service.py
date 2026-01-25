@@ -889,9 +889,10 @@ tail -f /dev/null
                 raise RuntimeError(f"SSH command failed ({description}): {result.stderr}")
             return result.stdout.strip()
 
-        # Get persistent flag from setup state (dev mode)
+        # Get persistent flag and pod ID from setup state
         state = self.get_setup_state(instance_id)
         is_persistent = state.persistent if state else False
+        pod_id = state.pod_id if state else None
 
         # Use shared setup logic
         config = PodSetupConfig(
@@ -902,6 +903,8 @@ tail -f /dev/null
             github_repo=self.settings.runpod_github_repo,
             idle_timeout_minutes=self.settings.runpod_idle_timeout_minutes,
             persistent=is_persistent,
+            runpod_api_key=self.settings.runpod_api_key,
+            runpod_pod_id=pod_id,
         )
         setup_pod(config, run_ssh)
 
@@ -1109,13 +1112,15 @@ tail -f /dev/null
             )
 
             # Restart watchdog (unless persistent)
+            # The terminate script should already exist from initial setup
             if not state.persistent:
                 run_ssh(
-                    "pkill -f 'while pgrep' || true; "  # Kill old watchdog if any
+                    "pkill -f 'while ps aux' || true; "  # Kill old watchdog if any
                     "nohup bash -c '"
-                    "while pgrep -f \"cast2md node\" > /dev/null; do sleep 5; done; "
+                    "sleep 10; "  # Initial delay
+                    "while ps aux | grep -v grep | grep -q \"cast2md node start\"; do sleep 5; done; "
                     "echo \"Worker exited, terminating pod...\" >> /tmp/cast2md-node.log; "
-                    "runpodctl stop"
+                    "/tmp/terminate-pod.sh"
                     "' > /tmp/watchdog.log 2>&1 &",
                     "Restarting watchdog",
                 )
