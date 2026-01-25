@@ -209,11 +209,28 @@ class WorkerManager:
     def _transcribe_worker(self):
         """Worker thread for processing transcription jobs (sequential).
 
-        When no transcription jobs are available, helps with embedding jobs
-        (work stealing) to speed up embedding backfills.
+        When external workers (nodes or RunPod pods) are available, this worker
+        defers to them and only helps with embedding jobs. When no external
+        workers are available, it processes transcription jobs locally.
+
+        This allows single-server users to transcribe out of the box while
+        users with dedicated nodes/pods get better performance without
+        server CPU overhead.
         """
         while not self._stop_event.is_set():
             try:
+                # Check if external workers are available - defer to them
+                if self._should_defer_transcription():
+                    # External workers available - only help with embeddings
+                    embed_job = self._claim_next_job(JobType.EMBED)
+                    if embed_job is not None:
+                        logger.debug("Local transcription in standby, helping with embed job")
+                        self._process_embed_job(embed_job.id, embed_job.episode_id)
+                        continue
+                    # Wait longer when deferring (external workers handle transcription)
+                    self._stop_event.wait(timeout=15.0)
+                    continue
+
                 job = self._claim_next_job(JobType.TRANSCRIBE)
                 if job is None:
                     # No transcription jobs - try to help with embeddings
@@ -232,6 +249,22 @@ class WorkerManager:
             except Exception as e:
                 logger.error(f"Transcription worker error: {e}")
                 time.sleep(5.0)
+
+    def _should_defer_transcription(self) -> bool:
+        """Check if local transcription should defer to external workers.
+
+        Returns True if external workers (nodes or RunPod pods) are available.
+        """
+        if not _is_distributed_enabled():
+            return False
+
+        try:
+            from cast2md.distributed.coordinator import get_coordinator
+            coordinator = get_coordinator()
+            return coordinator.has_external_workers()
+        except Exception as e:
+            logger.debug(f"Error checking for external workers: {e}")
+            return False
 
     def _transcript_download_worker(self):
         """Worker thread for processing transcript download jobs (fast, parallel)."""

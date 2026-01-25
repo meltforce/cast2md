@@ -222,6 +222,52 @@ class RemoteTranscriptionCoordinator:
         """Check if coordinator is running."""
         return self._running
 
+    def has_external_workers(self) -> bool:
+        """Check if any external transcription workers are available.
+
+        This includes:
+        - Online/busy nodes (checked via in-memory heartbeats first, then DB)
+        - Active RunPod pods (if RunPod is enabled)
+
+        Used by local transcription worker to defer to external workers.
+        """
+        # Check in-memory heartbeats first (fast path)
+        now = datetime.now()
+        stale_threshold = now - timedelta(seconds=self._heartbeat_timeout_seconds)
+
+        with self._heartbeat_lock:
+            fresh_heartbeats = sum(
+                1 for hb in self._node_heartbeats.values()
+                if hb >= stale_threshold
+            )
+            if fresh_heartbeats > 0:
+                return True
+
+        # Check DB for online/busy nodes (in case of recently started nodes)
+        try:
+            with get_db() as conn:
+                node_repo = TranscriberNodeRepository(conn)
+                status_counts = node_repo.count_by_status()
+                online_count = status_counts.get(NodeStatus.ONLINE.value, 0)
+                busy_count = status_counts.get(NodeStatus.BUSY.value, 0)
+                if online_count + busy_count > 0:
+                    return True
+        except Exception as e:
+            logger.debug(f"Error checking node status: {e}")
+
+        # Check for active RunPod pods
+        try:
+            from cast2md.services.runpod_service import get_runpod_service
+            runpod_service = get_runpod_service()
+            if runpod_service.is_available():
+                pods = runpod_service.list_pods()
+                if len(pods) > 0:
+                    return True
+        except Exception as e:
+            logger.debug(f"Error checking RunPod pods: {e}")
+
+        return False
+
     def get_status(self) -> dict:
         """Get coordinator status information."""
         with get_db() as conn:

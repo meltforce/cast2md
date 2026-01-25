@@ -69,6 +69,7 @@ class QueueStatusResponse(BaseModel):
     download_workers: int
     transcript_download_workers: int
     transcribe_workers: int
+    transcribe_workers_standby: bool  # True when deferring to external workers
     embed_workers: int
     download_queue: QueueDetails
     transcript_download_queue: QueueDetails
@@ -196,11 +197,24 @@ def get_queue_status():
             queued_jobs=_get_job_infos(embed_queued, episode_repo),
         )
 
+    # Check if local transcription is in standby mode
+    transcribe_standby = False
+    try:
+        from cast2md.config.settings import get_settings
+        settings = get_settings()
+        if settings.distributed_transcription_enabled:
+            from cast2md.distributed.coordinator import get_coordinator
+            coordinator = get_coordinator()
+            transcribe_standby = coordinator.has_external_workers()
+    except Exception:
+        pass
+
     return QueueStatusResponse(
         running=status["running"],
         download_workers=status["download_workers"],
         transcript_download_workers=status["transcript_download_workers"],
         transcribe_workers=status["transcribe_workers"],
+        transcribe_workers_standby=transcribe_standby,
         embed_workers=status["embed_workers"],
         download_queue=download_queue,
         transcript_download_queue=transcript_download_queue,
