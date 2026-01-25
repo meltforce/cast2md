@@ -68,18 +68,29 @@ curl https://<your-tailnet>/api/health
 ssh root@<server> "curl localhost:8000/api/health"
 ```
 
-## Re-transcription
+## Transcription
 
-Episodes track which Whisper model was used for transcription (`transcript_model` column). When the configured model changes, episodes can be re-transcribed:
+### Backends
 
-- **Episode detail page**: Shows model name next to transcript, offers re-transcribe button if model differs
-- **Feed detail page**: Shows count of outdated episodes with batch re-transcribe button
-- **API endpoints**:
-  - `GET /api/queue/retranscribe/info/{feed_id}` - get current model and count
-  - `POST /api/queue/episodes/{id}/retranscribe` - queue single episode
-  - `POST /api/queue/batch/feed/{id}/retranscribe` - queue all outdated in feed
+The system supports two transcription backends:
 
-Existing episodes before this feature have `transcript_model = NULL` and will show as needing re-transcription.
+| Backend | Use Case | Languages | Speed |
+|---------|----------|-----------|-------|
+| **Whisper** | Local/server transcription | 99+ languages | Varies by model |
+| **Parakeet** | RunPod GPU pods (default) | 25 EU languages | Very fast |
+
+The backend is controlled by `TRANSCRIPTION_BACKEND` environment variable (`whisper` or `parakeet`).
+
+### Model Tracking
+
+Episodes track which model was used via `transcript_model` column (e.g., `parakeet-tdt-0.6b-v3`, `large-v3-turbo`). This is visible on the episode detail page.
+
+### Re-transcription API
+
+API endpoints exist for script-based re-transcription (UI removed):
+- `GET /api/queue/retranscribe/info/{feed_id}` - get current model and count
+- `POST /api/queue/episodes/{id}/retranscribe` - queue single episode
+- `POST /api/queue/batch/feed/{id}/retranscribe` - queue all outdated in feed
 
 ## iTunes URL Support
 
@@ -208,7 +219,6 @@ Polling uses visible episode IDs from DOM (not template-rendered array) to handl
 #### Batch Operations
 
 - "Get All Transcripts" button queues all pending episodes via `POST /api/queue/batch/feed/{id}/transcript-download`
-- "Re-transcribe Outdated" button queues Whisper jobs for episodes with old model
 
 ### Episode Detail Page (episode_detail.html)
 
@@ -397,7 +407,7 @@ The `title` attribute still holds the tooltip text (for accessibility), but CSS 
 
 ## RunPod Afterburner
 
-On-demand GPU transcription worker for processing large backlogs. See `deploy/afterburner/README.md` for full documentation.
+On-demand GPU transcription worker for processing large backlogs. Uses **Parakeet TDT 0.6B v3** by default for fast transcription (supports 25 European languages including German).
 
 ### Quick Start
 
@@ -410,9 +420,25 @@ python deploy/afterburner/afterburner.py            # Process queue
 
 ### Key Files
 
-- `deploy/afterburner/afterburner.py` - Main script (startup script embedded inline)
+- `deploy/afterburner/afterburner.py` - Main script (installs NeMo toolkit for Parakeet)
 - `deploy/afterburner/startup.sh` - Reference copy of startup script
 - `deploy/afterburner/.env.example` - Environment configuration template
+
+### Transcription Models
+
+RunPod pods default to Parakeet but can use Whisper models. Models are configurable via the RunPod settings page:
+
+- **Manage Models**: Add/remove models in "Manage Transcription Models" section
+- **Custom Models**: Add any Whisper or Parakeet model by ID
+- **API**: `GET/POST/DELETE /api/runpod/models`
+
+Default models:
+- `parakeet-tdt-0.6b-v3` - Fast, 25 EU languages (default)
+- `large-v3-turbo`, `large-v3`, `large-v2`, `medium`, `small` - Whisper models
+
+### Node Worker Prefetch
+
+The node worker uses a **3-slot prefetch queue** to keep audio ready for instant transcription. This is important for Parakeet which transcribes faster than download speed.
 
 ### Tailscale Userspace Networking (Important Lessons)
 
@@ -553,4 +579,4 @@ The server includes a RunPod service for managing GPU workers via API. This enab
 | `runpod_auto_scale` | `false` | Auto-start on queue growth |
 | `runpod_scale_threshold` | `10` | Queue depth to trigger auto-scale |
 | `runpod_gpu_type` | `NVIDIA GeForce RTX 4090` | Preferred GPU |
-| `runpod_whisper_model` | `large-v3-turbo` | Whisper model for pods |
+| `runpod_whisper_model` | `parakeet-tdt-0.6b-v3` | Transcription model for pods |
