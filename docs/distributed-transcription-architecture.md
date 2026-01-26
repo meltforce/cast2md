@@ -360,3 +360,76 @@ Response: {"message": "Job released back to queue"}
 2. **No Job Priorities for Nodes**: All nodes see the same queue (priority ordering)
 3. **No Partial Progress**: If node fails mid-transcription, job restarts from scratch
 4. **Trust Required**: API keys provide authentication, not authorization granularity
+
+## RunPod Afterburner
+
+On-demand GPU transcription for large backlogs. The server manages RunPod pod lifecycle automatically.
+
+### Performance
+
+| Backend | Model | Speed |
+|---------|-------|-------|
+| **Parakeet** | `parakeet-tdt-0.6b-v3` | **~100x real-time** |
+| Whisper | `large-v3-turbo` | ~30-40x real-time |
+
+With Parakeet at 100x real-time, a 2-hour podcast transcribes in ~72 seconds.
+
+### Parakeet Optimization Architecture
+
+The high throughput is achieved through two key optimizations:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Parakeet Transcription                    │
+│                                                              │
+│  ┌─────────────────────────────────────────────────────┐    │
+│  │              Model Cache (Singleton)                 │    │
+│  │  - Model loaded once, reused across episodes         │    │
+│  │  - Saves ~30-40s per episode                         │    │
+│  │  - Explicit cleanup on model change                  │    │
+│  └─────────────────────────────────────────────────────┘    │
+│                           │                                  │
+│                           ▼                                  │
+│  ┌─────────────────────────────────────────────────────┐    │
+│  │           Sequential Chunk Processing                │    │
+│  │                                                      │    │
+│  │  Audio ──► Split into 10-min chunks                  │    │
+│  │         ──► Transcribe chunk 1 (with timestamps)     │    │
+│  │         ──► Transcribe chunk 2 (+ offset)            │    │
+│  │         ──► Transcribe chunk 3 (+ offset)            │    │
+│  │         ──► Combine segments                         │    │
+│  └─────────────────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**Why not batch processing?** NeMo's batch mode loads all audio chunks into VRAM upfront, causing OOM errors on long podcasts. Sequential processing uses constant memory.
+
+**Timestamp handling:** Each chunk produces timestamps relative to 0:00. The offset (chunk start time) is added to all segments before combining.
+
+### Pod Lifecycle
+
+```
+1. API call to create pod
+   └─> Server generates unique instance ID
+   └─> Background thread creates RunPod pod
+   └─> Pod starts with Tailscale + cast2md worker
+
+2. Worker connects via Tailscale
+   └─> Registers with server as transcriber node
+   └─> Claims jobs via standard node protocol
+
+3. Auto-termination (when not in dev mode)
+   └─> Empty queue: terminate after 2 consecutive checks
+   └─> Idle timeout: terminate after 10 minutes no work
+   └─> Server unreachable: terminate after 5 minutes
+```
+
+### API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/runpod/status` | GET | Status, active pods |
+| `/api/runpod/pods` | POST | Create pod (`{"persistent": true}` for dev mode) |
+| `/api/runpod/pods` | DELETE | Terminate all pods |
+
+See `CLAUDE.md` for full API documentation.
