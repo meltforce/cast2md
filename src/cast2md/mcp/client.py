@@ -107,7 +107,7 @@ def search_episodes(query: str, feed_id: int | None = None, limit: int = 25) -> 
                     "description": r["description"][:500] if r.get("description") else None,
                     "published_at": r["published_at"],
                     "status": r["status"],
-                    "has_transcript": False,  # API doesn't return this field
+                    "has_transcript": r["status"] == "completed",
                 }
                 for r in data["results"]
             ],
