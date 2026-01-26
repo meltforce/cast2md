@@ -85,7 +85,7 @@ class Settings(BaseSettings):
     # Comma-separated list of GPU types to exclude (e.g. RTX 4090 has CUDA issues with NeMo/Parakeet)
     runpod_blocked_gpus: str = "NVIDIA GeForce RTX 4090,NVIDIA GeForce RTX 4080,NVIDIA L4"
     runpod_whisper_model: str = "parakeet-tdt-0.6b-v3"
-    runpod_image_name: str = "meltforce/cast2md-afterburner:latest"
+    runpod_image_name: str = "meltforce/cast2md-afterburner:cuda124"
     runpod_ts_hostname: str = "runpod-afterburner"  # Base hostname (instance ID appended)
     runpod_github_repo: str = "meltforce/cast2md"
     runpod_idle_timeout_minutes: int = 10  # Auto-terminate pods after idle for this many minutes (0 to disable)
@@ -155,7 +155,7 @@ _DEFAULTS = {
     "runpod_gpu_type": "NVIDIA RTX A5000",
     "runpod_blocked_gpus": "NVIDIA GeForce RTX 4090,NVIDIA GeForce RTX 4080,NVIDIA L4",
     "runpod_whisper_model": "parakeet-tdt-0.6b-v3",
-    "runpod_image_name": "meltforce/cast2md-afterburner:latest",
+    "runpod_image_name": "meltforce/cast2md-afterburner:cuda124",
     "runpod_ts_hostname": "runpod-afterburner",
     "runpod_github_repo": "meltforce/cast2md",
     "runpod_idle_timeout_minutes": 10,

@@ -40,5 +40,8 @@ jobs:
         with:
           context: deploy/afterburner
           push: true
-          tags: meltforce/cast2md-afterburner:latest
+          tags: |
+            meltforce/cast2md-afterburner:latest
+            meltforce/cast2md-afterburner:cuda124
+            meltforce/cast2md-afterburner:${{ github.sha }}
           no-cache: true
