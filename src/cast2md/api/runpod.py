@@ -56,6 +56,12 @@ class RunPodStatusResponse(BaseModel):
     scale_threshold: int
 
 
+class CreatePodRequest(BaseModel):
+    """Create pod request."""
+
+    persistent: bool = False  # Dev mode: don't auto-terminate, allow code updates
+
+
 class CreatePodResponse(BaseModel):
     """Create pod response."""
 
@@ -146,15 +152,20 @@ def get_status():
 
 
 @router.post("/pods", response_model=CreatePodResponse)
-def create_pod():
-    """Create a new pod (async). Returns instance_id for tracking."""
+def create_pod(request: CreatePodRequest | None = None):
+    """Create a new pod (async). Returns instance_id for tracking.
+
+    Pass {"persistent": true} to create a dev pod that won't auto-terminate.
+    """
     service = _check_available()
+    persistent = request.persistent if request else False
 
     try:
-        instance_id = service.create_pod_async()
+        instance_id = service.create_pod_async(persistent=persistent)
+        mode = "dev mode (persistent)" if persistent else "production mode"
         return CreatePodResponse(
             instance_id=instance_id,
-            message=f"Pod creation started. Track progress with GET /api/runpod/pods/{instance_id}/setup-status",
+            message=f"Pod creation started in {mode}. Track progress with GET /api/runpod/pods/{instance_id}/setup-status",
         )
     except RuntimeError as e:
         raise HTTPException(status_code=400, detail=str(e))
