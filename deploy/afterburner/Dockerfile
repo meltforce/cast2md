@@ -1,32 +1,77 @@
-# cast2md Afterburner - Pre-configured RunPod image
-# Saves ~8 minutes of setup time by pre-installing dependencies
+# cast2md Afterburner - Minimal CUDA 12.4 image for Parakeet transcription
+#
+# This image is optimized for Parakeet/NeMo transcription with pinned versions
+# to avoid CUDA compatibility issues with RunPod's newer CUDA 12.8 drivers.
+#
+# Target size: ~8GB (vs ~15GB with runpod/pytorch base)
 #
 # Build and push manually:
-#   docker build -t meltforce/cast2md-afterburner:latest deploy/afterburner/
-#   docker push meltforce/cast2md-afterburner:latest
+#   docker build -t meltforce/cast2md-afterburner:cuda124 deploy/afterburner/
+#   docker push meltforce/cast2md-afterburner:cuda124
 #
 # Or use GitHub Actions: .github/workflows/build-afterburner.yml
 
-# Same base image as before - RunPod's pytorch with CUDA
-FROM runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04
+# Use CUDA 12.4.1 runtime with cuDNN (not devel - we only do inference)
+FROM nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04
 
-# Install system dependencies
-RUN apt-get update -qq && \
-    apt-get install -y -qq ffmpeg && \
+# Avoid interactive prompts during package installation
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install Python 3.11 and minimal system dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        software-properties-common && \
+    add-apt-repository -y ppa:deadsnakes/ppa && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+        python3.11 \
+        python3.11-venv \
+        python3.11-dev \
+        python3-pip \
+        ffmpeg \
+        curl \
+        git \
+        ca-certificates && \
+    # Set Python 3.11 as default
+    update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1 && \
+    update-alternatives --install /usr/bin/python python /usr/bin/python3.11 1 && \
+    # Clean up
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Install Tailscale (just the binary - tailscale up runs at pod startup with secret token)
+# Install Tailscale (for secure pod-to-server communication)
 RUN curl -fsSL https://tailscale.com/install.sh | sh
 
-# Install NeMo toolkit for Parakeet transcription (~5-10 min build time)
-RUN pip install --no-cache-dir 'nemo_toolkit[asr]'
+# Upgrade pip
+RUN python -m pip install --no-cache-dir --upgrade pip setuptools wheel
+
+# Install PyTorch with CUDA 12.4 support (pinned versions)
+RUN pip install --no-cache-dir \
+    torch==2.4.0 \
+    torchaudio==2.4.0 \
+    --index-url https://download.pytorch.org/whl/cu124
+
+# Install NeMo toolkit (pinned to 2.0.0 to avoid CUDA graph issues)
+# NeMo 2.0.0 predates aggressive CUDA graph usage that causes CUDA error 35
+# on RunPod's CUDA 12.8 driver environment
+RUN pip install --no-cache-dir 'nemo_toolkit[asr]==2.0.0'
 
 # Pre-download Parakeet model (~600MB) to avoid download at runtime
-RUN python -c "import nemo.collections.asr as nemo_asr; nemo_asr.models.ASRModel.from_pretrained('nvidia/parakeet-tdt-0.6b-v3')"
+RUN python -c "import nemo.collections.asr as nemo_asr; \
+    model = nemo_asr.models.ASRModel.from_pretrained('nvidia/parakeet-tdt-0.6b-v3'); \
+    print('Parakeet model loaded successfully')"
+
+# Install faster-whisper for fallback (much smaller than NeMo)
+RUN pip install --no-cache-dir faster-whisper==1.0.3
+
+# Clean up pip cache to reduce image size
+RUN rm -rf /root/.cache/pip
+
+# Create directory for Tailscale state
+RUN mkdir -p /var/lib/tailscale
 
 # Note: cast2md is installed at runtime to allow code updates without rebuilding
 # Startup flow:
 #   1. Pod starts with this image
-#   2. Startup script runs: tailscale up --auth-key="$TS_AUTH_KEY" (from RunPod secret)
-#   3. SSH setup installs cast2md and starts the worker
+#   2. Startup script runs tailscale with auth key from RunPod secret
+#   3. SSH setup installs cast2md from git and starts the worker
