@@ -111,8 +111,29 @@ docker run --rm meltforce/cast2md-afterburner:cuda124 \
 Expected output:
 ```
 PyTorch: 2.4.0+cu124
-NeMo: 2.0.0
+NeMo: 2.x.x (latest)
 ```
+
+### RunPod Runtime Behavior
+
+On RunPod, NeMo detects the driver/toolkit version mismatch and automatically disables CUDA graphs:
+
+```
+[NeMo W] No conditional node support for Cuda.
+    Cuda graphs with while loops are disabled, decoding speed will be slower
+    Reason: Driver supports cuda toolkit version 12.4, but the driver needs to support at least 12,6.
+```
+
+This is expected behavior. The `NEMO_CUDA_GRAPHS=0` environment variable provides an explicit safeguard, and NeMo's auto-detection handles it gracefully. Transcription proceeds normally at ~60-70x realtime (vs ~87x with CUDA graphs enabled).
+
+To verify a running pod:
+```bash
+ssh -o StrictHostKeyChecking=no root@<pod-ip> "tail -50 /tmp/cast2md-node.log"
+```
+
+Look for:
+- "Cuda graphs with while loops are disabled" (expected warning)
+- "Job XXXX completed successfully" (transcription working)
 
 ## Updating the Image
 

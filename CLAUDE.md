@@ -423,6 +423,31 @@ python deploy/afterburner/afterburner.py            # Process queue
 - `deploy/afterburner/afterburner.py` - Main script (installs NeMo toolkit for Parakeet)
 - `deploy/afterburner/startup.sh` - Reference copy of startup script
 - `deploy/afterburner/.env.example` - Environment configuration template
+- `deploy/afterburner/Dockerfile` - Custom Docker image for RunPod
+- `deploy/afterburner/IMAGE.md` - Docker image build documentation
+
+### Docker Image
+
+RunPod pods use a custom Docker image (`meltforce/cast2md-afterburner:cuda124`) with pre-installed dependencies:
+
+| Component | Notes |
+|-----------|-------|
+| CUDA 12.4.1 | Runtime only (not devel) |
+| PyTorch 2.4.0+cu124 | Pinned for CUDA compatibility |
+| NeMo toolkit | Latest version with CUDA graphs disabled |
+| Parakeet model | Pre-downloaded (~600MB) |
+| faster-whisper | Fallback for Whisper models |
+
+**CUDA Graphs Disabled**: The image sets `NEMO_CUDA_GRAPHS=0` to avoid CUDA error 35 on RunPod's infrastructure. NeMo also auto-detects driver incompatibility and disables graphs gracefully:
+
+```
+Cuda graphs with while loops are disabled, decoding speed will be slower
+Reason: Driver supports cuda toolkit version 12.4, but the driver needs to support at least 12,6.
+```
+
+This reduces speed from ~87x to ~60-70x realtime but ensures stability across different GPU/driver combinations.
+
+**Building**: The image is built automatically via GitHub Actions when `deploy/afterburner/Dockerfile` changes. See `deploy/afterburner/IMAGE.md` for manual build instructions.
 
 ### Transcription Models
 
