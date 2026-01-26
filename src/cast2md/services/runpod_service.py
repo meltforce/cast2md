@@ -821,8 +821,32 @@ tail -f /dev/null
                     support_public_ip=True,
                     env={"TS_HOSTNAME": ts_hostname},
                 )
-                logger.info(f"Created pod {pod['id']} ({pod_name}) with {gpu_type}")
-                return pod["id"], gpu_type
+                pod_id = pod["id"]
+
+                # Query RunPod to get the ACTUAL allocated GPU (not just what we requested)
+                actual_gpu = gpu_type  # fallback to requested
+                try:
+                    pod_details = runpod.get_pod(pod_id)
+                    if pod_details:
+                        machine = pod_details.get("machine") or {}
+                        actual_gpu = machine.get("gpuDisplayName") or gpu_type
+                        if actual_gpu != gpu_type:
+                            logger.warning(f"GPU mismatch! Requested {gpu_type}, got {actual_gpu}")
+                except Exception as e:
+                    logger.warning(f"Could not verify GPU type: {e}")
+
+                # If RunPod gave us a blocked GPU, terminate immediately and try next
+                if is_blocked(actual_gpu):
+                    logger.error(f"RunPod allocated blocked GPU {actual_gpu}! Terminating pod {pod_id}")
+                    try:
+                        runpod.terminate_pod(pod_id)
+                    except Exception:
+                        pass
+                    last_error = RuntimeError(f"RunPod allocated blocked GPU: {actual_gpu}")
+                    continue
+
+                logger.info(f"Created pod {pod_id} ({pod_name}) with {actual_gpu} (requested: {gpu_type})")
+                return pod_id, actual_gpu
             except Exception as e:
                 error_msg = str(e).lower()
                 if "resources" in error_msg or "not have" in error_msg:
