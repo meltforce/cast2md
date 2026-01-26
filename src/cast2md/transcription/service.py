@@ -592,14 +592,12 @@ class TranscriptionService:
         Uses NeMo toolkit with the nvidia/parakeet-tdt-0.6b-v3 model from HuggingFace.
         This is optimized for GPU transcription on RunPod workers.
 
-        Optimization: Uses manifest-based batch transcription to create the NeMo
-        DataLoader only once per episode (instead of per chunk). This reduces
-        overhead from ~80s to ~1s for typical podcast episodes.
+        Optimization: Uses batch transcription to process all chunks in a single
+        asr_model.transcribe() call, reducing DataLoader creation overhead.
 
         Long audio is split into chunks to avoid GPU OOM errors, but all chunks
-        are transcribed in a single asr_model.transcribe() call via JSONL manifest.
+        are transcribed in a single call by passing a list of file paths.
         """
-        import json
         import tempfile
 
         import torch
@@ -647,25 +645,12 @@ class TranscriptionService:
                     chunk_paths.append(chunk_path)
                     chunk_offsets.append(start_ms / 1000)  # Convert to seconds
 
-                # Write JSONL manifest with duration (enables Lhotse dynamic bucketing)
-                manifest_path = tmpdir_path / "manifest.json"
-                with open(manifest_path, "w") as f:
-                    for i, chunk_path in enumerate(chunk_paths):
-                        duration_sec = (
-                            min((i + 1) * CHUNK_DURATION_MS, duration_ms) - i * CHUNK_DURATION_MS
-                        ) / 1000
-                        entry = {
-                            "audio_filepath": str(chunk_path),
-                            "duration": duration_sec,
-                        }
-                        f.write(json.dumps(entry) + "\n")
+                logger.info(f"Transcribing {num_chunks} chunks in batch (single transcribe call)")
 
-                logger.info(f"Transcribing {num_chunks} chunks via manifest (single DataLoader)")
-
-                # Single transcribe call for all chunks - creates DataLoader only once
+                # Single transcribe call for all chunks
+                # Pass list of file paths to 'audio' parameter
                 output = asr_model.transcribe(
-                    paths2audio_files=None,
-                    dataset_manifest=str(manifest_path),
+                    [str(p) for p in chunk_paths],
                     batch_size=4,  # Safe for VRAM, don't use len(chunks)
                     timestamps=True,
                 )
