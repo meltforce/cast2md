@@ -8,8 +8,8 @@ This image uses a minimal CUDA 12.4 base with pinned versions to ensure compatib
 
 | Decision | Rationale |
 |----------|-----------|
-| CUDA 12.4.1 runtime | NeMo CUDA graph compatibility with RunPod's CUDA 12.8 drivers |
-| NeMo 2.0.0 pinned | Avoids CUDA graph issues that cause error 35 on newer NeMo versions |
+| CUDA 12.4.1 runtime | Stable CUDA version for inference |
+| NEMO_CUDA_GRAPHS=0 | Disables CUDA graphs to avoid error 35 on RunPod's CUDA 12.8 drivers |
 | cudnn-runtime base | Smaller than devel (no compilers needed for inference) |
 | Minimal packages | Only what's needed for transcription |
 
@@ -20,7 +20,7 @@ This image uses a minimal CUDA 12.4 base with pinned versions to ensure compatib
 | CUDA | 12.4.1 | ~2GB | GPU runtime |
 | Python | 3.11 | ~100MB | Runtime |
 | PyTorch | 2.4.0+cu124 | ~2GB | ML framework |
-| NeMo toolkit | 2.0.0 | ~3GB | Parakeet ASR |
+| NeMo toolkit | latest | ~3GB | Parakeet ASR |
 | Parakeet model | 0.6B v3 | ~600MB | Transcription model |
 | faster-whisper | 1.0.3 | ~100MB | Fallback transcription |
 | Tailscale | latest | ~50MB | Secure networking |
@@ -149,10 +149,10 @@ docker push meltforce/cast2md-afterburner:legacy
 
 ### CUDA error 35 on RunPod
 
-This error indicates CUDA graph compatibility issues:
-1. Verify NeMo version is 2.0.0: `python -c "import nemo; print(nemo.__version__)"`
-2. Check PyTorch CUDA version matches: `python -c "import torch; print(torch.version.cuda)"`
-3. If still failing, try setting `NEMO_CUDA_GRAPHS=0` environment variable
+This error indicates CUDA graph compatibility issues. The image already sets `NEMO_CUDA_GRAPHS=0` to prevent this, but if you still see it:
+1. Verify the env var is set: `echo $NEMO_CUDA_GRAPHS` (should be `0`)
+2. Check PyTorch CUDA version: `python -c "import torch; print(torch.version.cuda)"`
+3. Try a different GPU type (RTX 4090/4080 and L4 are known to have issues)
 
 ### RunPod can't pull the image
 
@@ -176,9 +176,9 @@ These versions are specifically chosen for compatibility:
 
 | Package | Version | Reason |
 |---------|---------|--------|
-| CUDA base | 12.4.1-cudnn-runtime | Driver compatibility with NeMo CUDA graphs |
+| CUDA base | 12.4.1-cudnn-runtime | Stable CUDA version for inference |
 | PyTorch | 2.4.0+cu124 | Match CUDA base version |
-| NeMo | 2.0.0 | Last stable version before CUDA graph changes |
+| NeMo | latest | Uses NEMO_CUDA_GRAPHS=0 env var to disable CUDA graphs |
 | faster-whisper | 1.0.3 | Stable Whisper fallback |
 
-**Do not upgrade NeMo without testing on RunPod first** - newer versions use CUDA graphs that fail on certain GPU/driver combinations.
+**Note:** CUDA graphs are disabled via `NEMO_CUDA_GRAPHS=0` environment variable to avoid CUDA error 35 on RunPod's infrastructure. This may reduce performance slightly (~60-70x vs 87x realtime) but ensures stability.
