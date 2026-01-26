@@ -592,11 +592,11 @@ class TranscriptionService:
         Uses NeMo toolkit with the nvidia/parakeet-tdt-0.6b-v3 model from HuggingFace.
         This is optimized for GPU transcription on RunPod workers.
 
-        Optimization: Uses batch transcription to process all chunks in a single
-        asr_model.transcribe() call, reducing DataLoader creation overhead.
+        Optimization: Caches the Parakeet model between transcriptions (Phase 1).
+        This saves ~30-40 seconds per episode by not reloading the model.
 
-        Long audio is split into chunks to avoid GPU OOM errors, but all chunks
-        are transcribed in a single call by passing a list of file paths.
+        Long audio is split into chunks to avoid GPU OOM errors. Chunks are
+        processed sequentially (batch processing caused OOM due to upfront loading).
         """
         import tempfile
 
@@ -624,39 +624,42 @@ class TranscriptionService:
             # Short audio - process whole file directly
             all_segments = self._transcribe_parakeet_file(asr_model, audio_path)
         else:
-            # Long audio - use manifest-based batch transcription (Phase 2 optimization)
-            # This creates the DataLoader only ONCE for all chunks
+            # Long audio - process chunks sequentially with cached model
+            # Model caching (Phase 1) saves ~30-40s per episode
+            # Sequential processing avoids OOM (batch loading uses too much VRAM)
             num_chunks = (duration_ms + CHUNK_DURATION_MS - 1) // CHUNK_DURATION_MS
-            logger.info(f"Splitting into {num_chunks} chunks, using manifest batch transcription")
+            logger.info(f"Splitting into {num_chunks} chunks for sequential transcription")
 
+            all_segments = []
             with tempfile.TemporaryDirectory() as tmpdir:
                 tmpdir_path = Path(tmpdir)
-                chunk_paths = []
-                chunk_offsets = []  # Track start time of each chunk for timestamp adjustment
 
-                # Export all chunks first
                 for i in range(num_chunks):
                     start_ms = i * CHUNK_DURATION_MS
                     end_ms = min((i + 1) * CHUNK_DURATION_MS, duration_ms)
                     chunk = audio[start_ms:end_ms]
+                    offset_sec = start_ms / 1000
 
                     chunk_path = tmpdir_path / f"chunk_{i}.wav"
                     chunk.export(str(chunk_path), format="wav")
-                    chunk_paths.append(chunk_path)
-                    chunk_offsets.append(start_ms / 1000)  # Convert to seconds
 
-                logger.info(f"Transcribing {num_chunks} chunks in batch (single transcribe call)")
+                    logger.info(f"Transcribing chunk {i + 1}/{num_chunks}")
 
-                # Single transcribe call for all chunks
-                # Pass list of file paths to 'audio' parameter
-                output = asr_model.transcribe(
-                    [str(p) for p in chunk_paths],
-                    batch_size=4,  # Safe for VRAM, don't use len(chunks)
-                    timestamps=True,
-                )
+                    # Clear GPU cache before each chunk to prevent fragmentation
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
 
-                # Reassemble segments with timestamp offsets
-                all_segments = self._reassemble_parakeet_output(output, chunk_offsets)
+                    # Transcribe single chunk
+                    chunk_segments = self._transcribe_parakeet_file(asr_model, chunk_path)
+
+                    # Adjust timestamps by chunk offset
+                    for seg in chunk_segments:
+                        seg.start += offset_sec
+                        seg.end += offset_sec
+                    all_segments.extend(chunk_segments)
+
+                    # Clean up chunk file immediately to save disk space
+                    chunk_path.unlink()
 
         return TranscriptResult(
             segments=all_segments,
@@ -743,88 +746,6 @@ class TranscriptionService:
                     )
 
         return segments
-
-    def _reassemble_parakeet_output(
-        self, output, chunk_offsets: list[float]
-    ) -> list[TranscriptSegment]:
-        """Reassemble batch transcription output with correct global timestamps.
-
-        When using manifest-based batch transcription, NeMo returns timestamps
-        relative to each chunk's start. This method applies the correct offset
-        to produce global timestamps.
-
-        Args:
-            output: NeMo transcribe() output (list of Hypothesis objects per audio file)
-            chunk_offsets: Start time in seconds for each chunk
-
-        Returns:
-            List of transcript segments with global timestamps
-        """
-        all_segments = []
-
-        if not output or len(output) == 0:
-            return all_segments
-
-        # output[0] is a list of Hypothesis objects, one per audio file in manifest
-        hypotheses_list = output[0] if isinstance(output[0], list) else [output[0]]
-
-        logger.debug(
-            f"Reassembling {len(hypotheses_list)} hypothesis results "
-            f"for {len(chunk_offsets)} chunks"
-        )
-
-        for chunk_idx, hyp in enumerate(hypotheses_list):
-            # Get offset for this chunk (handle case where we have more hypotheses than offsets)
-            if chunk_idx < len(chunk_offsets):
-                offset = chunk_offsets[chunk_idx]
-            else:
-                logger.warning(
-                    f"Chunk index {chunk_idx} exceeds offsets list length {len(chunk_offsets)}, "
-                    "using offset 0"
-                )
-                offset = 0.0
-
-            # Parse timestamps from hypothesis (same logic as _transcribe_parakeet_file)
-            if hasattr(hyp, "timestamp") and hyp.timestamp:
-                word_timestamps = hyp.timestamp.get("word", [])
-                for ts in word_timestamps:
-                    if isinstance(ts, (list, tuple)) and len(ts) >= 3:
-                        all_segments.append(
-                            TranscriptSegment(
-                                start=float(ts[1]) + offset,  # Apply chunk offset
-                                end=float(ts[2]) + offset,
-                                text=str(ts[0]),
-                            )
-                        )
-                    elif isinstance(ts, dict):
-                        all_segments.append(
-                            TranscriptSegment(
-                                start=ts.get("start", 0.0) + offset,
-                                end=ts.get("end", 0.0) + offset,
-                                text=ts.get("word", ""),
-                            )
-                        )
-            elif hasattr(hyp, "text") and hyp.text:
-                # No timestamps, just text - use chunk offset as approximate time
-                all_segments.append(
-                    TranscriptSegment(
-                        start=offset,
-                        end=offset,
-                        text=hyp.text,
-                    )
-                )
-            elif isinstance(hyp, str):
-                all_segments.append(
-                    TranscriptSegment(
-                        start=offset,
-                        end=offset,
-                        text=hyp,
-                    )
-                )
-
-        logger.info(f"Reassembled {len(all_segments)} segments from {len(hypotheses_list)} chunks")
-        return all_segments
-
 
 def get_transcription_service() -> TranscriptionService:
     """Get the singleton transcription service instance."""
