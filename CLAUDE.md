@@ -445,7 +445,7 @@ Cuda graphs with while loops are disabled, decoding speed will be slower
 Reason: Driver supports cuda toolkit version 12.4, but the driver needs to support at least 12,6.
 ```
 
-This reduces speed from ~87x to ~60-70x realtime but ensures stability across different GPU/driver combinations.
+With CUDA graphs disabled, speed is still ~100x realtime thanks to model caching optimization (model loaded once, reused across episodes). This ensures stability across different GPU/driver combinations.
 
 **Building**: The image is built automatically via GitHub Actions when `deploy/afterburner/Dockerfile` changes. See `deploy/afterburner/IMAGE.md` for manual build instructions.
 
@@ -729,7 +729,7 @@ Pod setup states are stored in the database (`pod_setup_states` table) and survi
 **Important:** RTX 40-series consumer GPUs and certain datacenter GPUs have CUDA compatibility issues with NeMo/Parakeet, causing `CUDA error 35` during transcription. These GPUs work fine with Whisper but fail with Parakeet.
 
 **Working GPUs for Parakeet:**
-- NVIDIA RTX A5000 (~$0.20-0.25/hr, ~87x realtime)
+- NVIDIA RTX A5000 (~$0.20-0.25/hr, ~100x realtime)
 - NVIDIA RTX A6000
 - NVIDIA RTX A4000
 - NVIDIA GeForce RTX 3090
