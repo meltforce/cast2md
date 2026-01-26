@@ -425,8 +425,8 @@ tail -f /dev/null
             return []
 
     # GPUs suitable for transcription (good price/performance, sufficient VRAM)
-    # Note: RTX 40xx consumer GPUs have CUDA compatibility issues with NeMo/Parakeet
-    # Use runpod_blocked_gpus setting to exclude specific GPUs
+    # Note: RTX 40xx consumer GPUs and L4 have CUDA compatibility issues with NeMo/Parakeet
+    # These are filtered against runpod_blocked_gpus setting at runtime
     ALLOWED_GPU_PREFIXES = [
         "NVIDIA GeForce RTX 3090",
         "NVIDIA GeForce RTX 3080",
@@ -434,7 +434,6 @@ tail -f /dev/null
         "NVIDIA RTX A4500",
         "NVIDIA RTX A5000",
         "NVIDIA RTX A6000",
-        "NVIDIA L4",
         "NVIDIA L40",
         "NVIDIA RTX 4000",
         "NVIDIA RTX 5000",
