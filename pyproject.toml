@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cast2md"
-version = "0.1.0"
+version = "2025.01"
 description = "Podcast transcription service - download episodes via RSS and transcribe with Whisper"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -82,10 +82,11 @@ select = ["E", "F", "I", "N", "W", "UP"]
 testpaths = ["tests"]
 
 # Use CPU-only PyTorch (avoid downloading 2GB+ of CUDA dependencies)
-[tool.uv.sources]
-torch = { index = "pytorch-cpu" }
-
 [[tool.uv.index]]
 name = "pytorch-cpu"
 url = "https://download.pytorch.org/whl/cpu"
 explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+triton = { index = "pytorch-cpu" }

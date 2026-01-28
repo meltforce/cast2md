@@ -1,0 +1,87 @@
+name: cast2md
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-cast2md}
+      POSTGRES_USER: ${POSTGRES_USER:-cast2md}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Required}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-cast2md}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - internal
+    # Postgres not exposed externally
+
+  cast2md:
+    image: meltforce/cast2md:${VERSION:-latest}
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8000}:8000"
+    volumes:
+      - ${DATA_PATH:-./data}:/app/data
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-cast2md}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-cast2md}
+      - STORAGE_PATH=/app/data/podcasts
+      - WHISPER_MODEL=${WHISPER_MODEL:-large-v3-turbo}
+      - WHISPER_DEVICE=${WHISPER_DEVICE:-cpu}
+      - DISTRIBUTED_TRANSCRIPTION_ENABLED=${DISTRIBUTED_TRANSCRIPTION_ENABLED:-false}
+      - RUNPOD_ENABLED=${RUNPOD_ENABLED:-false}
+      - RUNPOD_API_KEY=${RUNPOD_API_KEY:-}
+      - RUNPOD_TS_AUTH_KEY=${RUNPOD_TS_AUTH_KEY:-}
+      - RUNPOD_SERVER_URL=${RUNPOD_SERVER_URL:-}
+      - RUNPOD_SERVER_IP=${RUNPOD_SERVER_IP:-}
+      - NTFY_ENABLED=${NTFY_ENABLED:-false}
+      - NTFY_URL=${NTFY_URL:-}
+      - NTFY_TOPIC=${NTFY_TOPIC:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    networks:
+      - internal
+      - external
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Optional: Tailscale sidecar for secure remote access
+  # Uncomment and configure TS_AUTHKEY
+  # tailscale:
+  #   image: tailscale/tailscale:latest
+  #   hostname: ${TAILSCALE_HOSTNAME:-cast2md}
+  #   restart: unless-stopped
+  #   environment:
+  #     - TS_AUTHKEY=${TS_AUTHKEY}
+  #     - TS_STATE_DIR=/var/lib/tailscale
+  #     - TS_USERSPACE=true
+  #   volumes:
+  #     - tailscale_state:/var/lib/tailscale
+  #   cap_add:
+  #     - NET_ADMIN
+  #   networks:
+  #     - external
+
+volumes:
+  postgres_data:
+  # tailscale_state:
+
+networks:
+  internal:
+    driver: bridge
+    internal: true  # No external access
+  external:
+    driver: bridge

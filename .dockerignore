@@ -10,3 +10,12 @@ screenshots/
 tests/
 *.md
 .gitignore
+deploy/
+docs/
+*.sql
+*.log
+.ruff_cache/
+.pytest_cache/
+*.egg-info/
+**/*.egg-info/
+src/*.egg-info/

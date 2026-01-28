@@ -7,6 +7,8 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
+
+from cast2md import __version__
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -176,7 +178,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="cast2md",
     description="Podcast transcription service",
-    version="0.3.0",
+    version=__version__,
     lifespan=lifespan,
 )
 
