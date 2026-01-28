@@ -321,6 +321,7 @@ class SemanticResult(BaseModel):
     text: str
     score: float
     match_type: str
+    result_type: str = "transcript"  # "episode" or "transcript"
 
 
 class SemanticSearchResponse(BaseModel):
@@ -389,6 +390,7 @@ def semantic_search(
                 text=r.text,
                 score=r.score,
                 match_type=r.match_type,
+                result_type=r.result_type,
             )
             for r in response.results
         ],

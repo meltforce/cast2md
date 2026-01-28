@@ -77,6 +77,35 @@
     <div class="search-results">
         {% for result in results %}
         <article class="search-result" style="cursor: pointer;">
+            {% if result.result_type == 'episode' %}
+            {# Episode title/description match - link directly to episode #}
+            <a href="/episodes/{{ result.episode_id }}?back=search&amp;back_url={{ ('/search?q=' ~ query|urlencode ~ ('&feed_id=' ~ feed_id if feed_id else '') ~ '&mode=' ~ mode ~ '&page=' ~ page)|urlencode }}" style="text-decoration: none; color: inherit; display: block;">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 0.5rem;">
+                    <div style="flex: 1; min-width: 200px;">
+                        <strong>{{ result.episode_title }}</strong>
+                        <span style="color: var(--muted-color); font-size: 0.875rem;">
+                            &mdash; {{ result.feed_title }}
+                        </span>
+                    </div>
+                    <div style="display: flex; gap: 0.5rem; align-items: center;">
+                        {% if result.published_at %}
+                        <span style="font-size: 0.875rem; color: var(--muted-color);">
+                            {% if result.published_at is string %}{{ result.published_at[:10] }}{% else %}{{ result.published_at.strftime('%Y-%m-%d') }}{% endif %}
+                        </span>
+                        {% endif %}
+                        <div style="display: flex; gap: 0.25rem;">
+                            <span class="match-badge match-episode">title</span>
+                        </div>
+                    </div>
+                </div>
+                {% if result.text %}
+                <div style="margin-top: 0.5rem; font-size: 0.875rem; color: var(--muted-color);">
+                    <span class="match-text">{{ result.text|search_snippet|safe }}</span>
+                </div>
+                {% endif %}
+            </a>
+            {% else %}
+            {# Transcript segment match - link to episode with timestamp #}
             <a href="/episodes/{{ result.episode_id }}?t={{ result.segment_start|int }}&amp;back=search&amp;back_url={{ ('/search?q=' ~ query|urlencode ~ ('&feed_id=' ~ feed_id if feed_id else '') ~ '&mode=' ~ mode ~ '&page=' ~ page)|urlencode }}" style="text-decoration: none; color: inherit; display: block;">
                 <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 0.5rem;">
                     <div style="flex: 1; min-width: 200px;">
@@ -105,6 +134,7 @@
                 </div>
                 {% endif %}
             </a>
+            {% endif %}
         </article>
         {% endfor %}
     </div>

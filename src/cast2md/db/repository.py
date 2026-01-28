@@ -859,10 +859,13 @@ class EpisodeRepository:
         limit: int = 25,
         offset: int = 0,
     ) -> tuple[list[int], int]:
-        """Search episodes using full-text search.
+        """Search episodes using full-text search with flexible OR matching.
+
+        Uses OR between words for flexible matching (quoted phrases use AND).
+        Title matches are boosted 3x over description matches.
 
         Args:
-            query: Search query.
+            query: Search query. Supports quoted phrases for exact matching.
             feed_id: Optional feed ID to filter results.
             limit: Maximum results per page.
             offset: Pagination offset.
@@ -870,19 +873,24 @@ class EpisodeRepository:
         Returns:
             (list of episode IDs, total count)
         """
-        fts_query = " ".join(word for word in query.split() if word)
+        from cast2md.search.repository import build_flexible_tsquery
 
-        # PostgreSQL tsvector search
+        tsquery_str = build_flexible_tsquery(query)
+        if not tsquery_str:
+            return [], 0
+
+        # PostgreSQL tsvector search with flexible OR matching
+        # Title matches are boosted 3x over description matches
         if feed_id is not None:
             count_cursor = execute(
                 self.conn,
                 """
                 SELECT COUNT(*) FROM episode_search
-                WHERE (title_search @@ plainto_tsquery('english', %s)
-                       OR description_search @@ plainto_tsquery('english', %s))
+                WHERE (title_search @@ to_tsquery('english', %s)
+                       OR description_search @@ to_tsquery('english', %s))
                   AND feed_id = %s
                 """,
-                (fts_query, fts_query, feed_id),
+                (tsquery_str, tsquery_str, feed_id),
             )
             total = count_cursor.fetchone()[0]
 
@@ -890,26 +898,26 @@ class EpisodeRepository:
                 self.conn,
                 """
                 SELECT episode_id,
-                       ts_rank(title_search, plainto_tsquery('english', %s)) +
-                       ts_rank(description_search, plainto_tsquery('english', %s)) as rank
+                       ts_rank(title_search, to_tsquery('english', %s)) * 3 +
+                       ts_rank(description_search, to_tsquery('english', %s)) as rank
                 FROM episode_search
-                WHERE (title_search @@ plainto_tsquery('english', %s)
-                       OR description_search @@ plainto_tsquery('english', %s))
+                WHERE (title_search @@ to_tsquery('english', %s)
+                       OR description_search @@ to_tsquery('english', %s))
                   AND feed_id = %s
                 ORDER BY rank DESC
                 LIMIT %s OFFSET %s
                 """,
-                (fts_query, fts_query, fts_query, fts_query, feed_id, limit, offset),
+                (tsquery_str, tsquery_str, tsquery_str, tsquery_str, feed_id, limit, offset),
             )
         else:
             count_cursor = execute(
                 self.conn,
                 """
                 SELECT COUNT(*) FROM episode_search
-                WHERE title_search @@ plainto_tsquery('english', %s)
-                   OR description_search @@ plainto_tsquery('english', %s)
+                WHERE title_search @@ to_tsquery('english', %s)
+                   OR description_search @@ to_tsquery('english', %s)
                 """,
-                (fts_query, fts_query),
+                (tsquery_str, tsquery_str),
             )
             total = count_cursor.fetchone()[0]
 
@@ -917,15 +925,15 @@ class EpisodeRepository:
                 self.conn,
                 """
                 SELECT episode_id,
-                       ts_rank(title_search, plainto_tsquery('english', %s)) +
-                       ts_rank(description_search, plainto_tsquery('english', %s)) as rank
+                       ts_rank(title_search, to_tsquery('english', %s)) * 3 +
+                       ts_rank(description_search, to_tsquery('english', %s)) as rank
                 FROM episode_search
-                WHERE title_search @@ plainto_tsquery('english', %s)
-                   OR description_search @@ plainto_tsquery('english', %s)
+                WHERE title_search @@ to_tsquery('english', %s)
+                   OR description_search @@ to_tsquery('english', %s)
                 ORDER BY rank DESC
                 LIMIT %s OFFSET %s
                 """,
-                (fts_query, fts_query, fts_query, fts_query, limit, offset),
+                (tsquery_str, tsquery_str, tsquery_str, tsquery_str, limit, offset),
             )
 
         episode_ids = [row[0] for row in cursor.fetchall()]
