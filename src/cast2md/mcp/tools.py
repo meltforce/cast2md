@@ -1,7 +1,252 @@
 """MCP tools (actions) for cast2md."""
 
+import re
+
 from cast2md.mcp import client as remote
 from cast2md.mcp.server import mcp
+
+
+# Patterns for detecting "latest episode" type queries (German + English)
+LATEST_PATTERNS = [
+    r"\b(letzte|neueste|aktuelle|neue)\s*(folge|episode|ausgabe)n?\b",
+    r"\b(latest|newest|recent|last)\s*(episode|folge)s?\b",
+    r"\binhalt\s+(der\s+)?(letzten|neuesten)\b",
+]
+LATEST_RE = re.compile("|".join(LATEST_PATTERNS), re.IGNORECASE)
+
+
+def _find_matching_feed(query: str, feeds: list) -> tuple[dict | None, str]:
+    """Try to find a feed mentioned in the query.
+
+    Returns (matched_feed, remaining_query) or (None, original_query).
+    Matches against feed titles and authors.
+    """
+    query_lower = query.lower()
+    best_match = None
+    best_match_len = 0
+    match_text = ""
+
+    for feed in feeds:
+        title = feed.get("title", "") or ""
+        author = feed.get("author", "") or ""
+
+        # Try matching title
+        title_lower = title.lower()
+        # Try progressively shorter prefixes of the title
+        words = title_lower.split()
+        for i in range(len(words), 0, -1):
+            partial = " ".join(words[:i])
+            if len(partial) >= 3 and partial in query_lower:
+                if len(partial) > best_match_len:
+                    best_match = feed
+                    best_match_len = len(partial)
+                    match_text = partial
+                break
+
+        # Also try matching author name
+        if author:
+            author_lower = author.lower()
+            author_words = author_lower.split()
+            for i in range(len(author_words), 0, -1):
+                partial = " ".join(author_words[:i])
+                if len(partial) >= 3 and partial in query_lower:
+                    if len(partial) > best_match_len:
+                        best_match = feed
+                        best_match_len = len(partial)
+                        match_text = partial
+                    break
+
+    if best_match and match_text:
+        # Remove the matched text from query
+        remaining = re.sub(re.escape(match_text), "", query, flags=re.IGNORECASE)
+        # Clean up common connecting words
+        remaining = re.sub(r"\b(im|in|vom|von|des|der|the|from|about|über)\b", " ", remaining, flags=re.IGNORECASE)
+        remaining = re.sub(r"\s+", " ", remaining).strip()
+        return best_match, remaining
+
+    return None, query
+
+
+def _get_feeds_with_authors():
+    """Get all feeds with author info for matching."""
+    if remote.is_remote_mode():
+        return remote.get_feeds()
+
+    from cast2md.db.connection import get_db
+    from cast2md.db.repository import EpisodeRepository, FeedRepository
+
+    with get_db() as conn:
+        feed_repo = FeedRepository(conn)
+        episode_repo = EpisodeRepository(conn)
+        feeds = feed_repo.get_all()
+
+        return [
+            {
+                "id": feed.id,
+                "title": feed.display_title,
+                "author": feed.author,
+                "episode_count": episode_repo.count_by_feed(feed.id),
+            }
+            for feed in feeds
+        ]
+
+
+@mcp.tool()
+def search(query: str) -> dict:
+    """Universal search for podcast content.
+
+    This is the main entry point for searching. It automatically:
+    - Detects podcast/feed mentions and filters to that feed
+    - Recognizes "latest episode" queries and returns transcript
+    - Searches episode titles AND transcript content
+
+    Args:
+        query: Natural language query. Examples:
+            - "Was ist der Inhalt der letzten Folge des KI Podcasts?"
+            - "Was wurde im KI Podcast über MCP gesagt?"
+            - "Was wird über Protein gesagt?"
+            - "Peter Attia über Krafttraining"
+
+    Returns:
+        Search results with transcript excerpts, or latest episode content.
+    """
+    from cast2md.db.connection import get_db
+    from cast2md.db.repository import EpisodeRepository, FeedRepository
+    from cast2md.search.repository import TranscriptSearchRepository
+
+    # Get all feeds for matching
+    feeds = _get_feeds_with_authors()
+
+    # Try to find a feed mentioned in the query
+    matched_feed, remaining_query = _find_matching_feed(query, feeds)
+
+    # Check if this is a "latest episode" query
+    is_latest_query = bool(LATEST_RE.search(query))
+
+    if is_latest_query:
+        # Remove the "latest episode" pattern from remaining query
+        remaining_query = LATEST_RE.sub("", remaining_query)
+        remaining_query = re.sub(r"\s+", " ", remaining_query).strip()
+
+    # If asking for latest episode of a specific podcast
+    if is_latest_query and matched_feed:
+        feed_id = matched_feed["id"]
+
+        if remote.is_remote_mode():
+            feed_data = remote.get_feed(feed_id)
+            if not feed_data or "error" in feed_data:
+                return {"error": f"Feed not found: {matched_feed['title']}"}
+            episodes = feed_data.get("episodes", [])
+            if not episodes:
+                return {"error": f"No episodes found for {matched_feed['title']}"}
+            latest = episodes[0]  # Already sorted by date
+            episode_id = latest["id"]
+
+            # Get transcript
+            transcript_data = remote.get_transcript_section(episode_id, None, 600)
+            return {
+                "query": query,
+                "type": "latest_episode",
+                "feed": matched_feed["title"],
+                "episode_id": episode_id,
+                "episode_title": latest.get("title"),
+                "published_at": latest.get("published_at"),
+                "transcript": transcript_data.get("transcript", "No transcript available"),
+            }
+
+        with get_db() as conn:
+            episode_repo = EpisodeRepository(conn)
+            feed_repo = FeedRepository(conn)
+
+            episodes = episode_repo.get_by_feed(feed_id, limit=1)
+            if not episodes:
+                return {"error": f"No episodes found for {matched_feed['title']}"}
+
+            latest = episodes[0]
+            feed = feed_repo.get_by_id(feed_id)
+
+            # Get transcript content
+            if latest.transcript_path:
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                    SELECT segment_start, segment_end, text
+                    FROM transcript_segments
+                    WHERE episode_id = %s AND segment_start <= 600
+                    ORDER BY segment_start
+                    """,
+                    (latest.id,),
+                )
+                segments = cursor.fetchall()
+
+                if segments:
+                    lines = []
+                    for seg_start, seg_end, text in segments:
+                        minutes = int(seg_start) // 60
+                        seconds = int(seg_start) % 60
+                        lines.append(f"[{minutes:02d}:{seconds:02d}] {text}")
+                    transcript = "\n".join(lines)
+                else:
+                    transcript = "Transcript segments not indexed yet"
+            else:
+                transcript = f"No transcript available. Use queue_episode({latest.id}) to transcribe."
+
+            return {
+                "query": query,
+                "type": "latest_episode",
+                "feed": feed.display_title if feed else matched_feed["title"],
+                "episode_id": latest.id,
+                "episode_title": latest.title,
+                "published_at": latest.published_at.isoformat() if latest.published_at else None,
+                "transcript": transcript,
+                "hint": f"Use get_transcript({latest.id}, start_time=X) to read other sections",
+            }
+
+    # Regular search - use semantic/hybrid search
+    search_query = remaining_query if remaining_query else query
+    feed_id = matched_feed["id"] if matched_feed else None
+
+    if remote.is_remote_mode():
+        results = remote.semantic_search(search_query, feed_id, limit=10, mode="hybrid")
+        # Add context about what we searched
+        results["parsed"] = {
+            "original_query": query,
+            "search_terms": search_query,
+            "feed_filter": matched_feed["title"] if matched_feed else None,
+        }
+        return results
+
+    with get_db() as conn:
+        search_repo = TranscriptSearchRepository(conn)
+        response = search_repo.hybrid_search(
+            query=search_query,
+            feed_id=feed_id,
+            limit=10,
+            mode="hybrid",
+        )
+
+    return {
+        "query": query,
+        "parsed": {
+            "search_terms": search_query,
+            "feed_filter": matched_feed["title"] if matched_feed else None,
+        },
+        "total": response.total,
+        "hint": "Use get_transcript(episode_id, start_time=segment_start) to read more context",
+        "results": [
+            {
+                "episode_id": r.episode_id,
+                "episode_title": r.episode_title,
+                "feed_title": r.feed_title,
+                "published_at": r.published_at,
+                "segment_start": r.segment_start,
+                "text": r.text[:300] if r.text else None,
+                "match_type": r.match_type,
+                "result_type": r.result_type,
+            }
+            for r in response.results
+        ],
+    }
 
 
 @mcp.tool()
