@@ -15,50 +15,69 @@ LATEST_PATTERNS = [
 LATEST_RE = re.compile("|".join(LATEST_PATTERNS), re.IGNORECASE)
 
 
+def _normalize(text: str) -> str:
+    """Normalize text for matching: lowercase, hyphens to spaces, collapse whitespace."""
+    text = text.lower()
+    text = re.sub(r"[-–—]", " ", text)  # Hyphens to spaces
+    text = re.sub(r"[''`]", "", text)  # Remove apostrophes
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
+
 def _find_matching_feed(query: str, feeds: list) -> tuple[dict | None, str]:
     """Try to find a feed mentioned in the query.
 
     Returns (matched_feed, remaining_query) or (None, original_query).
     Matches against feed titles and authors.
     """
-    query_lower = query.lower()
+    query_norm = _normalize(query)
     best_match = None
     best_match_len = 0
-    match_text = ""
+    match_pattern = ""
 
     for feed in feeds:
         title = feed.get("title", "") or ""
         author = feed.get("author", "") or ""
 
-        # Try matching title
-        title_lower = title.lower()
-        # Try progressively shorter prefixes of the title
-        words = title_lower.split()
-        for i in range(len(words), 0, -1):
-            partial = " ".join(words[:i])
-            if len(partial) >= 3 and partial in query_lower:
-                if len(partial) > best_match_len:
-                    best_match = feed
-                    best_match_len = len(partial)
-                    match_text = partial
-                break
+        # Normalize title for matching
+        title_norm = _normalize(title)
 
-        # Also try matching author name
-        if author:
-            author_lower = author.lower()
-            author_words = author_lower.split()
-            for i in range(len(author_words), 0, -1):
-                partial = " ".join(author_words[:i])
-                if len(partial) >= 3 and partial in query_lower:
+        # Try matching significant parts of the title
+        # Generate all contiguous word sequences (n-grams)
+        words = title_norm.split()
+        for length in range(len(words), 0, -1):
+            for start in range(len(words) - length + 1):
+                partial = " ".join(words[start:start + length])
+                if len(partial) >= 4 and partial in query_norm:
                     if len(partial) > best_match_len:
                         best_match = feed
                         best_match_len = len(partial)
-                        match_text = partial
+                        match_pattern = partial
                     break
+            if best_match_len > 0 and length < best_match_len // 2:
+                # Already found a good match, don't look for shorter ones
+                break
 
-    if best_match and match_text:
-        # Remove the matched text from query
-        remaining = re.sub(re.escape(match_text), "", query, flags=re.IGNORECASE)
+        # Also try matching author name (for "Peter Attia" -> The Drive, etc.)
+        if author:
+            author_norm = _normalize(author)
+            author_words = author_norm.split()
+            for length in range(len(author_words), 0, -1):
+                for start in range(len(author_words) - length + 1):
+                    partial = " ".join(author_words[start:start + length])
+                    if len(partial) >= 4 and partial in query_norm:
+                        if len(partial) > best_match_len:
+                            best_match = feed
+                            best_match_len = len(partial)
+                            match_pattern = partial
+                        break
+
+    if best_match and match_pattern:
+        # Remove the matched text from query (handle both normalized and original forms)
+        remaining = query
+        # Try to remove the pattern with flexible whitespace/hyphen matching
+        pattern = re.escape(match_pattern).replace(r"\ ", r"[\s\-]+")
+        remaining = re.sub(pattern, " ", remaining, flags=re.IGNORECASE)
         # Clean up common connecting words
         remaining = re.sub(r"\b(im|in|vom|von|des|der|the|from|about|über)\b", " ", remaining, flags=re.IGNORECASE)
         remaining = re.sub(r"\s+", " ", remaining).strip()
