@@ -285,15 +285,30 @@ When a feed is deleted, files are moved to trash instead of being permanently de
 - Only files are preserved in trash
 - Manual restore requires re-adding feed and copying files back
 
-## Semantic Search
+## Unified Search
 
-Semantic search enables natural language queries like "protein and muscle building" to find conceptually related content across transcripts, even when exact keywords don't match.
+The main search (`/search`) provides unified search across both episode metadata and transcript content. Users can find episodes by title/description or by what was said in the transcript.
+
+### Result Types
+
+Search returns two types of results:
+
+1. **Episode Matches** (`result_type: "episode"`)
+   - Matches episode title or description
+   - Shows "title" badge
+   - Links directly to episode (no timestamp)
+
+2. **Transcript Matches** (`result_type: "transcript"`)
+   - Matches content within transcripts
+   - Shows "keyword", "semantic", or "both" badge
+   - Links to episode with timestamp
 
 ### How It Works
 
 1. **Hybrid Search**: Combines PostgreSQL full-text search with vector similarity using Reciprocal Rank Fusion (RRF)
 2. **Embeddings**: Uses `sentence-transformers` with multilingual model (384-dim, ~470MB)
 3. **Vector Storage**: pgvector extension with HNSW index for fast approximate nearest neighbor search
+4. **Episode Search**: Searches `episode_search` table for title/description matches
 
 ### Embedding Model
 
@@ -317,10 +332,11 @@ Transcripts (both Whisper and external) can have word-level timestamps where eac
 ```
 Query → Generate embedding (~20ms)
      ↓
-     ├── PostgreSQL tsvector search (fast)
+     ├── Episode title/description FTS (fast)
+     ├── Transcript segment tsvector search (fast)
      └── pgvector HNSW search (fast)
      ↓
-     RRF fusion → Combined results
+     RRF fusion → Combined results (episodes + transcript segments)
 ```
 
 ### Key Files
@@ -445,7 +461,7 @@ Cuda graphs with while loops are disabled, decoding speed will be slower
 Reason: Driver supports cuda toolkit version 12.4, but the driver needs to support at least 12,6.
 ```
 
-With CUDA graphs disabled, speed is still ~100x realtime thanks to model caching optimization (model loaded once, reused across episodes). This ensures stability across different GPU/driver combinations.
+This reduces speed from ~87x to ~60-70x realtime but ensures stability across different GPU/driver combinations.
 
 **Building**: The image is built automatically via GitHub Actions when `deploy/afterburner/Dockerfile` changes. See `deploy/afterburner/IMAGE.md` for manual build instructions.
 
@@ -729,7 +745,7 @@ Pod setup states are stored in the database (`pod_setup_states` table) and survi
 **Important:** RTX 40-series consumer GPUs and certain datacenter GPUs have CUDA compatibility issues with NeMo/Parakeet, causing `CUDA error 35` during transcription. These GPUs work fine with Whisper but fail with Parakeet.
 
 **Working GPUs for Parakeet:**
-- NVIDIA RTX A5000 (~$0.20-0.25/hr, ~100x realtime)
+- NVIDIA RTX A5000 (~$0.20-0.25/hr, ~87x realtime)
 - NVIDIA RTX A6000
 - NVIDIA RTX A4000
 - NVIDIA GeForce RTX 3090
