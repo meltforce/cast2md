@@ -382,3 +382,81 @@ def get_transcript(episode_id: int, format: str = "md"):
         media_type=content_type,
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+@router.get("/episodes/{episode_id}/transcript/section")
+def get_transcript_section(
+    episode_id: int,
+    start_time: float | None = None,
+    duration: float = 300,
+):
+    """Get transcript section with timestamps.
+
+    Args:
+        episode_id: Episode ID
+        start_time: Optional start time in seconds. If provided, returns
+                    transcript centered around this timestamp.
+        duration: Duration in seconds to return (default: 300 = 5 minutes)
+
+    Returns JSON with transcript text and metadata.
+    """
+    with get_db() as conn:
+        repo = EpisodeRepository(conn)
+        feed_repo = FeedRepository(conn)
+        episode = repo.get_by_id(episode_id)
+
+        if not episode:
+            raise HTTPException(status_code=404, detail="Episode not found")
+
+        if not episode.transcript_path:
+            raise HTTPException(status_code=404, detail="Transcript not available")
+
+        feed = feed_repo.get_by_id(episode.feed_id)
+
+        # Get segments from database
+        cursor = conn.cursor()
+        if start_time is not None:
+            half_duration = duration / 2
+            time_start = max(0, start_time - half_duration)
+            time_end = start_time + half_duration
+
+            cursor.execute(
+                """
+                SELECT segment_start, segment_end, text
+                FROM transcript_segments
+                WHERE episode_id = %s
+                  AND segment_start >= %s
+                  AND segment_start <= %s
+                ORDER BY segment_start
+                """,
+                (episode_id, time_start, time_end),
+            )
+        else:
+            cursor.execute(
+                """
+                SELECT segment_start, segment_end, text
+                FROM transcript_segments
+                WHERE episode_id = %s
+                  AND segment_start <= %s
+                ORDER BY segment_start
+                """,
+                (episode_id, duration),
+            )
+
+        segments = cursor.fetchall()
+
+        # Format segments with timestamps
+        lines = []
+        for seg_start, seg_end, text in segments:
+            minutes = int(seg_start) // 60
+            seconds = int(seg_start) % 60
+            lines.append(f"[{minutes:02d}:{seconds:02d}] {text}")
+
+        return {
+            "episode_id": episode_id,
+            "episode_title": episode.title,
+            "feed_title": feed.display_title if feed else None,
+            "published_at": episode.published_at.isoformat() if episode.published_at else None,
+            "time_range": f"{int(segments[0][0])}s - {int(segments[-1][1])}s" if segments else None,
+            "transcript": "\n".join(lines),
+        }
