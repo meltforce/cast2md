@@ -5,6 +5,8 @@ from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from cast2md import __version__
+
 # Build list of env files (later files override earlier ones)
 _env_files = [".env"]
 _node_env = Path.home() / ".cast2md" / ".env"
@@ -54,7 +56,7 @@ class Settings(BaseSettings):
     transcript_retry_days: int = 14  # How long to retry external transcript downloads before giving up
 
     # HTTP client settings
-    user_agent: str = "cast2md/0.1.0 (Podcast Transcription Service)"
+    user_agent: str = f"cast2md/{__version__} (Podcast Transcription Service)"
 
     # iTunes search settings
     itunes_country: str = "de"  # ISO 3166-1 alpha-2 country code for iTunes store
