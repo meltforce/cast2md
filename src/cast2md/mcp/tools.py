@@ -38,6 +38,54 @@ def list_feeds() -> dict:
 
 
 @mcp.tool()
+def find_feed(name: str) -> dict:
+    """Find a podcast feed by name (fuzzy search).
+
+    Use this instead of list_feeds when you know the podcast name.
+
+    Args:
+        name: Podcast name to search for (case-insensitive, partial match).
+
+    Returns:
+        Matching feeds with their IDs and episode counts.
+
+    Example:
+        find_feed("KI Podcast") -> finds "Der KI-Podcast"
+    """
+    if remote.is_remote_mode():
+        # Fall back to list_feeds and filter
+        feeds = remote.get_feeds()
+        name_lower = name.lower()
+        matches = [f for f in feeds if name_lower in f.get("title", "").lower()]
+        return {"query": name, "total": len(matches), "feeds": matches}
+
+    from cast2md.db.connection import get_db
+    from cast2md.db.repository import EpisodeRepository, FeedRepository
+
+    with get_db() as conn:
+        feed_repo = FeedRepository(conn)
+        episode_repo = EpisodeRepository(conn)
+        feeds = feed_repo.get_all()
+
+        name_lower = name.lower()
+        matches = [f for f in feeds if name_lower in f.display_title.lower()]
+
+        return {
+            "query": name,
+            "total": len(matches),
+            "feeds": [
+                {
+                    "id": feed.id,
+                    "title": feed.display_title,
+                    "episode_count": episode_repo.count_by_feed(feed.id),
+                    "description": feed.description[:200] if feed.description else None,
+                }
+                for feed in matches
+            ],
+        }
+
+
+@mcp.tool()
 def get_feed(feed_id: int) -> dict:
     """Get details for a specific podcast feed with its episodes.
 
@@ -175,7 +223,7 @@ def semantic_search(
         "query": response.query,
         "total": response.total,
         "mode": response.mode,
-        "hint": "Use cast2md://episodes/{episode_id}/transcript to read full transcript",
+        "hint": "Use get_transcript(episode_id, start_time=segment_start) to read more context around a match",
         "results": [
             {
                 "episode_id": r.episode_id,
@@ -227,7 +275,7 @@ def search_episodes(
     return {
         "query": query,
         "total": total,
-        "hint": "Use queue_episode(id) to transcribe, or cast2md://episodes/{id}/transcript to read existing transcript",
+        "hint": "Use get_transcript(episode_id) to read transcript, or queue_episode(id) to transcribe if not available",
         "results": [
             {
                 "id": ep.id,
@@ -267,7 +315,7 @@ def get_recent_episodes(days: int = 7, limit: int = 50) -> dict:
     return {
         "days": days,
         "total": len(results),
-        "hint": "Use queue_episode(id) to transcribe, or cast2md://episodes/{id}/transcript to read existing transcript",
+        "hint": "Use get_transcript(episode_id) to read transcript, or queue_episode(id) to transcribe if not available",
         "results": [
             {
                 "id": ep.id,
@@ -282,6 +330,124 @@ def get_recent_episodes(days: int = 7, limit: int = 50) -> dict:
             for ep, feed_title in results
         ],
     }
+
+
+@mcp.tool()
+def get_transcript(
+    episode_id: int,
+    start_time: float | None = None,
+    duration: float = 300,
+) -> dict:
+    """Get transcript text for an episode, optionally around a specific timestamp.
+
+    Use this to read what was said in a podcast. If you found a match via
+    semantic_search, use start_time to get context around that segment.
+
+    Args:
+        episode_id: The episode ID to get transcript for.
+        start_time: Optional start time in seconds. If provided, returns
+                    transcript around this timestamp with context.
+        duration: Duration in seconds to return (default: 300 = 5 minutes).
+                  Centered around start_time if provided.
+
+    Returns:
+        Transcript text with timestamps, or error if not available.
+
+    Example:
+        # Get transcript around 25:21 (1521 seconds)
+        get_transcript(11110, start_time=1521)
+    """
+    if remote.is_remote_mode():
+        return remote.get_transcript_section(episode_id, start_time, duration)
+
+    from pathlib import Path
+
+    from cast2md.db.connection import get_db
+    from cast2md.db.repository import EpisodeRepository, FeedRepository
+
+    with get_db() as conn:
+        episode_repo = EpisodeRepository(conn)
+        feed_repo = FeedRepository(conn)
+        episode = episode_repo.get_by_id(episode_id)
+
+        if not episode:
+            return {"error": f"Episode {episode_id} not found"}
+
+        if not episode.transcript_path:
+            return {
+                "error": f"No transcript for '{episode.title}'. Use queue_episode({episode_id}) to process it.",
+                "episode_id": episode_id,
+                "status": episode.status.value,
+            }
+
+        transcript_path = Path(episode.transcript_path)
+        if not transcript_path.exists():
+            return {"error": f"Transcript file not found at {episode.transcript_path}"}
+
+        feed = feed_repo.get_by_id(episode.feed_id)
+
+        # Read transcript segments from database for timestamp filtering
+        cursor = conn.cursor()
+        if start_time is not None:
+            # Get segments around the specified time
+            half_duration = duration / 2
+            time_start = max(0, start_time - half_duration)
+            time_end = start_time + half_duration
+
+            cursor.execute(
+                """
+                SELECT segment_start, segment_end, text
+                FROM transcript_segments
+                WHERE episode_id = %s
+                  AND segment_start >= %s
+                  AND segment_start <= %s
+                ORDER BY segment_start
+                """,
+                (episode_id, time_start, time_end),
+            )
+        else:
+            # Get first N minutes
+            cursor.execute(
+                """
+                SELECT segment_start, segment_end, text
+                FROM transcript_segments
+                WHERE episode_id = %s
+                  AND segment_start <= %s
+                ORDER BY segment_start
+                """,
+                (episode_id, duration),
+            )
+
+        segments = cursor.fetchall()
+
+        if not segments:
+            # Fall back to reading file directly
+            content = transcript_path.read_text(encoding="utf-8")
+            # Truncate if too long
+            if len(content) > 10000:
+                content = content[:10000] + "\n\n[... truncated, use start_time to read specific sections ...]"
+            return {
+                "episode_id": episode_id,
+                "episode_title": episode.title,
+                "feed_title": feed.display_title if feed else None,
+                "transcript": content,
+            }
+
+        # Format segments with timestamps
+        lines = []
+        for seg_start, seg_end, text in segments:
+            minutes = int(seg_start) // 60
+            seconds = int(seg_start) % 60
+            lines.append(f"[{minutes:02d}:{seconds:02d}] {text}")
+
+        return {
+            "episode_id": episode_id,
+            "episode_title": episode.title,
+            "feed_title": feed.display_title if feed else None,
+            "published_at": episode.published_at.isoformat() if episode.published_at else None,
+            "time_range": f"{int(segments[0][0])}s - {int(segments[-1][1])}s" if segments else None,
+            "transcript": "\n".join(lines),
+        }
 
 
 @mcp.tool()

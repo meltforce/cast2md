@@ -245,6 +245,21 @@ def get_transcript(episode_id: int) -> str | None:
         return resp.text
 
 
+def get_transcript_section(
+    episode_id: int, start_time: float | None = None, duration: float = 300
+) -> dict:
+    """Get transcript section via API."""
+    with get_client() as client:
+        params: dict[str, Any] = {"duration": duration}
+        if start_time is not None:
+            params["start_time"] = start_time
+        resp = client.get(f"/api/episodes/{episode_id}/transcript/section", params=params)
+        if resp.status_code == 404:
+            return {"error": f"Episode {episode_id} not found or has no transcript"}
+        resp.raise_for_status()
+        return resp.json()
+
+
 def get_status() -> dict:
     """Get system status via API."""
     with get_client() as client:
