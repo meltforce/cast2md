@@ -101,6 +101,23 @@ def setup_pod(
         600,
     )
 
+    # GPU smoke test for Parakeet - catch CUDA errors before processing real jobs
+    if config.is_parakeet:
+        run_ssh(
+            "TRANSCRIPTION_BACKEND=parakeet python -c \""
+            "from cast2md.transcription.service import TranscriptionService; "
+            "import tempfile, numpy as np, soundfile as sf; "
+            "svc = TranscriptionService(); "
+            "model = svc._get_parakeet_model('nvidia/parakeet-tdt-0.6b-v3'); "
+            "silence = np.zeros(16000, dtype=np.float32); "
+            "f = tempfile.NamedTemporaryFile(suffix='.wav', delete=False); "
+            "sf.write(f.name, silence, 16000); "
+            "model.transcribe([f.name], timestamps=True); "
+            "print('GPU validation passed')\"",
+            "Validating GPU (Parakeet smoke test)",
+            120,
+        )
+
     # Register node
     run_ssh(
         f"http_proxy=http://localhost:1055 cast2md node register --server '{config.internal_url}' --name '{config.node_name}'",
@@ -112,8 +129,9 @@ def setup_pod(
     backend_env = f"TRANSCRIPTION_BACKEND={config.transcription_backend}"
     idle_env = f"NODE_IDLE_TIMEOUT_MINUTES={config.idle_timeout_minutes}"
     persistent_env = f"NODE_PERSISTENT={'1' if config.persistent else '0'}"
+    circuit_breaker_env = "NODE_MAX_CONSECUTIVE_FAILURES=3"
     run_ssh(
-        f"http_proxy=http://localhost:1055 {backend_env} {idle_env} {persistent_env} WHISPER_MODEL={config.model} "
+        f"http_proxy=http://localhost:1055 {backend_env} {idle_env} {persistent_env} {circuit_breaker_env} WHISPER_MODEL={config.model} "
         "nohup cast2md node start > /tmp/cast2md-node.log 2>&1 &",
         "Starting worker",
         120,

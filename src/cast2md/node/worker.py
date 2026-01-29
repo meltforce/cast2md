@@ -109,6 +109,11 @@ class TranscriberNodeWorker:
         self._last_server_contact: float = time.time()
         self._consecutive_server_failures = 0
 
+        # Circuit breaker - terminate on consecutive transcription failures
+        # Default: 3 consecutive failures triggers termination (0 to disable)
+        self._max_consecutive_failures = int(os.environ.get("NODE_MAX_CONSECUTIVE_FAILURES", "3"))
+        self._consecutive_failures = 0
+
     @property
     def config(self) -> NodeConfig:
         """Get the node configuration."""
@@ -300,14 +305,23 @@ class TranscriberNodeWorker:
     def _check_should_terminate(self) -> tuple[bool, str]:
         """Check if worker should auto-terminate.
 
-        Three conditions checked (all respect persistent/dev mode):
+        Four conditions checked (all respect persistent/dev mode):
         1. Empty queue - no claimable jobs for N consecutive checks
         2. Idle timeout - no jobs processed for M minutes (safety net)
         3. Server unreachable - can't reach server for K minutes
+        4. Circuit breaker - N consecutive transcription failures (broken GPU)
 
         Returns:
             Tuple of (should_terminate, reason)
         """
+        # Log loud warning in persistent mode but don't terminate
+        if self._persistent and self._max_consecutive_failures > 0:
+            if self._consecutive_failures >= self._max_consecutive_failures:
+                logger.error(
+                    f"CIRCUIT BREAKER: {self._consecutive_failures} consecutive failures "
+                    f"(not terminating - persistent/dev mode)"
+                )
+
         if self._persistent:
             return False, ""  # Dev mode - never auto-terminate
 
@@ -327,6 +341,13 @@ class TranscriberNodeWorker:
             unreachable_minutes = (time.time() - self._last_server_contact) / 60
             if unreachable_minutes >= self._server_unreachable_minutes:
                 return True, f"server unreachable for {int(unreachable_minutes)} minutes"
+
+        # Check 4: Consecutive transcription failures (broken GPU protection)
+        if self._max_consecutive_failures > 0:
+            if self._consecutive_failures >= self._max_consecutive_failures:
+                return True, (
+                    f"{self._consecutive_failures} consecutive transcription failures"
+                )
 
         return False, ""
 
@@ -374,12 +395,28 @@ class TranscriberNodeWorker:
                     self._process_prefetched_job(
                         prefetched.job, prefetched.audio_path, prefetched.temp_dir
                     )
+                    # Check circuit breaker after job
+                    should_terminate, reason = self._check_should_terminate()
+                    if should_terminate:
+                        logger.warning(f"Initiating shutdown: {reason}")
+                        self._request_server_termination(reason)
+                        self._stop_event.set()
+                        self._running = False
+                        break
                 else:
                     # No prefetched job, claim and process directly
                     job = self._claim_job()
                     if job:
                         self._consecutive_empty = 0  # Reset empty counter
                         self._process_job(job)
+                        # Check circuit breaker after job
+                        should_terminate, reason = self._check_should_terminate()
+                        if should_terminate:
+                            logger.warning(f"Initiating shutdown: {reason}")
+                            self._request_server_termination(reason)
+                            self._stop_event.set()
+                            self._running = False
+                            break
                     else:
                         # No transcription job - try to help with embeddings
                         if is_embeddings_available():
@@ -717,6 +754,8 @@ class TranscriberNodeWorker:
                 logger.info(f"Job {job_id} completed successfully")
                 # Reset idle timer on successful completion
                 self._last_job_time = time.time()
+                # Reset circuit breaker on success
+                self._consecutive_failures = 0
             else:
                 logger.error(f"Complete request failed: {response.status_code} - {response.text}")
 
@@ -732,6 +771,14 @@ class TranscriberNodeWorker:
             error_message: Error description.
         """
         logger.warning(f"Failing job {job_id}: {error_message}")
+
+        # Track consecutive failures for circuit breaker
+        self._consecutive_failures += 1
+        if self._consecutive_failures > 1:
+            logger.warning(
+                f"Consecutive failures: {self._consecutive_failures}"
+                f"/{self._max_consecutive_failures}"
+            )
 
         try:
             response = self._client.post(

@@ -17,9 +17,8 @@ FROM nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04
 # Avoid interactive prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Disable NeMo CUDA graphs to avoid CUDA error 35 on RunPod's CUDA 12.8 drivers
-# CUDA graphs require exact driver/toolkit version matching which RunPod doesn't guarantee
-ENV NEMO_CUDA_GRAPHS=0
+# CUDA graphs compatibility is handled at runtime by NeMo 2.6+ (auto-detects
+# driver/toolkit mismatch) and by TranscriptionService._disable_cuda_graphs()
 
 # Install Python 3.11 and minimal system dependencies
 RUN apt-get update && \
@@ -56,7 +55,6 @@ RUN pip install --no-cache-dir \
     --index-url https://download.pytorch.org/whl/cu124
 
 # Install NeMo toolkit for Parakeet transcription
-# CUDA graphs are disabled via NEMO_CUDA_GRAPHS=0 env var to avoid CUDA error 35
 RUN pip install --no-cache-dir 'nemo_toolkit[asr]'
 
 # Pre-download Parakeet model (~600MB) to avoid download at runtime
