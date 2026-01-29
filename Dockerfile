@@ -34,10 +34,12 @@ RUN uv export --frozen --no-dev --no-hashes --no-emit-project \
 FROM python:3.11-slim
 WORKDIR /app
 
+# Static ffmpeg binary (~80MB vs ~460MB from apt)
+COPY --from=mwader/static-ffmpeg:7.1 /ffmpeg /usr/local/bin/
+COPY --from=mwader/static-ffmpeg:7.1 /ffprobe /usr/local/bin/
+
 # Install runtime dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
-    ffmpeg \
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user

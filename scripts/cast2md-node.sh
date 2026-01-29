@@ -13,7 +13,6 @@
 set -e
 
 INSTALL_DIR="$HOME/.cast2md"
-REPO_DIR="$INSTALL_DIR/cast2md"
 VENV_DIR="$INSTALL_DIR/venv"
 LOG_FILE="$INSTALL_DIR/node.log"
 
@@ -174,75 +173,50 @@ check_prerequisites() {
     fi
 }
 
-clone_repo() {
-    print_step "2/6" "Cloning repository..."
+ensure_uv() {
+    print_step "2/6" "Checking for uv..."
 
-    mkdir -p "$INSTALL_DIR"
-    git clone "https://github.com/meltforce/cast2md.git" "$REPO_DIR" 2>/dev/null
-
-    print_success "Cloned to $REPO_DIR"
-}
-
-create_venv() {
-    print_step "3/6" "Creating virtual environment..."
-
-    "$PYTHON_BIN" -m venv "$VENV_DIR"
-
-    print_success "Created venv with $PYTHON_BIN"
-}
-
-install_deps() {
-    print_step "4/6" "Installing dependencies..."
-
-    source "$VENV_DIR/bin/activate"
-
-    # Upgrade pip
-    pip install --quiet --upgrade pip
-
-    # Install cast2md package without dependencies (suppress resolver warnings)
-    cd "$REPO_DIR"
-    pip install --quiet --no-deps -e . 2>/dev/null
-
-    # Install node dependencies directly (minimal set for nodes)
-    # Suppress resolver warnings about server-side deps we intentionally skip
-    echo "  Installing core dependencies..."
-    pip install --quiet \
-        httpx \
-        pydantic-settings \
-        python-dotenv \
-        click \
-        fastapi \
-        'uvicorn[standard]' \
-        jinja2 \
-        python-multipart 2>/dev/null
-
-    # Install transcription backend based on architecture
-    if [ "$USE_MLX" = true ]; then
-        echo "  Installing MLX Whisper (Apple Silicon)..."
-        pip install --quiet mlx-whisper 2>/dev/null
-    else
-        echo "  Installing faster-whisper..."
-        pip install --quiet faster-whisper 2>/dev/null
+    if command -v uv &> /dev/null; then
+        print_success "uv ($(uv --version))"
+        return
     fi
 
-    # Install sentence-transformers for distributed embedding support
-    echo "  Installing sentence-transformers..."
-    pip install --quiet sentence-transformers 2>/dev/null
+    print_warning "uv not found. Installing..."
+    if [ "$PLATFORM" = "macos" ]; then
+        if command -v brew &> /dev/null; then
+            brew install uv
+        else
+            print_error "Homebrew required. Install from https://brew.sh"
+            exit 1
+        fi
+    else
+        curl -LsSf https://astral.sh/uv/install.sh | sh
+        export PATH="$HOME/.local/bin:$PATH"
+    fi
+    print_success "uv installed"
+}
 
-    deactivate
+install_cast2md() {
+    print_step "3/6" "Installing cast2md..."
 
-    print_success "Dependencies installed"
+    mkdir -p "$INSTALL_DIR"
+    uv venv --python "$PYTHON_BIN" "$VENV_DIR"
+
+    if [ "$USE_MLX" = true ]; then
+        uv pip install --python "$VENV_DIR/bin/python" "cast2md[node,node-mlx]"
+    else
+        uv pip install --python "$VENV_DIR/bin/python" "cast2md[node]"
+    fi
+
+    print_success "Installed cast2md $("$VENV_DIR/bin/cast2md" --version 2>/dev/null || echo '')"
 }
 
 register_node() {
-    print_step "5/6" "Node registration"
-
-    source "$VENV_DIR/bin/activate"
+    print_step "4/6" "Node registration"
 
     # Check if already registered
     if [ -f "$INSTALL_DIR/node.json" ]; then
         print_success "Already registered (using existing config)"
-        deactivate
         return
     fi
 
@@ -251,15 +225,13 @@ register_node() {
     printf "  Node name: "
     read NODE_NAME < /dev/tty
 
-    cast2md node register --server "$SERVER_URL" --name "$NODE_NAME"
-
-    deactivate
+    "$VENV_DIR/bin/cast2md" node register --server "$SERVER_URL" --name "$NODE_NAME"
 
     print_success "Registered!"
 }
 
 setup_service() {
-    print_step "6/6" "Service setup"
+    print_step "5/6" "Service setup"
 
     echo ""
     echo "  How would you like to run the node?"
@@ -383,7 +355,7 @@ setup_launchd_service() {
         <string>--no-browser</string>
     </array>
     <key>WorkingDirectory</key>
-    <string>$REPO_DIR</string>
+    <string>$INSTALL_DIR</string>
     <key>RunAtLoad</key>
     <true/>
     <key>KeepAlive</key>
@@ -430,7 +402,7 @@ After=network.target
 
 [Service]
 Type=simple
-WorkingDirectory=$REPO_DIR
+WorkingDirectory=$INSTALL_DIR
 Environment=WHISPER_BACKEND=$WHISPER_BACKEND
 Environment=PATH=$VENV_DIR/bin:/usr/local/bin:/usr/bin:/bin
 ExecStart=$VENV_DIR/bin/cast2md node start --no-browser
@@ -472,7 +444,7 @@ setup_start_script() {
 # Run: $script_path
 
 export WHISPER_BACKEND=$WHISPER_BACKEND
-cd "$REPO_DIR"
+cd "$INSTALL_DIR"
 exec "$VENV_DIR/bin/cast2md" node start "\$@"
 EOF
 
@@ -519,37 +491,20 @@ update_install() {
 
     stop_service
 
-    echo "Pulling latest changes..."
-    cd "$REPO_DIR"
-    git pull
+    ensure_uv
 
-    echo "Reinstalling dependencies..."
-    source "$VENV_DIR/bin/activate"
-    pip install --quiet --upgrade pip
-    pip install --quiet --no-deps -e . 2>/dev/null
-
-    # Reinstall node deps (minimal set)
-    pip install --quiet \
-        httpx \
-        pydantic-settings \
-        python-dotenv \
-        click \
-        fastapi \
-        'uvicorn[standard]' \
-        jinja2 \
-        python-multipart 2>/dev/null
-
-    # Check for MLX
+    echo "Upgrading cast2md..."
     if [ "$PLATFORM" = "macos" ] && [ "$(uname -m)" = "arm64" ]; then
-        pip install --quiet mlx-whisper 2>/dev/null
+        USE_MLX=true
     else
-        pip install --quiet faster-whisper 2>/dev/null
+        USE_MLX=false
     fi
 
-    # Install sentence-transformers for distributed embedding support
-    pip install --quiet sentence-transformers 2>/dev/null
-
-    deactivate
+    if [ "$USE_MLX" = true ]; then
+        uv pip install --python "$VENV_DIR/bin/python" --upgrade "cast2md[node,node-mlx]"
+    else
+        uv pip install --python "$VENV_DIR/bin/python" --upgrade "cast2md[node]"
+    fi
 
     # Ensure wrapper scripts exist (for upgrades from older versions)
     if [ "$PLATFORM" = "macos" ] && [ -f "$PLIST_PATH" ]; then
@@ -558,12 +513,10 @@ update_install() {
 
     start_service
 
-    # Get version (git commit hash since package version isn't bumped often)
-    cd "$REPO_DIR"
-    GIT_VERSION=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+    VERSION=$("$VENV_DIR/bin/cast2md" --version 2>/dev/null || echo "unknown")
 
     echo ""
-    print_success "Updated to commit $GIT_VERSION"
+    print_success "Updated to $VERSION"
     echo ""
     echo "Status UI: http://localhost:8001"
 }
@@ -574,13 +527,13 @@ fresh_install() {
     echo ""
 
     check_prerequisites
-    clone_repo
-    create_venv
-    install_deps
+    ensure_uv
+    install_cast2md
     register_node
     setup_service
 
     echo ""
+    print_step "6/6" "Done!"
     print_success "Installation complete!"
     echo ""
     echo "Status UI: http://localhost:8001"
@@ -599,7 +552,7 @@ uninstall() {
     # Confirm uninstall
     echo "This will:"
     echo "  - Stop and remove the service"
-    echo "  - Delete $INSTALL_DIR (repo, venv, logs, config)"
+    echo "  - Delete $INSTALL_DIR (venv, logs, config)"
     echo ""
     printf "Continue? [y/N] "
     read CONFIRM < /dev/tty
@@ -613,9 +566,7 @@ uninstall() {
     if [ -f "$INSTALL_DIR/node.json" ] && [ -f "$VENV_DIR/bin/cast2md" ]; then
         echo ""
         echo "Unregistering from server..."
-        source "$VENV_DIR/bin/activate"
         "$VENV_DIR/bin/cast2md" node unregister --force 2>/dev/null || true
-        deactivate
     fi
 
     # Stop service
@@ -647,7 +598,7 @@ show_menu() {
     print_header
 
     # Check if already installed
-    if [ -d "$REPO_DIR" ]; then
+    if [ -f "$VENV_DIR/bin/cast2md" ]; then
         echo "Existing installation found."
         echo ""
         echo "What would you like to do?"
@@ -670,7 +621,7 @@ show_menu() {
 
     case "$MENU_CHOICE" in
         1)
-            if [ -d "$REPO_DIR" ]; then
+            if [ -f "$VENV_DIR/bin/cast2md" ]; then
                 detect_platform
                 update_install
             else
