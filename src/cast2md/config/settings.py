@@ -181,6 +181,10 @@ def _apply_db_overrides() -> None:
     All server settings can be configured via the UI and stored in the database.
     Remote nodes are separate installations with their own Settings class and
     .env files - they don't share this database.
+
+    Environment variables always take precedence over database values.
+    This allows switching between bare metal (STORAGE_PATH=/mnt/nas/cast2md)
+    and Docker (STORAGE_PATH=/app/data/podcasts) without touching the database.
     """
     global _settings
     if _settings is None:
@@ -188,6 +192,8 @@ def _apply_db_overrides() -> None:
 
     try:
         # Only import here to avoid circular imports
+        import os
+
         from cast2md.db.connection import get_db
         from cast2md.db.repository import SettingsRepository
 
@@ -196,20 +202,24 @@ def _apply_db_overrides() -> None:
             overrides = repo.get_all()
 
             for key, value in overrides.items():
-                if hasattr(_settings, key):
-                    current_value = getattr(_settings, key)
-                    field_type = type(current_value)
-                    try:
-                        if field_type == int:
-                            setattr(_settings, key, int(value))
-                        elif field_type == bool:
-                            setattr(_settings, key, value.lower() in ("true", "1", "yes"))
-                        elif isinstance(current_value, Path):
-                            setattr(_settings, key, Path(value))
-                        else:
-                            setattr(_settings, key, value)
-                    except (ValueError, TypeError):
-                        pass  # Skip invalid values
+                if not hasattr(_settings, key):
+                    continue
+                # Skip if env var is explicitly set (env wins over DB)
+                if key in NODE_SPECIFIC_SETTINGS or key.upper() in os.environ:
+                    continue
+                current_value = getattr(_settings, key)
+                field_type = type(current_value)
+                try:
+                    if field_type == int:
+                        setattr(_settings, key, int(value))
+                    elif field_type == bool:
+                        setattr(_settings, key, value.lower() in ("true", "1", "yes"))
+                    elif isinstance(current_value, Path):
+                        setattr(_settings, key, Path(value))
+                    else:
+                        setattr(_settings, key, value)
+                except (ValueError, TypeError):
+                    pass  # Skip invalid values
     except Exception:
         # Database might not be initialized yet
         pass
@@ -234,10 +244,12 @@ def get_setting_source(key: str, current_value, db_value: str | None) -> str:
     Returns:
         One of: "env_file", "database", "default"
     """
-    # Node-specific settings always come from env file (DB is ignored)
-    if key in NODE_SPECIFIC_SETTINGS:
+    import os
+
+    # Env vars always win over DB (node-specific or explicitly set)
+    env_set = key in NODE_SPECIFIC_SETTINGS or key.upper() in os.environ
+    if env_set:
         default = _DEFAULTS.get(key)
-        # Convert current_value to comparable type
         if hasattr(current_value, "__fspath__"):
             current_value = str(current_value)
         if current_value != default:
