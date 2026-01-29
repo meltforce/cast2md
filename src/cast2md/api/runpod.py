@@ -1,8 +1,9 @@
 """RunPod management API endpoints."""
 
+import logging
 from datetime import datetime
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from cast2md.services.runpod_service import (
@@ -11,6 +12,8 @@ from cast2md.services.runpod_service import (
     PodSetupState,
     get_runpod_service,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/runpod", tags=["runpod"])
 
@@ -183,6 +186,69 @@ def get_setup_status(instance_id: str):
     return _state_to_response(state)
 
 
+class SetupProgressRequest(BaseModel):
+    """Pod self-setup progress report."""
+
+    phase: str  # connecting, installing, ready, failed
+    message: str = ""
+    error: str | None = None
+    host_ip: str | None = None
+
+
+@router.post("/pods/{instance_id}/setup-progress", response_model=dict)
+def report_setup_progress(instance_id: str, request: SetupProgressRequest, http_request: Request):
+    """Report setup progress from a self-setting-up pod.
+
+    Authenticated by X-Setup-Token header (one-time token generated at pod creation).
+    """
+    service = get_runpod_service()
+
+    # Validate setup token
+    token = http_request.headers.get("X-Setup-Token", "")
+    if not token:
+        raise HTTPException(status_code=401, detail="Missing X-Setup-Token header")
+
+    state = service.get_setup_state(instance_id)
+    if not state:
+        raise HTTPException(status_code=404, detail=f"No setup state found for instance {instance_id}")
+
+    if not state.setup_token or state.setup_token != token:
+        raise HTTPException(status_code=403, detail="Invalid setup token")
+
+    # Validate phase
+    valid_phases = {"connecting", "installing", "ready", "failed"}
+    if request.phase not in valid_phases:
+        raise HTTPException(status_code=400, detail=f"Invalid phase: {request.phase}. Must be one of {valid_phases}")
+
+    # Update state
+    update_kwargs: dict = {
+        "phase": PodSetupPhase(request.phase),
+        "message": request.message,
+    }
+    if request.host_ip:
+        update_kwargs["host_ip"] = request.host_ip
+    if request.error:
+        update_kwargs["error"] = request.error
+
+    service._update_state(instance_id, **update_kwargs)
+
+    # On ready: record pod run
+    if request.phase == "ready" and state.pod_id:
+        service._record_pod_run(
+            instance_id=state.instance_id,
+            pod_id=state.pod_id,
+            pod_name=state.pod_name,
+            gpu_type=state.gpu_type,
+            started_at=state.started_at,
+        )
+        logger.info(f"Pod {instance_id} self-setup complete")
+
+    if request.phase == "failed":
+        logger.error(f"Pod {instance_id} self-setup failed: {request.error or request.message}")
+
+    return {"status": "ok"}
+
+
 @router.delete("/pods", response_model=TerminateResponse)
 def terminate_all():
     """Terminate all running pods."""
@@ -247,21 +313,6 @@ def cleanup_orphaned_nodes():
 
     removed = service.cleanup_orphaned_nodes()
     return {"removed": removed, "message": f"Removed {removed} orphaned node(s)"}
-
-
-@router.post("/pods/{instance_id}/update-code", response_model=dict)
-def update_pod_code(instance_id: str):
-    """Update cast2md code on a running pod (dev mode).
-
-    Stops the worker, reinstalls from git, and restarts.
-    """
-    service = _check_available()
-
-    success = service.update_pod_code(instance_id)
-    if not success:
-        raise HTTPException(status_code=500, detail=f"Failed to update code on pod {instance_id}")
-
-    return {"message": f"Code updated on pod {instance_id}"}
 
 
 class SetPersistentRequest(BaseModel):

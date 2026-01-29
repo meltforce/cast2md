@@ -5,7 +5,6 @@ import json
 import logging
 import secrets
 import socket
-import subprocess
 import threading
 import time
 from dataclasses import dataclass, field
@@ -56,7 +55,8 @@ class PodSetupState:
     started_at: datetime = field(default_factory=datetime.now)
     error: str | None = None
     host_ip: str | None = None
-    persistent: bool = False  # Dev mode: don't auto-terminate, allow code updates
+    persistent: bool = False  # Dev mode: don't auto-terminate
+    setup_token: str = ""  # One-time token for pod self-setup authentication
 
 
 @dataclass
@@ -73,23 +73,27 @@ class PodInfo:
 class RunPodService:
     """Manages RunPod GPU worker pods."""
 
-    # Template name used for all afterburner pods
-    TEMPLATE_NAME = "cast2md-afterburner"
+    # Template name for self-setup pods (v2 to avoid conflict with CLI afterburner's template)
+    TEMPLATE_NAME = "cast2md-afterburner-v2"
 
     # Flag to track if DB states have been loaded
     _db_loaded: bool = False
 
-    # Startup script for pods (minimal - just Tailscale setup)
+    # Self-setup startup script: pod handles all setup and reports progress to server
     STARTUP_SCRIPT = '''#!/bin/bash
 set -e
 
-echo "=== Afterburner Startup $(date) ==="
+echo "=== Afterburner Self-Setup $(date) ==="
 
 : "${TS_AUTH_KEY:?TS_AUTH_KEY is required}"
 : "${TS_HOSTNAME:=runpod-afterburner}"
+: "${CAST2MD_SERVER_IP:?CAST2MD_SERVER_IP is required}"
+: "${INSTANCE_ID:?INSTANCE_ID is required}"
+: "${SETUP_TOKEN:?SETUP_TOKEN is required}"
 
-echo "Config: TS_HOSTNAME=$TS_HOSTNAME"
+echo "Config: TS_HOSTNAME=$TS_HOSTNAME INSTANCE_ID=$INSTANCE_ID"
 
+# --- Tailscale setup ---
 echo "Installing Tailscale..."
 curl -fsSL https://tailscale.com/install.sh | sh
 
@@ -120,9 +124,105 @@ tailscale status
 
 export http_proxy=http://localhost:1055
 export https_proxy=http://localhost:1055
-echo "HTTP proxy available at localhost:1055"
 
-echo "Container ready - waiting for SSH setup..."
+# --- /etc/hosts for MagicDNS workaround ---
+SERVER_HOST=$(echo "$CAST2MD_SERVER_URL" | sed "s|https://||;s|http://||;s|/.*||")
+grep -q "$SERVER_HOST" /etc/hosts || echo "$CAST2MD_SERVER_IP $SERVER_HOST" >> /etc/hosts
+
+# --- Helper to report progress ---
+report_progress() {
+    local phase="$1"
+    local message="$2"
+    local host_ip
+    host_ip=$(tailscale ip -4 2>/dev/null || echo "")
+    local error="${3:-}"
+    local json
+    if [ -n "$error" ]; then
+        json=$(printf \'{"phase": "%s", "message": "%s", "host_ip": "%s", "error": "%s"}\' "$phase" "$message" "$host_ip" "$error")
+    else
+        json=$(printf \'{"phase": "%s", "message": "%s", "host_ip": "%s"}\' "$phase" "$message" "$host_ip")
+    fi
+    curl -s -X POST "http://${CAST2MD_SERVER_IP}:8000/api/runpod/pods/${INSTANCE_ID}/setup-progress" \
+        -H "Content-Type: application/json" \
+        -H "X-Setup-Token: ${SETUP_TOKEN}" \
+        -d "$json" \
+        -x http://localhost:1055 || true
+}
+
+# --- Report Tailscale connected ---
+report_progress "connecting" "Tailscale connected"
+
+# --- Install ffmpeg ---
+which ffmpeg > /dev/null || (apt-get update -qq && apt-get install -y -qq ffmpeg > /dev/null 2>&1)
+
+# --- Install NeMo toolkit for Parakeet (if not pre-installed) ---
+if [ "$TRANSCRIPTION_BACKEND" = "parakeet" ]; then
+    python -c "import nemo" 2>/dev/null || {
+        report_progress "installing" "Installing NeMo toolkit..."
+        pip install --no-cache-dir "nemo_toolkit[asr]"
+    }
+fi
+
+# --- Install cast2md ---
+report_progress "installing" "Installing cast2md..."
+pip install --no-cache-dir "cast2md[node] @ git+https://github.com/${GITHUB_REPO}.git"
+
+# --- GPU smoke test (Parakeet only) ---
+if [ "$TRANSCRIPTION_BACKEND" = "parakeet" ]; then
+    report_progress "installing" "Running GPU validation..."
+    timeout 120 python -c "
+from cast2md.transcription.service import TranscriptionService
+import tempfile, numpy as np, soundfile as sf
+svc = TranscriptionService()
+model = svc._get_parakeet_model(\'nvidia/parakeet-tdt-0.6b-v3\')
+silence = np.zeros(16000, dtype=np.float32)
+f = tempfile.NamedTemporaryFile(suffix=\'.wav\', delete=False)
+sf.write(f.name, silence, 16000)
+model.transcribe([f.name], timestamps=True)
+print(\'GPU validation passed\')
+" || {
+        report_progress "failed" "GPU validation failed" "GPU smoke test failed"
+        tail -f /dev/null
+    }
+fi
+
+# --- Register node ---
+report_progress "installing" "Registering node..."
+http_proxy=http://localhost:1055 cast2md node register \
+    --server "http://${CAST2MD_SERVER_IP}:8000" --name "$NODE_NAME"
+
+# --- Start worker ---
+report_progress "installing" "Starting worker..."
+http_proxy=http://localhost:1055 \
+    TRANSCRIPTION_BACKEND=$TRANSCRIPTION_BACKEND \
+    NODE_IDLE_TIMEOUT_MINUTES=$NODE_IDLE_TIMEOUT_MINUTES \
+    NODE_PERSISTENT=$NODE_PERSISTENT \
+    NODE_MAX_CONSECUTIVE_FAILURES=${NODE_MAX_CONSECUTIVE_FAILURES:-3} \
+    WHISPER_MODEL=$WHISPER_MODEL \
+    nohup cast2md node start > /tmp/cast2md-node.log 2>&1 &
+
+sleep 3
+
+# Verify worker started
+if ! pgrep -f "cast2md node" > /dev/null; then
+    report_progress "failed" "Worker failed to start" "$(tail -20 /tmp/cast2md-node.log 2>/dev/null)"
+    tail -f /dev/null
+fi
+
+# --- Watchdog + terminate script (non-persistent only) ---
+if [ "$NODE_PERSISTENT" != "1" ]; then
+    # Build terminate script with baked-in values
+    # RUNPOD_POD_ID is auto-set by RunPod, RUNPOD_API_KEY is from pod env
+    printf '#!/bin/bash\necho "Terminating pod via RunPod API..." >> /tmp/cast2md-node.log\ncurl -s -X POST https://api.runpod.io/graphql -H "Content-Type: application/json" -H "Authorization: Bearer %s" -d '"'"'{"query": "mutation { podTerminate(input: {podId: \\"%s\\"}) }"}'"'"' >> /tmp/cast2md-node.log 2>&1\n' "$RUNPOD_API_KEY" "$RUNPOD_POD_ID" > /tmp/terminate-pod.sh
+    chmod +x /tmp/terminate-pod.sh
+
+    # Watchdog monitors worker process and terminates pod when it exits
+    nohup bash -c "sleep 10; while pgrep -f 'cast2md node' > /dev/null; do sleep 5; done; echo 'Worker exited, terminating pod...' >> /tmp/cast2md-node.log; /tmp/terminate-pod.sh" > /tmp/watchdog.log 2>&1 &
+fi
+
+# --- Report ready ---
+report_progress "ready" "Worker is running"
+
 tail -f /dev/null
 '''
 
@@ -161,6 +261,7 @@ tail -f /dev/null
                             error=row.error,
                             host_ip=row.host_ip,
                             persistent=row.persistent,
+                            setup_token=row.setup_token,
                         )
                         self._setup_states[row.instance_id] = state
 
@@ -194,6 +295,7 @@ tail -f /dev/null
                 error=state.error,
                 host_ip=state.host_ip,
                 persistent=state.persistent,
+                setup_token=state.setup_token,
             )
             with get_db() as conn:
                 repo = PodSetupStateRepository(conn)
@@ -214,71 +316,63 @@ tail -f /dev/null
             logger.warning(f"Failed to delete persisted pod setup state: {e}")
 
     def _cleanup_unreachable_pods(self) -> None:
-        """Terminate pods that are running but not reachable via Tailscale.
+        """Clean up pods stuck in setup phases without progress.
 
         Called on startup after loading persisted states. Pods that were
         mid-setup when the server restarted may be running on RunPod but
-        never completed Tailscale setup, making them useless.
+        never completed setup, making them useless.
+
+        Checks for pods stuck in CONNECTING/INSTALLING phase for >15 min
+        without progress, and verifies with RunPod API that the pod still exists.
         """
         if not self.is_available():
             return
 
         try:
-            # Give pods a moment to appear on Tailscale
+            # Give pods a moment to start reporting
             time.sleep(10)
 
             # Get running pods from RunPod
             running_pods = self.list_pods()
-            if not running_pods:
-                return
+            running_pod_ids = {p.id for p in running_pods}
 
-            # Get online Tailscale hosts
-            result = subprocess.run(
-                ["tailscale", "status", "--json"],
-                capture_output=True,
-                text=True,
-                timeout=10,
-            )
-            if result.returncode != 0:
-                return
-
-            status = json.loads(result.stdout)
-            peers = status.get("Peer", {})
-
-            # Build set of online afterburner hostnames
-            online_hostnames = set()
-            for peer in peers.values():
-                hostname = peer.get("HostName", "")
-                if hostname.startswith("runpod-afterburner") and peer.get("Online", False):
-                    online_hostnames.add(hostname)
-
-            # Check each running pod
-            for pod in running_pods:
-                # Extract instance_id from pod name (e.g., "cast2md-afterburner-1fd6" -> "1fd6")
-                parts = pod.name.split("-")
-                if len(parts) < 3:
-                    continue
-                instance_id = parts[-1]
-                expected_hostname = f"runpod-afterburner-{instance_id}"
-
-                # Skip pods that are currently being set up (not yet expected on Tailscale)
-                with self._lock:
-                    state = self._setup_states.get(instance_id)
-                    if state and state.phase not in (PodSetupPhase.READY, PodSetupPhase.FAILED):
-                        # Pod is still in setup, don't terminate it
+            # Check setup states for stuck pods
+            stuck_instance_ids = []
+            with self._lock:
+                for instance_id, state in self._setup_states.items():
+                    # Skip terminal states
+                    if state.phase in (PodSetupPhase.READY, PodSetupPhase.FAILED):
                         continue
 
-                if expected_hostname not in online_hostnames:
-                    logger.warning(
-                        f"Pod {pod.id} ({pod.name}) is running but not reachable via Tailscale - terminating"
-                    )
-                    self.terminate_pod(pod.id)
-                    # Also clean up the setup state if it exists
+                    # Check if pod still exists in RunPod
+                    if state.pod_id and state.pod_id not in running_pod_ids:
+                        logger.warning(
+                            f"Pod {instance_id} ({state.pod_id}) no longer exists in RunPod - cleaning up"
+                        )
+                        stuck_instance_ids.append(instance_id)
+                        continue
+
+                    # Check if stuck (>15 min in non-terminal phase)
+                    age_minutes = (datetime.now() - state.started_at).total_seconds() / 60
+                    if age_minutes > 15:
+                        logger.warning(
+                            f"Pod {instance_id} stuck in {state.phase.value} for {age_minutes:.0f} min - terminating"
+                        )
+                        stuck_instance_ids.append(instance_id)
+
+            # Terminate stuck pods
+            for instance_id in stuck_instance_ids:
+                state = self._setup_states.get(instance_id)
+                if state and state.pod_id:
+                    try:
+                        self.terminate_pod(state.pod_id)
+                    except Exception as e:
+                        logger.error(f"Failed to terminate stuck pod {instance_id}: {e}")
+                # Clean up state
+                with self._lock:
                     if instance_id in self._setup_states:
-                        with self._lock:
-                            if instance_id in self._setup_states:
-                                del self._setup_states[instance_id]
-                        self._delete_persisted_state(instance_id)
+                        del self._setup_states[instance_id]
+                self._delete_persisted_state(instance_id)
 
         except Exception as e:
             logger.error(f"Failed to cleanup unreachable pods: {e}")
@@ -301,35 +395,13 @@ tail -f /dev/null
         return bool(self.settings.runpod_api_key)
 
     def get_server_tailscale_info(self) -> tuple[str | None, str | None]:
-        """Get this server's Tailscale hostname and IP.
+        """Get this server's Tailscale hostname and IP from configuration.
 
-        Returns (hostname, ip) or (None, None) if not available.
+        Returns (url, ip) or (None, None) if not configured.
         """
-        try:
-            result = subprocess.run(
-                ["tailscale", "status", "--json"],
-                capture_output=True,
-                text=True,
-                timeout=10,
-            )
-            if result.returncode != 0:
-                return None, None
-
-            status = json.loads(result.stdout)
-            self_status = status.get("Self", {})
-
-            # Get hostname (e.g., "cast2md" from "cast2md.leo-royal.ts.net")
-            dns_name = self_status.get("DNSName", "")
-            hostname = dns_name.rstrip(".") if dns_name else None
-
-            # Get Tailscale IP
-            ips = self_status.get("TailscaleIPs", [])
-            ip = ips[0] if ips else None
-
-            return hostname, ip
-        except Exception as e:
-            logger.warning(f"Failed to get Tailscale info: {e}")
-            return None, None
+        url = self.settings.runpod_server_url or None
+        ip = self.settings.runpod_server_ip or None
+        return url, ip
 
     def get_effective_server_url(self) -> str | None:
         """Get the server URL for pods to connect to.
@@ -630,8 +702,9 @@ tail -f /dev/null
         if not can_create:
             raise RuntimeError(reason)
 
-        # Generate unique instance ID
+        # Generate unique instance ID and setup token
         instance_id = secrets.token_hex(2)
+        setup_token = secrets.token_urlsafe(32)
         ts_hostname = f"{self.settings.runpod_ts_hostname}-{instance_id}"
         pod_name = f"cast2md-afterburner-{instance_id}"
         node_name = f"RunPod Afterburner {instance_id}"
@@ -645,6 +718,7 @@ tail -f /dev/null
             phase=PodSetupPhase.CREATING,
             message="Starting pod creation...",
             persistent=persistent,
+            setup_token=setup_token,
         )
 
         with self._lock:
@@ -676,7 +750,12 @@ tail -f /dev/null
             self._persist_state(state)
 
     def _create_and_setup_pod(self, instance_id: str) -> None:
-        """Full pod setup in background thread."""
+        """Create pod and wait for it to self-setup (background thread).
+
+        The pod's startup script handles all setup and reports progress back
+        via the setup-progress API endpoint. This thread just monitors for
+        completion or timeout.
+        """
         state = self._setup_states.get(instance_id)
         if not state:
             return
@@ -688,29 +767,55 @@ tail -f /dev/null
                 self._update_state(instance_id, phase=PodSetupPhase.FAILED, error="Failed to create template")
                 return
 
-            # Create pod
+            # Create pod (with env vars for self-setup)
             self._update_state(instance_id, message="Creating RunPod pod...")
-            pod_id, gpu_type = self._create_pod(template_id, state.pod_name, state.ts_hostname)
-            self._update_state(instance_id, pod_id=pod_id, gpu_type=gpu_type, phase=PodSetupPhase.STARTING, message="Waiting for pod to start...")
+            pod_id, gpu_type = self._create_pod(
+                template_id, state.pod_name, state.ts_hostname, instance_id,
+            )
+            self._update_state(
+                instance_id, pod_id=pod_id, gpu_type=gpu_type,
+                phase=PodSetupPhase.STARTING, message="Waiting for pod to start...",
+            )
 
-            # Wait for pod to be running
+            # Wait for pod to reach RUNNING status (via RunPod API)
             self._wait_for_pod_running(pod_id)
-            self._update_state(instance_id, phase=PodSetupPhase.CONNECTING, message="Waiting for Tailscale connection...")
+            self._update_state(
+                instance_id, phase=PodSetupPhase.CONNECTING,
+                message="Pod running, waiting for self-setup...",
+            )
 
-            # Wait for Tailscale connection
-            host_ip = self._wait_for_tailscale(state.ts_hostname)
-            if not host_ip:
-                raise RuntimeError("Pod failed to connect to Tailscale")
-            self._update_state(instance_id, host_ip=host_ip, phase=PodSetupPhase.INSTALLING, message="Installing dependencies...")
+            # Wait for pod to report "ready" or "failed" via setup-progress API
+            # The pod's startup script handles everything and calls back
+            setup_timeout = 900  # 15 minutes
+            start_time = time.time()
 
-            # SSH setup
-            self._setup_pod_via_ssh(instance_id, host_ip, state.node_name)
-            self._update_state(instance_id, phase=PodSetupPhase.READY, message="Worker is running")
+            while time.time() - start_time < setup_timeout:
+                with self._lock:
+                    current_state = self._setup_states.get(instance_id)
 
-            # Record pod run in database
-            self._record_pod_run(instance_id, pod_id, state.pod_name, gpu_type, state.started_at)
+                if not current_state:
+                    raise RuntimeError("Setup state disappeared")
 
-            logger.info(f"Pod {instance_id} ({pod_id}) setup complete")
+                if current_state.phase == PodSetupPhase.READY:
+                    logger.info(f"Pod {instance_id} ({pod_id}) self-setup complete")
+                    return
+
+                if current_state.phase == PodSetupPhase.FAILED:
+                    logger.error(f"Pod {instance_id} self-setup failed: {current_state.error}")
+                    return  # State already set to FAILED by the progress endpoint
+
+                time.sleep(5)
+
+            # Timeout - mark as failed and terminate
+            self._update_state(
+                instance_id, phase=PodSetupPhase.FAILED,
+                error="Setup timed out (15 min) - pod did not report ready",
+            )
+            logger.error(f"Pod {instance_id} setup timed out, terminating")
+            try:
+                self.terminate_pod(pod_id)
+            except Exception:
+                pass
 
         except Exception as e:
             logger.error(f"Pod {instance_id} setup failed: {e}")
@@ -771,8 +876,10 @@ tail -f /dev/null
         finally:
             client.close()
 
-    def _create_pod(self, template_id: str, pod_name: str, ts_hostname: str) -> tuple[str, str]:
-        """Create a RunPod pod. Returns (pod_id, gpu_type)."""
+    def _create_pod(
+        self, template_id: str, pod_name: str, ts_hostname: str, instance_id: str,
+    ) -> tuple[str, str]:
+        """Create a RunPod pod with self-setup env vars. Returns (pod_id, gpu_type)."""
         runpod.api_key = self.settings.runpod_api_key
 
         # Parse blocked GPUs (comma-separated list)
@@ -809,6 +916,29 @@ tail -f /dev/null
                 if fb not in gpu_types and not is_blocked(fb):
                     gpu_types.append(fb)
 
+        # Get setup token from state
+        state = self._setup_states.get(instance_id)
+        setup_token = state.setup_token if state else ""
+
+        # Determine transcription backend from model
+        model = self.settings.runpod_whisper_model
+        is_parakeet = "parakeet" in model.lower()
+        backend = "parakeet" if is_parakeet else "whisper"
+
+        # Per-pod env vars for self-setup
+        pod_env = {
+            "TS_HOSTNAME": ts_hostname,
+            "INSTANCE_ID": instance_id,
+            "SETUP_TOKEN": setup_token,
+            "TRANSCRIPTION_BACKEND": backend,
+            "WHISPER_MODEL": model,
+            "NODE_NAME": f"RunPod Afterburner {instance_id}",
+            "NODE_IDLE_TIMEOUT_MINUTES": str(self.settings.runpod_idle_timeout_minutes),
+            "NODE_PERSISTENT": "1" if (state and state.persistent) else "0",
+            "NODE_MAX_CONSECUTIVE_FAILURES": "3",
+            "RUNPOD_API_KEY": self.settings.runpod_api_key,
+        }
+
         last_error = None
         for gpu_type in gpu_types:
             try:
@@ -819,7 +949,7 @@ tail -f /dev/null
                     cloud_type="ALL",
                     start_ssh=True,
                     support_public_ip=True,
-                    env={"TS_HOSTNAME": ts_hostname},
+                    env=pod_env,
                 )
                 pod_id = pod["id"]
 
@@ -880,104 +1010,6 @@ tail -f /dev/null
             time.sleep(5)
 
         raise RuntimeError("Timeout waiting for pod to be running")
-
-    def _wait_for_tailscale(self, ts_hostname: str, timeout: int = 600) -> str | None:
-        """Wait for pod to appear on Tailscale. Returns IP or None."""
-        start_time = time.time()
-
-        while time.time() - start_time < timeout:
-            result = subprocess.run(
-                ["tailscale", "status", "--json"],
-                capture_output=True,
-                text=True,
-            )
-            if result.returncode == 0:
-                status = json.loads(result.stdout)
-                peers = status.get("Peer", {})
-
-                # Find matching candidates
-                candidates = []
-                for peer in peers.values():
-                    hostname = peer.get("HostName", "")
-                    online = peer.get("Online", False)
-                    if hostname.startswith(ts_hostname) and online:
-                        candidates.append(peer)
-
-                # Sort by creation time (newest first)
-                def get_created_time(p: dict) -> datetime:
-                    created_str = p.get("Created", "")
-                    if not created_str:
-                        return datetime.min
-                    try:
-                        if created_str.endswith("Z"):
-                            created_str = created_str[:-1] + "+00:00"
-                        return datetime.fromisoformat(created_str)
-                    except ValueError:
-                        return datetime.min
-
-                candidates.sort(key=get_created_time, reverse=True)
-
-                # Try candidates
-                for peer in candidates:
-                    ip = peer.get("TailscaleIPs", ["?"])[0]
-                    if ip == "?":
-                        continue
-
-                    # Verify SSH connectivity using Tailscale SSH
-                    ssh_result = subprocess.run(
-                        ["tailscale", "ssh", f"root@{ip}", "exit", "0"],
-                        capture_output=True,
-                        timeout=15,
-                    )
-                    if ssh_result.returncode == 0:
-                        return ip
-
-            time.sleep(5)
-
-        return None
-
-    def _setup_pod_via_ssh(self, instance_id: str, host_ip: str, node_name: str) -> None:
-        """Install cast2md and dependencies on the pod via Tailscale SSH."""
-        from cast2md.services.pod_setup import PodSetupConfig, setup_pod
-
-        def run_ssh(cmd: str, description: str, timeout: int = 300) -> str:
-            # Update status with current step
-            self._update_state(instance_id, message=description)
-            # Use Tailscale SSH (pods don't have regular sshd)
-            ssh_cmd = ["tailscale", "ssh", f"root@{host_ip}", cmd]
-            try:
-                result = subprocess.run(ssh_cmd, capture_output=True, text=True, timeout=timeout)
-            except subprocess.TimeoutExpired:
-                raise RuntimeError(f"SSH command timed out: {description}")
-            if result.returncode != 0:
-                raise RuntimeError(f"SSH command failed ({description}): {result.stderr}")
-            return result.stdout.strip()
-
-        # Get persistent flag and pod ID from setup state
-        state = self.get_setup_state(instance_id)
-        is_persistent = state.persistent if state else False
-        pod_id = state.pod_id if state else None
-
-        # Use shared setup logic
-        config = PodSetupConfig(
-            server_url=self.get_effective_server_url(),
-            server_ip=self.get_effective_server_ip(),
-            node_name=node_name,
-            model=self.settings.runpod_whisper_model,
-            github_repo=self.settings.runpod_github_repo,
-            idle_timeout_minutes=self.settings.runpod_idle_timeout_minutes,
-            persistent=is_persistent,
-            runpod_api_key=self.settings.runpod_api_key,
-            runpod_pod_id=pod_id,
-        )
-        setup_pod(config, run_ssh)
-
-        # Verify worker started
-        time.sleep(3)
-        run_ssh(
-            "pgrep -f 'cast2md node' > /dev/null || (echo 'Worker not running!' && cat /tmp/cast2md-node.log && exit 1)",
-            "Verifying worker",
-        )
 
     def _get_gpu_price(self, gpu_type: str) -> float | None:
         """Get the hourly price for a GPU type from cache."""
@@ -1182,79 +1214,6 @@ tail -f /dev/null
         except Exception as e:
             logger.error(f"Failed to cleanup orphaned nodes: {e}")
             return 0
-
-    def update_pod_code(self, instance_id: str) -> bool:
-        """Update cast2md code on a running pod (for development).
-
-        Stops the worker, reinstalls from git, and restarts.
-        Only works on pods in READY state.
-        """
-        state = self.get_setup_state(instance_id)
-        if not state:
-            logger.error(f"No setup state found for {instance_id}")
-            return False
-        if state.phase != PodSetupPhase.READY:
-            logger.error(f"Pod {instance_id} is not ready (phase: {state.phase})")
-            return False
-        if not state.host_ip:
-            logger.error(f"Pod {instance_id} has no host IP")
-            return False
-
-        def run_ssh(cmd: str, description: str, timeout: int = 300) -> str:
-            ssh_cmd = ["tailscale", "ssh", f"root@{state.host_ip}", cmd]
-            try:
-                result = subprocess.run(ssh_cmd, capture_output=True, text=True, timeout=timeout)
-            except subprocess.TimeoutExpired:
-                raise RuntimeError(f"SSH command timed out: {description}")
-            if result.returncode != 0:
-                raise RuntimeError(f"SSH command failed ({description}): {result.stderr}")
-            return result.stdout.strip()
-
-        settings = self.settings
-        try:
-            # Stop the worker
-            run_ssh("pkill -f 'cast2md node' || true", "Stopping worker")
-
-            # Reinstall from git
-            run_ssh(
-                f"pip install --no-cache-dir 'cast2md[node] @ git+https://github.com/{settings.runpod_github_repo}.git'",
-                "Updating cast2md",
-                timeout=600,
-            )
-
-            # Determine backend and termination settings from model and state
-            model = settings.runpod_whisper_model
-            is_parakeet = "parakeet" in model.lower()
-            backend_env = "TRANSCRIPTION_BACKEND=parakeet" if is_parakeet else ""
-            idle_env = f"NODE_IDLE_TIMEOUT_MINUTES={settings.runpod_idle_timeout_minutes}"
-            persistent_env = f"NODE_PERSISTENT={'1' if state.persistent else '0'}"
-
-            # Restart worker
-            run_ssh(
-                f"http_proxy=http://localhost:1055 {backend_env} {idle_env} {persistent_env} WHISPER_MODEL={model} "
-                "nohup cast2md node start > /tmp/cast2md-node.log 2>&1 &",
-                "Restarting worker",
-            )
-
-            # Restart watchdog (unless persistent)
-            # The terminate script should already exist from initial setup
-            if not state.persistent:
-                run_ssh(
-                    "pkill -f 'while ps aux' || true; "  # Kill old watchdog if any
-                    "nohup bash -c '"
-                    "sleep 10; "  # Initial delay
-                    "while ps aux | grep -v grep | grep -q \"cast2md node start\"; do sleep 5; done; "
-                    "echo \"Worker exited, terminating pod...\" >> /tmp/cast2md-node.log; "
-                    "/tmp/terminate-pod.sh"
-                    "' > /tmp/watchdog.log 2>&1 &",
-                    "Restarting watchdog",
-                )
-
-            logger.info(f"Updated code on pod {instance_id}")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to update pod code: {e}")
-            return False
 
     def should_auto_scale(self, queue_depth: int) -> int:
         """Calculate how many pods to start based on queue depth.

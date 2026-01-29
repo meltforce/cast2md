@@ -128,6 +128,13 @@ MIGRATIONS: list[dict] = [
             """,
         ],
     },
+    {
+        "version": 17,
+        "description": "Add setup_token column to pod_setup_states for pod self-setup authentication",
+        "sql": [
+            "ALTER TABLE pod_setup_states ADD COLUMN IF NOT EXISTS setup_token TEXT DEFAULT ''",
+        ],
+    },
 ]
 
 
