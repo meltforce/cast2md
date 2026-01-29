@@ -2793,6 +2793,7 @@ class PodSetupStateRow:
     error: str | None
     host_ip: str | None
     persistent: bool
+    setup_token: str = ""
 
     @classmethod
     def from_row(cls, row: tuple) -> "PodSetupStateRow":
@@ -2809,6 +2810,7 @@ class PodSetupStateRow:
             error=row[9],
             host_ip=row[10],
             persistent=row[11] if row[11] is not None else False,
+            setup_token=row[12] if len(row) > 12 else "",
         )
 
 
@@ -2816,7 +2818,7 @@ class PodSetupStateRepository:
     """Repository for persistent pod setup states."""
 
     COLUMNS = """instance_id, pod_id, pod_name, ts_hostname, node_name, gpu_type,
-                 phase, message, started_at, error, host_ip, persistent"""
+                 phase, message, started_at, error, host_ip, persistent, setup_token"""
 
     def __init__(self, conn: Any):
         self.conn = conn
@@ -2828,7 +2830,7 @@ class PodSetupStateRepository:
             self.conn,
             f"""
             INSERT INTO pod_setup_states ({self.COLUMNS}, created_at, updated_at)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (instance_id) DO UPDATE SET
                 pod_id = EXCLUDED.pod_id,
                 pod_name = EXCLUDED.pod_name,
@@ -2840,6 +2842,7 @@ class PodSetupStateRepository:
                 error = EXCLUDED.error,
                 host_ip = EXCLUDED.host_ip,
                 persistent = EXCLUDED.persistent,
+                setup_token = EXCLUDED.setup_token,
                 updated_at = EXCLUDED.updated_at
             """,
             (
@@ -2855,6 +2858,7 @@ class PodSetupStateRepository:
                 state.error,
                 state.host_ip,
                 state.persistent,
+                state.setup_token,
                 now,
                 now,
             ),
