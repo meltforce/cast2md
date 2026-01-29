@@ -12,33 +12,12 @@
 
 ## Features
 
-<div class="grid cards" markdown>
-
--   :material-rss: **RSS Feed Management**
-
-    Add podcast feeds via RSS or Apple Podcasts URLs. Automatic episode discovery and polling.
-
--   :material-text-search: **Transcript-First Workflow**
-
-    Fetches transcripts from Podcasting 2.0 tags and Pocket Casts before downloading audio for Whisper.
-
--   :material-microphone: **Whisper Transcription**
-
-    Local transcription with faster-whisper or mlx-whisper. Supports CPU, CUDA, and Apple Silicon.
-
--   :material-server-network: **Distributed Transcription**
-
-    Use remote machines (M4 Macs, GPU PCs, RunPod) to transcribe in parallel.
-
--   :material-magnify: **Hybrid Search**
-
-    Full-text and semantic search across episode metadata and transcript content with pgvector.
-
--   :material-api: **REST API & MCP Server**
-
-    Full API for automation. Claude integration via Model Context Protocol.
-
-</div>
+- **RSS Feed Management** -- add podcast feeds via RSS or Apple Podcasts URLs, automatic episode discovery and polling
+- **Transcript-First Workflow** -- fetches transcripts from Podcasting 2.0 tags and Pocket Casts before downloading audio for Whisper
+- **Whisper Transcription** -- local transcription with faster-whisper or mlx-whisper, supports CPU, CUDA, and Apple Silicon
+- **Distributed Transcription** -- use remote machines (M4 Macs, GPU PCs, RunPod) to transcribe in parallel
+- **Hybrid Search** -- full-text and semantic search across episode metadata and transcript content with pgvector
+- **REST API & MCP Server** -- full API for automation, Claude integration via Model Context Protocol
 
 ---
 
