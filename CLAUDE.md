@@ -450,20 +450,24 @@ RunPod pods use a custom Docker image (`meltforce/cast2md-afterburner:cuda124`) 
 |-----------|-------|
 | CUDA 12.4.1 | Runtime only (not devel) |
 | PyTorch 2.4.0+cu124 | Pinned for CUDA compatibility |
-| NeMo toolkit | Latest version with CUDA graphs disabled |
+| NeMo toolkit | Latest version (CUDA graphs handled at runtime) |
 | Parakeet model | Pre-downloaded (~600MB) |
 | faster-whisper | Fallback for Whisper models |
 
-**CUDA Graphs Disabled**: The image sets `NEMO_CUDA_GRAPHS=0` to avoid CUDA error 35 on RunPod's infrastructure. NeMo also auto-detects driver incompatibility and disables graphs gracefully:
+**CUDA Graphs**: NeMo 2.6+ auto-detects driver/toolkit incompatibility and disables CUDA graphs at runtime. Additionally, `TranscriptionService._disable_cuda_graphs()` handles this programmatically. No build-time env vars needed.
 
-```
-Cuda graphs with while loops are disabled, decoding speed will be slower
-Reason: Driver supports cuda toolkit version 12.4, but the driver needs to support at least 12,6.
-```
-
-This reduces speed from ~87x to ~60-70x realtime but ensures stability across different GPU/driver combinations.
+This may reduce speed from ~87x to ~60-70x realtime but ensures stability across different GPU/driver combinations.
 
 **Building**: The image is built automatically via GitHub Actions when `deploy/afterburner/Dockerfile` changes. See `deploy/afterburner/IMAGE.md` for manual build instructions.
+
+### GPU Validation
+
+During pod setup, a GPU smoke test runs before the worker starts (Parakeet only). It transcribes 1 second of silence to catch CUDA errors early, preventing a broken GPU from burning through the job queue.
+
+- Runs between "Installing cast2md" and "Registering node" setup steps
+- Timeout: 120 seconds (model is pre-loaded in image)
+- If it fails, the pod is marked as FAILED in the admin UI
+- Combined with the circuit breaker (see Auto-Termination), this provides defense in depth
 
 ### Transcription Models
 
@@ -507,7 +511,7 @@ The server uses this to:
 
 ### Auto-Termination
 
-Node workers have three auto-termination conditions (all respect persistent/dev mode):
+Node workers have four auto-termination conditions (all respect persistent/dev mode):
 
 1. **Empty Queue** - Terminate after N consecutive empty queue checks (default: 2 checks, 60s apart)
    - Same behavior as CLI afterburner
@@ -521,6 +525,13 @@ Node workers have three auto-termination conditions (all respect persistent/dev 
    - Protects against burning money if server goes down
    - Env: `NODE_SERVER_UNREACHABLE_MINUTES=5`
 
+4. **Circuit Breaker** - Terminate after N consecutive transcription failures (default: 3)
+   - Protects against broken GPU burning through the job queue
+   - Checked after every job (not just on empty queue)
+   - Counter resets on any successful transcription
+   - In persistent/dev mode: logs ERROR but does not terminate
+   - Env: `NODE_MAX_CONSECUTIVE_FAILURES=3` (0 to disable)
+
 **Persistent/Dev Mode**: Set `NODE_PERSISTENT=1` to disable all auto-termination. This is automatically set when:
 - Creating pods with `persistent=True` via API
 - Using `--keep-alive` flag with CLI afterburner
@@ -528,7 +539,7 @@ Node workers have three auto-termination conditions (all respect persistent/dev 
 **Server-Controlled Termination**: When a node worker decides to auto-terminate, it notifies the server first instead of just exiting. This prevents orphaned setup states.
 
 Flow:
-1. Worker detects termination condition (empty queue, idle, server unreachable)
+1. Worker detects termination condition (empty queue, idle, server unreachable, circuit breaker)
 2. Worker calls `POST /api/nodes/{node_id}/request-termination`
 3. Server extracts instance_id from node name pattern "RunPod Afterburner {id}"
 4. Server releases any jobs claimed by the node back to queue
