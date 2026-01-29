@@ -686,6 +686,10 @@ def admin_status_page(request: Request):
         },
     }
 
+    # Get version
+    import cast2md
+    app_version = cast2md.__version__
+
     return templates.TemplateResponse(
         "status.html",
         {
@@ -696,6 +700,7 @@ def admin_status_page(request: Request):
             "worker_groups": worker_groups,
             "search_stats": search_stats,
             "performance_stats": performance_stats,
+            "app_version": app_version,
         },
     )
 
