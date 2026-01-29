@@ -857,7 +857,7 @@ tail -f /dev/null
 
         raise RuntimeError(f"No GPU available. Last error: {last_error}")
 
-    def _wait_for_pod_running(self, pod_id: str, timeout: int = 300) -> None:
+    def _wait_for_pod_running(self, pod_id: str, timeout: int = 600) -> None:
         """Wait for pod to reach RUNNING status."""
         runpod.api_key = self.settings.runpod_api_key
         start_time = time.time()
