@@ -217,6 +217,23 @@ class TranscriptionService:
             self._parakeet_model = nemo_asr.models.ASRModel.from_pretrained(model_name)
             self._parakeet_model_name = model_name
 
+            # Disable CUDA graphs to avoid CUDA error 35 on RunPod.
+            # NeMo 2.6+ ignores NEMO_CUDA_GRAPHS env var. The decoding config must
+            # be patched so that new decoders (created by transcribe(timestamps=True))
+            # are always created with CUDA graphs disabled.
+            try:
+                from omegaconf import OmegaConf, open_dict
+
+                with open_dict(self._parakeet_model.cfg):
+                    if hasattr(self._parakeet_model.cfg, "decoding"):
+                        self._parakeet_model.cfg.decoding.greedy = (
+                            self._parakeet_model.cfg.decoding.get("greedy", OmegaConf.create({}))
+                        )
+                        self._parakeet_model.cfg.decoding.greedy.use_cuda_graph_decoder = False
+                        logger.info("Disabled CUDA graphs in Parakeet model config")
+            except Exception as e:
+                logger.warning(f"Could not disable CUDA graphs in config: {e}")
+
         return self._parakeet_model
 
     def transcribe(
