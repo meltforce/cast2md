@@ -12,6 +12,8 @@ tests/
 .gitignore
 deploy/
 docs/
+site/
+mkdocs.yml
 *.sql
 *.log
 .ruff_cache/
