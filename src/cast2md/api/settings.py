@@ -3,6 +3,8 @@
 from fastapi import APIRouter
 from pydantic import BaseModel
 
+import os
+
 from cast2md.config.settings import (
     get_settings,
     get_setting_source,
@@ -215,15 +217,14 @@ def get_all_settings():
         # Determine actual source of the value
         source = get_setting_source(key, current_value, db_value)
 
-        # For node-specific settings, the effective value is always from env/default
-        # (DB value is stored but ignored)
-        is_node_specific = key in NODE_SPECIFIC_SETTINGS
+        # Field is locked when env var overrides DB
+        env_override = key in NODE_SPECIFIC_SETTINGS or key.upper() in os.environ
 
         settings[key] = {
             "value": display_value,
             "db_value": db_value,  # What's stored in DB (may be ignored)
             "source": source,
-            "is_node_specific": is_node_specific,
+            "env_override": env_override,
             **meta,
         }
 
