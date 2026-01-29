@@ -18,6 +18,8 @@ ssh root@cast2md "cd /opt/cast2md && docker compose up -d cast2md"
 
 **Docker Hub** is only updated by CI on tagged releases. Never push dev builds to Docker Hub -- other users could pull an undefined state.
 
+**Important:** Always test on the dev machine first. Never use the production server for testing -- repeated restarts disrupt workers, nodes, and job state.
+
 ## Architecture
 
 - **Production**: Runs entirely via Docker Compose (app + PostgreSQL)
