@@ -182,7 +182,7 @@ class EpisodeRepository:
                          transcript_model, transcript_source, transcript_type,
                          pocketcasts_transcript_url, transcript_checked_at, next_transcript_retry_at,
                          transcript_failure_reason, link, author,
-                         error_message, created_at, updated_at"""
+                         error_message, permanent_failure, created_at, updated_at"""
 
     def __init__(self, conn: Connection):
         self.conn = conn
@@ -271,14 +271,19 @@ class EpisodeRepository:
         return [Episode.from_row(row) for row in cursor.fetchall()]
 
     def get_by_feed_paginated(
-        self, feed_id: int, limit: int = 25, offset: int = 0
+        self,
+        feed_id: int,
+        limit: int = 25,
+        offset: int = 0,
+        exclude_permanent_failures: bool = False,
     ) -> list[Episode]:
         """Get episodes with proper SQL OFFSET pagination."""
+        pf_clause = " AND permanent_failure = FALSE" if exclude_permanent_failures else ""
         cursor = execute(
             self.conn,
             f"""
             SELECT {self.EPISODE_COLUMNS} FROM episode
-            WHERE feed_id = %s
+            WHERE feed_id = %s{pf_clause}
             ORDER BY published_at DESC
             LIMIT %s OFFSET %s
             """,
@@ -318,6 +323,32 @@ class EpisodeRepository:
             (status.value, error_message, now, episode_id),
         )
         self.conn.commit()
+
+    def mark_permanent_failure(self, episode_id: int) -> None:
+        """Mark an episode as permanently failed (e.g., audio 404/410).
+
+        The episode remains in the database but is hidden from default views.
+        """
+        now = datetime.now().isoformat()
+        execute(
+            self.conn,
+            """
+            UPDATE episode
+            SET permanent_failure = TRUE, updated_at = %s
+            WHERE id = %s
+            """,
+            (now, episode_id),
+        )
+        self.conn.commit()
+
+    def count_permanent_failures(self, feed_id: int) -> int:
+        """Count permanently failed episodes for a feed."""
+        cursor = execute(
+            self.conn,
+            "SELECT COUNT(*) FROM episode WHERE feed_id = %s AND permanent_failure = TRUE",
+            (feed_id,),
+        )
+        return cursor.fetchone()[0]
 
     def update_audio_path(self, episode_id: int, audio_path: str | None) -> None:
         """Update episode audio path.
@@ -623,11 +654,14 @@ class EpisodeRepository:
         )
         return cursor.fetchone() is not None
 
-    def count_by_feed(self, feed_id: int) -> int:
+    def count_by_feed(
+        self, feed_id: int, exclude_permanent_failures: bool = False
+    ) -> int:
         """Count total episodes for a feed."""
+        pf_clause = " AND permanent_failure = FALSE" if exclude_permanent_failures else ""
         cursor = execute(
             self.conn,
-            "SELECT COUNT(*) FROM episode WHERE feed_id = %s",
+            f"SELECT COUNT(*) FROM episode WHERE feed_id = %s{pf_clause}",
             (feed_id,),
         )
         return cursor.fetchone()[0]
@@ -1070,7 +1104,7 @@ class JobRepository:
         episode_id: int,
         job_type: JobType,
         priority: int = 10,
-        max_attempts: int = 3,
+        max_attempts: int = 10,
     ) -> Job:
         """Create a new job in the queue."""
         now = datetime.now().isoformat()
@@ -1169,6 +1203,7 @@ class JobRepository:
                 WHERE job_type = %s
                   AND status = %s
                   AND assigned_node_id IS NULL
+                  AND attempts < max_attempts
                   AND (next_retry_at IS NULL OR next_retry_at <= %s)
                 ORDER BY priority ASC, scheduled_at ASC
                 LIMIT 1
@@ -1178,6 +1213,7 @@ class JobRepository:
                 SELECT id FROM job_queue
                 WHERE job_type = %s
                   AND status = %s
+                  AND attempts < max_attempts
                   AND (next_retry_at IS NULL OR next_retry_at <= %s)
                 ORDER BY priority ASC, scheduled_at ASC
                 LIMIT 1
@@ -1216,6 +1252,7 @@ class JobRepository:
             WHERE job_type = %s
               AND status = %s
               AND assigned_node_id IS NULL
+              AND attempts < max_attempts
               AND (next_retry_at IS NULL OR next_retry_at <= %s)
             ORDER BY priority ASC, scheduled_at ASC
             LIMIT 1
@@ -1226,7 +1263,24 @@ class JobRepository:
         return Job.from_row(row) if row else None
 
     def claim_job(self, job_id: int, node_id: str) -> None:
-        """Claim a job for a specific node."""
+        """Claim a job for a specific node.
+
+        If the job has already exceeded max_attempts, it will be marked as failed
+        instead of claimed.
+        """
+        import logging
+
+        logger = logging.getLogger(__name__)
+
+        # Check if job has exceeded max_attempts
+        job = self.get_by_id(job_id)
+        if job and job.attempts >= job.max_attempts:
+            logger.warning(
+                f"Job {job_id} has {job.attempts}/{job.max_attempts} attempts, failing instead of claiming"
+            )
+            self.mark_failed(job_id, "Max attempts exceeded", retry=False)
+            return
+
         now = datetime.now().isoformat()
         execute(
             self.conn,
@@ -1289,7 +1343,22 @@ class JobRepository:
 
         Resets the job to queued status and clears assignment fields.
         Does not increment attempts since the job wasn't actually processed.
+
+        If the job has exceeded max_attempts, it will be marked as failed instead.
         """
+        import logging
+
+        logger = logging.getLogger(__name__)
+
+        # Check if job has exceeded max_attempts
+        job = self.get_by_id(job_id)
+        if job and job.attempts >= job.max_attempts:
+            logger.warning(
+                f"Job {job_id} has {job.attempts}/{job.max_attempts} attempts, failing instead of releasing"
+            )
+            self.mark_failed(job_id, "Max attempts exceeded", retry=False)
+            return
+
         execute(
             self.conn,
             """
@@ -1690,13 +1759,30 @@ class JobRepository:
         """Force reset a running/stuck job back to queued state.
 
         Clears started_at, assigned_node_id, claimed_at and resets status to queued.
+        If the job has exceeded max_attempts, it will be marked as failed instead.
 
         Args:
             job_id: Job ID to reset.
 
         Returns:
-            True if job was reset, False if not found or not in running state.
+            True if job was reset or failed, False if not found or not in running state.
         """
+        import logging
+
+        logger = logging.getLogger(__name__)
+
+        # Check if job has exceeded max_attempts
+        job = self.get_by_id(job_id)
+        if not job or job.status != JobStatus.RUNNING:
+            return False
+
+        if job.attempts >= job.max_attempts:
+            logger.warning(
+                f"Job {job_id} has {job.attempts}/{job.max_attempts} attempts, failing instead of resetting"
+            )
+            self.mark_failed(job_id, "Max attempts exceeded", retry=False)
+            return True
+
         cursor = execute(
             self.conn,
             """

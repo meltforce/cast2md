@@ -147,6 +147,7 @@ class Episode:
     link: Optional[str]
     author: Optional[str]
     error_message: Optional[str]
+    permanent_failure: bool
     created_at: datetime
     updated_at: datetime
 
@@ -176,8 +177,9 @@ class Episode:
             link=row[19] if len(row) > 19 else None,
             author=row[20] if len(row) > 20 else None,
             error_message=row[21] if len(row) > 21 else None,
-            created_at=parse_datetime(row[22]) or datetime.now(),
-            updated_at=parse_datetime(row[23]) or datetime.now(),
+            permanent_failure=bool(row[22]) if len(row) > 22 else False,
+            created_at=parse_datetime(row[23]) or datetime.now(),
+            updated_at=parse_datetime(row[24]) or datetime.now(),
         )
 
 

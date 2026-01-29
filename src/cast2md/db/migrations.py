@@ -84,6 +84,32 @@ MIGRATIONS: list[dict] = [
             """,
         ],
     },
+    {
+        "version": 15,
+        "description": "Fix job retry system: raise max_attempts to 10, add permanent_failure column, reset bugged retry counts",
+        "sql": [
+            # Add permanent_failure column to episode table
+            "ALTER TABLE episode ADD COLUMN IF NOT EXISTS permanent_failure BOOLEAN DEFAULT FALSE",
+            # Raise default max_attempts from 3 to 10
+            "ALTER TABLE job_queue ALTER COLUMN max_attempts SET DEFAULT 10",
+            # Update existing non-completed jobs to use the new default
+            "UPDATE job_queue SET max_attempts = 10 WHERE max_attempts = 3 AND status != 'completed'",
+            # Reset failed transcribe jobs with inflated attempts (caused by the prefetch release bug)
+            """
+            UPDATE job_queue SET status = 'queued', attempts = 0, error_message = NULL,
+                completed_at = NULL, next_retry_at = NULL, assigned_node_id = NULL, claimed_at = NULL
+            WHERE status = 'failed' AND job_type = 'transcribe' AND attempts > 10
+            """,
+            # Reset their episodes back to audio_ready so they re-enter the pipeline
+            """
+            UPDATE episode SET status = 'audio_ready', error_message = NULL
+            WHERE id IN (
+                SELECT episode_id FROM job_queue
+                WHERE job_type = 'transcribe' AND status = 'queued' AND attempts = 0
+            ) AND status = 'failed'
+            """,
+        ],
+    },
 ]
 
 

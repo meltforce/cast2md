@@ -22,6 +22,14 @@ from cast2md.transcription.service import transcribe_episode
 logger = logging.getLogger(__name__)
 
 
+def _is_permanent_download_error(error_message: str) -> bool:
+    """Check if a download error indicates a permanent failure (e.g., 404/410).
+
+    These errors mean the audio file no longer exists and retrying won't help.
+    """
+    return "HTTP 404" in error_message or "HTTP 410" in error_message
+
+
 def _is_distributed_enabled() -> bool:
     """Check if distributed transcription is enabled."""
     settings = get_settings()
@@ -364,13 +372,18 @@ class WorkerManager:
                 self._queue_transcription(conn, episode_id)
 
         except Exception as e:
-            logger.error(f"Download job {job_id} failed: {e}")
+            error_str = str(e)
+            logger.error(f"Download job {job_id} failed: {error_str}")
+            permanent = _is_permanent_download_error(error_str)
             with get_db_write() as conn:
                 job_repo = JobRepository(conn)
-                job_repo.mark_failed(job_id, str(e))
+                episode_repo = EpisodeRepository(conn)
+                job_repo.mark_failed(job_id, error_str, retry=not permanent)
+                if permanent:
+                    episode_repo.mark_permanent_failure(episode_id)
 
             # Send failure notification
-            notify_download_failed(episode.title, feed.title, str(e))
+            notify_download_failed(episode.title, feed.title, error_str)
 
     def _process_transcribe_job(self, job_id: int, episode_id: int):
         """Process a transcription job."""

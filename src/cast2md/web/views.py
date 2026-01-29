@@ -315,8 +315,15 @@ def feed_detail(
                 status_code=404,
             )
 
-        # Get total count for the feed (unfiltered)
-        total_all = episode_repo.count_by_feed(feed_id)
+        # Get total count for the feed (unfiltered, including permanent failures)
+        total_all_raw = episode_repo.count_by_feed(feed_id)
+
+        # Count permanent failures
+        permanent_failure_count = episode_repo.count_permanent_failures(feed_id)
+
+        # Exclude permanent failures from default view (no status filter active)
+        exclude_pf = not q and not episode_status
+        total_all = episode_repo.count_by_feed(feed_id, exclude_permanent_failures=exclude_pf)
 
         offset = (page - 1) * per_page
 
@@ -331,7 +338,8 @@ def feed_detail(
             )
         else:
             episodes = episode_repo.get_by_feed_paginated(
-                feed_id, limit=per_page, offset=offset
+                feed_id, limit=per_page, offset=offset,
+                exclude_permanent_failures=True,
             )
             total = total_all
 
@@ -348,6 +356,9 @@ def feed_detail(
         pending_count = episode_repo.count_by_feed_and_status(feed_id, EpisodeStatus.NEW)
         unavailable_count = episode_repo.count_by_feed_and_status(feed_id, EpisodeStatus.NEEDS_AUDIO)
         needs_transcription_count = pending_count + unavailable_count
+
+        # Count audio_ready episodes (downloaded but not yet transcribed)
+        audio_ready_count = episode_repo.count_by_feed_and_status(feed_id, EpisodeStatus.AUDIO_READY)
 
         # Get set of episode IDs that have pending/running jobs (for "queued" display)
         episode_ids = [ep.id for ep in episodes]
@@ -376,6 +387,8 @@ def feed_detail(
             "transcript_stats": transcript_stats,
             "queued_episode_ids": queued_episode_ids,
             "needs_transcription_count": needs_transcription_count,
+            "audio_ready_count": audio_ready_count,
+            "permanent_failure_count": permanent_failure_count,
         },
     )
 

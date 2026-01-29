@@ -47,6 +47,9 @@
     {% if transcript_stats.podcast20 == 0 and transcript_stats.pocketcasts == 0 %}
         No external transcripts available (Whisper required for all episodes)
     {% endif %}
+    {% if permanent_failure_count > 0 %}
+        &nbsp;|&nbsp; <span style="color: var(--del-color);">{{ permanent_failure_count }} hidden</span> (permanent failures, use status filter "failed" to see)
+    {% endif %}
 </p>
 
 <dialog id="deleteFeedDialog">
@@ -114,6 +117,9 @@
             </div>
             {% if needs_transcription_count > 0 %}
             <button class="outline" style="padding: 0.25rem 0.5rem; font-size: 0.875rem; margin: 0;" onclick="queueAllDownloads({{ feed.id }})">Download & Transcribe All ({{ needs_transcription_count }})</button>
+            {% endif %}
+            {% if audio_ready_count > 0 %}
+            <button class="outline" style="padding: 0.25rem 0.5rem; font-size: 0.875rem; margin: 0;" onclick="queueAllTranscribe({{ feed.id }})">Transcribe All Audio Ready ({{ audio_ready_count }})</button>
             {% endif %}
         </div>
 
@@ -726,6 +732,39 @@ async function queueAllDownloads(feedId) {
         if (response.ok) {
             // Update all new rows to show queued status
             document.querySelectorAll('.progress-dots[data-status="new"]').forEach(dots => {
+                const row = dots.closest('tr');
+                const btn = row.querySelector('.actions button');
+                dots.dataset.status = 'queued';
+                dots.title = getStatusTooltip('queued');
+                dots.innerHTML = getProgressDots('queued');
+                row.dataset.isQueued = 'true';
+                if (btn) {
+                    btn.disabled = true;
+                    btn.textContent = '...';
+                }
+            });
+            // Start polling for updates
+            startStatusPolling();
+        } else {
+            showError(data.detail);
+        }
+    } catch (error) {
+        showError(error.message);
+    }
+}
+
+async function queueAllTranscribe(feedId) {
+    if (!await showConfirm('Queue transcription for all episodes with downloaded audio?', 'Transcribe All Audio Ready')) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`/api/queue/batch/feed/${feedId}/transcribe`, {method: 'POST'});
+        const data = await response.json();
+
+        if (response.ok) {
+            // Update all audio_ready rows to show queued status
+            document.querySelectorAll('.progress-dots[data-status="audio_ready"]').forEach(dots => {
                 const row = dots.closest('tr');
                 const btn = row.querySelector('.actions button');
                 dots.dataset.status = 'queued';

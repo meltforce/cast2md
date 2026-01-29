@@ -46,6 +46,7 @@ SCHEMA_STATEMENTS = [
         link TEXT,
         author TEXT,
         error_message TEXT,
+        permanent_failure BOOLEAN DEFAULT FALSE,
         created_at TIMESTAMP NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
         UNIQUE(feed_id, guid)
@@ -65,7 +66,7 @@ SCHEMA_STATEMENTS = [
         priority INTEGER DEFAULT 10,
         status TEXT DEFAULT 'queued',
         attempts INTEGER DEFAULT 0,
-        max_attempts INTEGER DEFAULT 3,
+        max_attempts INTEGER DEFAULT 10,
         scheduled_at TIMESTAMP DEFAULT NOW(),
         started_at TIMESTAMP,
         completed_at TIMESTAMP,
