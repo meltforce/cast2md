@@ -2,16 +2,21 @@
 
 ## Deployment
 
-The production server runs on `cast2md` (Tailscale hostname) via Docker Compose.
+The production server runs on `cast2md` (Tailscale hostname) via Docker Compose. The server has no git repo -- only `docker-compose.yml`, `.env`, and data.
 
-To deploy a new Docker image version:
+To deploy from the dev machine:
 ```bash
-git add -A && git commit -m "Your message" && git push
-# CI builds the image on push/tag, then:
-ssh root@cast2md "cd /opt/cast2md && docker compose pull cast2md && docker compose up -d"
+# Build image on dev (jesus)
+docker build -t meltforce/cast2md:2026.01 --build-arg VERSION=2026.01 .
+
+# Transfer to prod server
+docker save meltforce/cast2md:2026.01 | ssh root@cast2md "docker load"
+
+# Restart on prod
+ssh root@cast2md "cd /opt/cast2md && docker compose up -d cast2md"
 ```
 
-To deploy code changes during development (without rebuilding the image), test on the dev machine first (see Development section below).
+**Docker Hub** is only updated by CI on tagged releases. Never push dev builds to Docker Hub -- other users could pull an undefined state.
 
 ## Architecture
 
