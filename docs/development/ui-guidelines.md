@@ -15,7 +15,7 @@ All pages follow a consistent layout structure:
 │  │ N1 │ │ N2 │ │ N3 │ │ N4 │                       │
 │  └────┘ └────┘ └────┘ └────┘                       │
 ├─────────────────────────────────────────────────────┤
-│  [Secondary Action 1] [Secondary Action 2]          │  ← Action Bar (optional)
+│  [Secondary Action 1] [Secondary Action 2]          │  ← Action Bar
 ├─────────────────────────────────────────────────────┤
 │                                                     │
 │  Main Content (table, list, form, etc.)            │
@@ -23,14 +23,13 @@ All pages follow a consistent layout structure:
 └─────────────────────────────────────────────────────┘
 ```
 
-### Components
+---
 
-#### Page Header (`.page-header`)
+## Components
+
+### Page Header (`.page-header`)
 
 Title and primary action on the same row:
-- Title (h1) and subtitle on the left
-- Primary action button(s) on the right
-- Responsive: wraps on mobile
 
 ```html
 <div class="page-header">
@@ -44,12 +43,13 @@ Title and primary action on the same row:
 </div>
 ```
 
-#### Stats Grid (`.stats-grid`)
+- Title (h1) and subtitle on the left
+- Primary action button(s) on the right
+- Responsive: wraps on mobile
+
+### Stats Grid (`.stats-grid`)
 
 At-a-glance metrics displayed as cards:
-- Informational only, not clickable
-- Auto-fits to available width
-- Consistent sizing across pages
 
 ```html
 <div class="stats-grid">
@@ -57,18 +57,16 @@ At-a-glance metrics displayed as cards:
         <h3>42</h3>
         <p>Label</p>
     </div>
-    <!-- more stat-cards -->
 </div>
 ```
 
-**Important:** Stats are for displaying information, not for navigation. If filtering or navigation is needed, use separate controls (buttons, dropdowns, tabs).
+- Informational only, **not clickable**
+- Auto-fits to available width
+- Consistent sizing across pages
 
-#### Action Bar (`.action-bar`)
+### Action Bar (`.action-bar`)
 
 Secondary or contextual actions:
-- Only shown when relevant actions exist
-- Buttons grouped with consistent spacing
-- Typically conditional based on state
 
 ```html
 {% if has_items %}
@@ -79,24 +77,21 @@ Secondary or contextual actions:
 {% endif %}
 ```
 
-### Button Hierarchy
+- Only shown when relevant actions exist
+- Buttons grouped with consistent spacing
 
-1. **Primary** (default): Main action for the page
-2. **Secondary** (`.secondary`): Alternative actions
-3. **Outline** (`.outline`): Lower emphasis, often for table row actions
-4. **Outline Secondary** (`.outline.secondary`): Lowest emphasis
+---
 
-### CSS Classes
+## Button Hierarchy
 
-Defined in `base.html`:
+| Level | Class | Usage |
+|-------|-------|-------|
+| Primary | (default) | Main action for the page |
+| Secondary | `.secondary` | Alternative actions |
+| Outline | `.outline` | Lower emphasis, table row actions |
+| Outline Secondary | `.outline.secondary` | Lowest emphasis |
 
-```css
-.page-header        /* Flex container for title + actions */
-.header-actions     /* Button group in header */
-.action-bar         /* Secondary actions toolbar */
-.stats-grid         /* Grid of stat cards */
-.stat-card          /* Individual stat display */
-```
+---
 
 ## Information vs. Navigation
 
@@ -110,16 +105,18 @@ A key design principle: **separate display from interaction**.
 | Dropdowns | Filter/select options | Yes |
 
 When you need both counts AND filtering (like the queue page):
+
 - Use stat cards to show counts
 - Use a separate control (dropdown, tabs) for filtering
 
 This avoids the confusion of "is this a number or a button?"
 
+---
+
 ## Tooltips
 
-Always use CSS tooltips instead of native browser `title` attributes. Native tooltips have inconsistent behavior across browsers.
+Always use **CSS tooltips** instead of native browser `title` attributes. Native tooltips have inconsistent behavior across browsers.
 
-Implementation pattern:
 ```css
 .element-with-tooltip {
     position: relative;
@@ -127,11 +124,31 @@ Implementation pattern:
 }
 .element-with-tooltip::after {
     content: attr(title);
-    /* positioning and styling */
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 0.4rem 0.6rem;
+    background: var(--pico-card-background-color);
+    color: var(--pico-color);
+    font-size: 0.75rem;
+    border-radius: 4px;
+    white-space: nowrap;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.15s, visibility 0.15s;
+    z-index: 1000;
+    pointer-events: none;
+}
+.element-with-tooltip:hover::after {
+    opacity: 1;
+    visibility: visible;
 }
 ```
 
 The `title` attribute holds the text (for accessibility), but CSS `::after` renders it visually.
+
+---
 
 ## Responsive Behavior
 
@@ -140,11 +157,16 @@ The `title` attribute holds the text (for accessibility), but CSS `::after` rend
 - Action bar wraps buttons as needed
 - Tables may require horizontal scroll on mobile
 
+---
+
 ## Color Usage
 
 Use CSS variables for dark mode compatibility:
-- `var(--pico-primary)` - Primary accent color
-- `var(--pico-muted-color)` - Subdued text
-- `var(--pico-card-background-color)` - Card backgrounds
 
-Status colors use `color-mix()` for consistent opacity in both themes.
+| Variable | Usage |
+|----------|-------|
+| `var(--pico-primary)` | Primary accent color |
+| `var(--pico-muted-color)` | Subdued text |
+| `var(--pico-card-background-color)` | Card backgrounds |
+
+Status colors use `color-mix()` for consistent opacity in both light and dark themes.

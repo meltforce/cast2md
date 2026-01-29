@@ -1,6 +1,6 @@
-# Server Sizing Guide
+# Server Sizing
 
-Resource requirements for running cast2md server and transcription workers.
+Resource requirements for running the cast2md server and transcription workers.
 
 ## Quick Reference
 
@@ -11,18 +11,22 @@ Resource requirements for running cast2md server and transcription workers.
 | Server + local Whisper (large-v3-turbo) | 4 GB | 30 GB | 4 cores | Recommended |
 | Server + RunPod workers | 4 GB | 20 GB | 2 cores | Offload transcription to GPU |
 
+---
+
 ## Memory Usage
 
 ### Server Process
 
-Base memory usage:
-- FastAPI + workers: ~200 MB
-- PostgreSQL (Docker): ~150 MB
-- Embedding model (if enabled): ~500 MB
+| Component | Memory |
+|-----------|--------|
+| FastAPI + workers | ~200 MB |
+| PostgreSQL (Docker) | ~150 MB |
+| Embedding model (if enabled) | ~500 MB |
 
 ### Transcription Memory
 
-**With chunked processing (default for all backends):**
+**With chunked processing (default):**
+
 - Episodes are split into 30-minute chunks
 - Peak memory: ~2-3 GB regardless of episode length
 - Works with faster-whisper, mlx-whisper, and Parakeet
@@ -30,11 +34,12 @@ Base memory usage:
 - Enables 8GB M1 Macs to run large-v3-turbo on 3+ hour episodes
 
 **Without chunking (episodes < 30 min):**
+
 - Memory scales with audio duration
 - ~1 GB for 30-minute episode
 - ~2 GB for 1-hour episode
 
-### Model Memory
+### Whisper Model Memory
 
 | Model | VRAM/RAM | Quality | Speed |
 |-------|----------|---------|-------|
@@ -43,6 +48,8 @@ Base memory usage:
 | medium | ~2 GB | Better | Slower |
 | large-v3-turbo | ~3 GB | Best | Medium |
 | large-v3 | ~4 GB | Best | Slow |
+
+---
 
 ## Disk Usage
 
@@ -59,16 +66,19 @@ Base memory usage:
 ### Temp File Management
 
 Temporary files are created during transcription:
-- `preprocess_*.wav` - Converted audio (mono 16kHz)
-- `chunk_*.wav` - Audio chunks for long episodes
-- `.downloading_*` - Incomplete downloads
+
+- `preprocess_*.wav` -- converted audio (mono 16kHz)
+- `chunk_*.wav` -- audio chunks for long episodes
+- `.downloading_*` -- incomplete downloads
 
 **Automatic cleanup:**
+
 - Server cleans files >24 hours old on startup
 - Node workers also clean on startup
 - Files cleaned after each successful transcription
 
 **Manual cleanup:**
+
 ```bash
 # Check temp directory size
 du -sh /opt/cast2md/data/temp
@@ -78,12 +88,13 @@ find /opt/cast2md/data/temp -name "preprocess_*.wav" -mmin +60 -delete
 find /opt/cast2md/data/temp -name "chunk_*.wav" -mmin +60 -delete
 ```
 
-## LXC/Container Configuration
+---
 
-### Recommended Settings
+## Container Configuration
+
+### Recommended Settings (Proxmox LXC)
 
 ```
-# Proxmox LXC config
 arch: amd64
 cores: 4
 memory: 4096
@@ -97,14 +108,17 @@ rootfs: local-lvm:vm-xxx-disk-0,size=26G
 - **Swap**: 2 GB recommended (handles occasional spikes)
 - **Disk**: 26 GB comfortable for ~500 episodes with audio deleted
 
+---
+
 ## Scaling Considerations
 
 ### When to Add Remote Workers
 
 Consider RunPod or distributed nodes when:
+
 - Queue consistently has >10 pending jobs
-- Local transcription takes >2 hours to clear queue
-- Processing backlog of existing podcast
+- Local transcription can't keep up with new episodes
+- Processing a backlog of an existing podcast
 
 ### RunPod GPU Sizing
 
@@ -114,11 +128,12 @@ Consider RunPod or distributed nodes when:
 | RTX A5000 | ~$0.20 | 87x realtime | Recommended |
 | RTX A6000 | ~$0.35 | 100x realtime | Large backlogs |
 
-Note: RTX 40-series GPUs have CUDA compatibility issues with Parakeet.
+!!! warning
+    RTX 40-series GPUs have CUDA compatibility issues with Parakeet. See [Performance](../distributed/performance.md) for details.
+
+---
 
 ## Monitoring
-
-### Key Metrics
 
 ```bash
 # Memory usage
@@ -128,46 +143,42 @@ free -h
 df -h /opt/cast2md
 du -sh /opt/cast2md/data/*
 
-# Active transcription processes
-ps aux | grep -E 'whisper|ffmpeg'
-
-# Check for orphaned temp files
-ls -la /opt/cast2md/data/temp/
-```
-
-### Health Check
-
-```bash
+# Health check
 curl http://localhost:8000/api/health
 ```
+
+---
 
 ## Troubleshooting
 
 ### Out of Memory
 
-Symptoms: Process killed, incomplete transcriptions
+**Symptoms:** Process killed, incomplete transcriptions
 
-Solutions:
+**Solutions:**
+
 1. Reduce `whisper_chunk_size_minutes` (default: 30)
-2. Use smaller Whisper model
+2. Use a smaller Whisper model
 3. Add swap space
 4. Offload to RunPod workers
 
 ### Disk Full
 
-Symptoms: Failed downloads, database errors
+**Symptoms:** Failed downloads, database errors
 
-Solutions:
+**Solutions:**
+
 1. Check for orphaned temp files
 2. Delete processed audio files
-3. Clean old trash: `cleanup_old_trash(days=7)`
+3. Clean old trash entries
 4. Increase disk allocation
 
 ### Slow Transcription
 
-Symptoms: Jobs taking hours instead of minutes
+**Symptoms:** Jobs taking hours instead of minutes
 
-Solutions:
+**Solutions:**
+
 1. Enable GPU acceleration (CUDA)
 2. Use `large-v3-turbo` instead of `large-v3`
 3. Add distributed worker nodes
