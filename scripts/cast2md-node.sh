@@ -325,7 +325,45 @@ SCRIPT
 tail -f "$LOG_FILE"
 SCRIPT
 
-    chmod +x "$INSTALL_DIR/stop" "$INSTALL_DIR/start" "$INSTALL_DIR/restart" "$INSTALL_DIR/logs"
+    cat > "$INSTALL_DIR/repair" << SCRIPT
+#!/bin/bash
+# Re-register node with the server (fixes 404 errors after server cleanup)
+INSTALL_DIR="$INSTALL_DIR"
+VENV_DIR="$VENV_DIR"
+CONFIG="\$INSTALL_DIR/node.json"
+PLIST=~/Library/LaunchAgents/com.cast2md.node.plist
+
+if [ ! -f "\$CONFIG" ]; then
+    echo "Error: No node config found at \$CONFIG"
+    exit 1
+fi
+
+# Read existing config
+SERVER_URL=\$(python3 -c "import json; print(json.load(open('\$CONFIG'))['server_url'])")
+NODE_NAME=\$(python3 -c "import json; print(json.load(open('\$CONFIG'))['name'])")
+
+echo "Re-registering '\$NODE_NAME' with \$SERVER_URL..."
+
+# Stop service
+launchctl unload "\$PLIST" 2>/dev/null
+
+# Delete old config so register doesn't prompt
+rm -f "\$CONFIG"
+
+# Re-register
+"\$VENV_DIR/bin/cast2md" node register --server "\$SERVER_URL" --name "\$NODE_NAME"
+
+if [ \$? -eq 0 ]; then
+    # Restart service
+    launchctl load "\$PLIST" 2>/dev/null
+    echo "Repaired and restarted"
+else
+    echo "Registration failed. Fix the issue and run: \$VENV_DIR/bin/cast2md node register --server \"\$SERVER_URL\" --name \"\$NODE_NAME\""
+    exit 1
+fi
+SCRIPT
+
+    chmod +x "$INSTALL_DIR/stop" "$INSTALL_DIR/start" "$INSTALL_DIR/restart" "$INSTALL_DIR/logs" "$INSTALL_DIR/repair"
 }
 
 setup_launchd_service() {
@@ -378,6 +416,7 @@ EOF
     echo "    ~/.cast2md/start"
     echo "    ~/.cast2md/restart"
     echo "    ~/.cast2md/logs"
+    echo "    ~/.cast2md/repair    (re-register if server lost the node)"
 }
 
 setup_systemd_service() {
