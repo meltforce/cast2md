@@ -131,6 +131,7 @@ class JobFailRequest(BaseModel):
     """Request to mark a job as failed."""
 
     error_message: str
+    retry: bool = True  # Set to False for permanent failures (404/410)
 
 
 class JobProgressRequest(BaseModel):
@@ -606,7 +607,8 @@ def fail_job(
         episode_title = episode.title if episode else f"episode {job.episode_id}"
         logger.warning(
             f"Job {job_id} failed on node '{node.name}': {request.error_message} "
-            f"(episode: {episode_title}, attempt {job.attempts + 1}/{job.max_attempts})"
+            f"(episode: {episode_title}, attempt {job.attempts + 1}/{job.max_attempts}, "
+            f"retry={request.retry})"
         )
 
         # Update episode status
@@ -614,8 +616,12 @@ def fail_job(
 
         episode_repo.update_status(job.episode_id, EpisodeStatus.FAILED, request.error_message)
 
+        # Mark episode as permanently failed if retry=False (e.g., 404/410)
+        if not request.retry:
+            episode_repo.mark_permanent_failure(job.episode_id)
+
         # Mark job failed - this will handle retry logic
-        job_repo.mark_failed(job_id, request.error_message)
+        job_repo.mark_failed(job_id, request.error_message, retry=request.retry)
 
         # Also unclaim the job so it can be picked up again
         job_repo.unclaim_job(job_id)

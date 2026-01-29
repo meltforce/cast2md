@@ -29,6 +29,14 @@ from cast2md.transcription.service import get_current_model_name, transcribe_aud
 logger = logging.getLogger(__name__)
 
 
+def _is_permanent_download_error(error: str) -> bool:
+    """Check if a download error indicates a permanent failure (e.g., 404/410).
+
+    These errors mean the audio file no longer exists and retrying won't help.
+    """
+    return "HTTP 404" in error or "HTTP 410" in error
+
+
 def is_embeddings_available() -> bool:
     """Check if sentence-transformers is available for embedding generation."""
     try:
@@ -499,14 +507,16 @@ class TranscriberNodeWorker:
                 audio_path, error = self._download_audio(job["audio_url"], Path(temp_dir.name))
 
                 if error or not audio_path:
-                    logger.warning(f"Prefetch download failed: {error}")
+                    logger.warning(f"Prefetch download failed for job {job_id}: {error}")
                     with self._prefetch_lock:
                         self._prefetch_claimed_ids.discard(job_id)
-                    # Release the job we claimed
-                    try:
-                        self._client.post(f"/api/nodes/jobs/{job_id}/release", timeout=5.0)
-                    except Exception:
-                        pass
+                    # Fail the job (not release) - permanent for 404/410, retryable otherwise
+                    permanent = _is_permanent_download_error(error or "")
+                    self._fail_job(
+                        job_id,
+                        f"Failed to download audio: {error}",
+                        permanent=permanent,
+                    )
                     temp_dir.cleanup()
                 else:
                     with self._prefetch_lock:
@@ -574,7 +584,12 @@ class TranscriberNodeWorker:
                 # Download audio
                 audio_path, download_error = self._download_audio(audio_url, temp_path)
                 if download_error:
-                    self._fail_job(job_id, f"Failed to download audio: {download_error}")
+                    permanent = _is_permanent_download_error(download_error)
+                    self._fail_job(
+                        job_id,
+                        f"Failed to download audio: {download_error}",
+                        permanent=permanent,
+                    )
                     return
                 if not audio_path:
                     self._fail_job(job_id, "Download returned no path")
@@ -776,14 +791,18 @@ class TranscriberNodeWorker:
             logger.error(f"Complete error: {e}")
             # TODO: Store locally and retry on restart
 
-    def _fail_job(self, job_id: int, error_message: str):
+    def _fail_job(self, job_id: int, error_message: str, permanent: bool = False):
         """Report job failure to server.
 
         Args:
             job_id: Job ID that failed.
             error_message: Error description.
+            permanent: If True, marks as permanent failure (no retry, e.g., 404/410).
         """
-        logger.warning(f"Failing job {job_id}: {error_message}")
+        if permanent:
+            logger.warning(f"Permanently failing job {job_id}: {error_message}")
+        else:
+            logger.warning(f"Failing job {job_id}: {error_message}")
 
         # Track consecutive failures for circuit breaker
         self._consecutive_failures += 1
@@ -796,7 +815,10 @@ class TranscriberNodeWorker:
         try:
             response = self._client.post(
                 f"/api/nodes/jobs/{job_id}/fail",
-                json={"error_message": error_message},
+                json={
+                    "error_message": error_message,
+                    "retry": not permanent,
+                },
             )
 
             if response.status_code == 200:
