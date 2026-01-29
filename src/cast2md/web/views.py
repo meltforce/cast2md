@@ -22,6 +22,22 @@ router = APIRouter(tags=["web"])
 # Templates will be configured in main.py
 templates: Jinja2Templates = None
 
+
+def _get_raw_version() -> str:
+    """Get version string preserving the original format (e.g., '2026.01').
+
+    Python's importlib.metadata normalizes '2026.01' to '2026.1' per PEP 440,
+    but git tags use the zero-padded format. Re-pad the month component.
+    """
+    import cast2md
+
+    version = cast2md.__version__
+    # Re-pad: "2026.1" -> "2026.01", "2026.12" stays "2026.12"
+    parts = version.split(".")
+    if len(parts) >= 2 and len(parts[1]) == 1:
+        parts[1] = parts[1].zfill(2)
+    return ".".join(parts)
+
 # Allowed HTML tags for shownotes
 ALLOWED_TAGS = ["a", "p", "br", "strong", "b", "em", "i", "ul", "ol", "li", "h1", "h2", "h3", "h4"]
 ALLOWED_ATTRIBUTES = {"a": ["href", "title", "target"]}
@@ -235,9 +251,9 @@ def configure_templates(t: Jinja2Templates):
     templates.env.filters["render_transcript"] = render_transcript_html
     templates.env.filters["search_snippet"] = sanitize_search_snippet
     templates.env.filters["timeago"] = timeago
-    # Add global template variables
-    import cast2md
-    templates.env.globals["app_version"] = cast2md.__version__
+    # Add global template variables - read version from pyproject.toml
+    # to preserve the original format (e.g., "2026.01" not Python-normalized "2026.1")
+    templates.env.globals["app_version"] = _get_raw_version()
 
 
 @router.get("/", response_class=HTMLResponse)
