@@ -4,19 +4,22 @@
 
 The production server runs on `cast2md` (Tailscale hostname) via Docker Compose. The server has no git repo -- only `docker-compose.yml`, `.env`, and data.
 
-To deploy from the dev machine:
+To deploy a tagged release (after CI builds it):
 ```bash
-# Build image on dev (jesus)
-docker build -t meltforce/cast2md:2026.01 --build-arg VERSION=2026.01 .
-
-# Transfer to prod server
-docker save meltforce/cast2md:2026.01 | ssh root@cast2md "docker load"
-
-# Restart on prod
-ssh root@cast2md "cd /opt/cast2md && docker compose up -d cast2md"
+ssh root@cast2md "cd /opt/cast2md && docker compose pull cast2md && docker compose up -d cast2md"
 ```
 
+Production uses the `latest` tag, which CI updates on every tagged release.
+
 **Docker Hub** is only updated by CI on tagged releases. Never push dev builds to Docker Hub -- other users could pull an undefined state.
+
+**Releasing a new version:**
+1. Bump `version` in `pyproject.toml` to match the new tag (e.g., `"2026.01.1"`)
+2. Commit the version bump
+3. `git tag 2026.01.1 && git push origin main 2026.01.1`
+4. CI builds the Docker image and publishes the PyPI package
+
+**Important:** The `pyproject.toml` version must match the git tag. PyPI rejects duplicate versions, so forgetting to bump it will fail the release.
 
 **Important:** Always test on the dev machine first. Never use the production server for testing -- repeated restarts disrupt workers, nodes, and job state.
 
@@ -88,17 +91,6 @@ No systemd service -- run on demand. Reinstall after dependency changes:
 ```bash
 .venv/bin/python -m pip install -e .
 ```
-
-## Database Selection
-
-**Important lesson learned:** If you encounter SQLite "database is locked" errors, migrate to PostgreSQL immediately. Don't spend time trying to optimize SQLite concurrency (WAL mode, busy timeouts, reducing workers) - it's a fundamental limitation.
-
-Signs you need PostgreSQL:
-- "database is locked" errors in logs
-- Workers showing erratic counts (e.g., 3/10 running when 10 configured)
-- Jobs getting stuck or timing out due to lock contention
-
-PostgreSQL migration takes ~2 hours and eliminates all lock issues. With PostgreSQL, 10 workers can process ~10 transcripts/second with zero lock errors. See `docs/database-implementation.md` for details.
 
 ## Development
 
@@ -183,8 +175,9 @@ When a feed is added or refreshed, the system queues `TRANSCRIPT_DOWNLOAD` jobs:
 
 1. `feed/discovery.py:discover_new_episodes()` queues `TRANSCRIPT_DOWNLOAD` jobs (not `DOWNLOAD`)
 2. `worker/manager.py:_process_transcript_download_job()` tries external providers
-3. If transcript found: saves it, marks episode `COMPLETED` (no audio needed)
-4. If not found: episode stays `PENDING` for manual audio download
+3. If transcript found: saves it, marks episode `completed` (no audio needed)
+4. If not found but retriable: episode becomes `awaiting_transcript`
+5. If retries exhausted: episode becomes `needs_audio` for manual audio download
 
 This is storage-efficient - audio is only downloaded when transcripts aren't available externally.
 
@@ -245,10 +238,12 @@ The episode list uses a **transcript-first** approach with real-time status upda
 
 | Episode Status | Button | Action |
 |----------------|--------|--------|
-| `pending` | "Get Transcript" | Queues `TRANSCRIPT_DOWNLOAD` job |
-| `downloaded` | "Transcribe" | Queues `TRANSCRIBE` job (Whisper) |
+| `new` | "Get Transcript" | Queues `TRANSCRIPT_DOWNLOAD` job |
+| `awaiting_transcript` | "Download Audio" | Queues `DOWNLOAD` job |
+| `needs_audio` | "Download Audio" | Queues `DOWNLOAD` job |
+| `audio_ready` | "Transcribe" | Queues `TRANSCRIBE` job (Whisper) |
 | `failed` | "Retry" | Queues `DOWNLOAD` job |
-| `downloading`, `transcribing`, `queued` | "..." (disabled) | No action, status shown in badge |
+| `downloading`, `transcribing` | "..." (disabled) | No action, status shown in badge |
 | `completed` | (none) | Link to episode detail |
 
 #### Transcript Download Flow
@@ -256,17 +251,17 @@ The episode list uses a **transcript-first** approach with real-time status upda
 1. User clicks "Get Transcript" → `POST /api/queue/episodes/{id}/transcript-download`
 2. Button becomes disabled ("..."), status badge shows "queued"
 3. Worker tries Podcast20Provider, then PocketCastsProvider
-4. If found: episode marked `COMPLETED`, button becomes link to detail
-5. If not found: episode returns to `PENDING`, button shows "Download Audio"
+4. If found: episode marked `completed`, button becomes link to detail
+5. If not found: episode becomes `awaiting_transcript` or `needs_audio`, button shows "Download Audio"
 
-When transcript download fails (no external transcript available), the button changes to "Download Audio" which queues the full audio download + Whisper transcription pipeline.
+When no external transcript is available, the button changes to "Download Audio" which queues the full audio download + Whisper transcription pipeline.
 
 #### Real-time Status Updates
 
 The feed page polls `/api/feeds/{id}/episodes` every 2 seconds while jobs are in progress:
 
 - `startStatusPolling()` - Starts interval timer
-- `stopStatusPolling()` - Stops when all visible episodes are completed/failed/pending
+- `stopStatusPolling()` - Stops when all visible episodes are in a stable state (completed/failed/new/needs_audio)
 - `pollEpisodeStatus()` - Fetches current status and updates DOM
 - `updateEpisodeRow()` - Updates badge, checkbox, and action button
 
@@ -274,7 +269,7 @@ Polling uses visible episode IDs from DOM (not template-rendered array) to handl
 
 #### Batch Operations
 
-- "Get All Transcripts" button queues all pending episodes via `POST /api/queue/batch/feed/{id}/transcript-download`
+- "Get All Transcripts" button queues all new episodes via `POST /api/queue/batch/feed/{id}/transcript-download`
 
 ### Episode Detail Page (episode_detail.html)
 
@@ -282,8 +277,10 @@ Shows full episode info with transcript viewer and manual action buttons:
 
 | Status | Available Actions |
 |--------|-------------------|
-| `pending` | "Try Transcript Download", "Download Audio" |
-| `downloaded` | "Queue Transcription" |
+| `new` | "Try Transcript Download", "Download Audio" |
+| `awaiting_transcript` | "Download Audio" |
+| `needs_audio` | "Download Audio" |
+| `audio_ready` | "Queue Transcription" |
 | `completed` | "Delete Audio" (if audio exists), "Download Audio" (if deleted) |
 | `failed` | "Retry" |
 
@@ -295,7 +292,7 @@ Shows full episode info with transcript viewer and manual action buttons:
 | `POST /api/queue/episodes/{id}/transcribe` | Whisper transcription (creates `TRANSCRIBE` job) |
 | `POST /api/queue/episodes/{id}/transcript-download` | Try external providers (creates `TRANSCRIPT_DOWNLOAD` job) |
 | `POST /api/queue/episodes/{id}/retranscribe` | Re-transcribe with current model |
-| `POST /api/queue/batch/feed/{id}/transcript-download` | Batch transcript download for all pending |
+| `POST /api/queue/batch/feed/{id}/transcript-download` | Batch transcript download for all new episodes |
 | `POST /api/queue/batch/feed/{id}/retranscribe` | Batch re-transcribe for outdated episodes |
 
 ## Audio Management
@@ -616,9 +613,18 @@ The bash watchdog (created during pod setup) becomes a backup mechanism only - i
 - Manual trigger: `POST /api/runpod/nodes/cleanup-orphaned`
 - Catches pods that crashed or terminated without notifying server
 
-### Tailscale Userspace Networking (Important Lessons)
+### Pod Setup Architecture
 
-RunPod containers don't have `/dev/net/tun`, so Tailscale must run in **userspace mode**. This has significant implications:
+There are two ways to create RunPod pods:
+
+1. **Server-side** (`runpod_service.py`): Pods self-setup via a startup script that calls back to the server's `/api/runpod/pods/{id}/setup-progress` endpoint. No SSH or Tailscale CLI needed on the server.
+2. **CLI** (`deploy/afterburner/afterburner.py`): Uses SSH from the local machine to set up pods. Requires Tailscale on the local machine.
+
+Both paths result in the same pod configuration. The server-side path was introduced because the server runs in Docker (no Tailscale CLI access).
+
+### Tailscale Userspace Networking
+
+RunPod containers don't have `/dev/net/tun`, so Tailscale must run in **userspace mode**. This applies to both setup paths and has significant implications:
 
 #### 1. No TUN Interface
 
@@ -675,14 +681,16 @@ echo '100.x.x.x server.tailnet.ts.net' >> /etc/hosts
 
 This is why `CAST2MD_SERVER_IP` environment variable is required.
 
-#### 6. Pod Detection with Multiple Orphaned Hosts
+#### 6. Pod Detection with Multiple Orphaned Hosts (CLI only)
 
-Tailscale keeps offline hosts visible. When hostname is taken, it adds `-1`, `-2` suffixes. The script handles this by:
+Tailscale keeps offline hosts visible. When hostname is taken, it adds `-1`, `-2` suffixes. The CLI afterburner handles this by:
 
 1. Matching hostname prefix (`runpod-afterburner*`)
 2. Filtering for `Online=true`
 3. Sorting by `Created` timestamp (newest first)
 4. Verifying SSH connectivity before proceeding
+
+The server-side path does not use Tailscale peer detection — it uses the pod self-setup HTTP callback instead.
 
 ### Parallel Execution
 
@@ -698,20 +706,22 @@ python deploy/afterburner/afterburner.py &
 python deploy/afterburner/afterburner.py --terminate-all
 ```
 
-### Debugging Tips
+### Debugging Tips (via Tailscale SSH)
+
+Pods run Tailscale SSH, so you can connect for manual debugging:
 
 ```bash
 # Check if proxy is listening
-ssh root@<pod-ip> "ss -tlnp | grep 1055"
+ssh root@<pod-hostname> "ss -tlnp | grep 1055"
 
 # Test proxy connectivity
-ssh root@<pod-ip> "curl -x http://localhost:1055 http://<server-ip>:8000/api/health"
+ssh root@<pod-hostname> "curl -x http://localhost:1055 http://<server-ip>:8000/api/health"
 
 # Check Tailscale status
-ssh root@<pod-ip> "tailscale status"
+ssh root@<pod-hostname> "tailscale status"
 
 # View node worker logs
-ssh root@<pod-ip> "tail -100 /tmp/cast2md-node.log"
+ssh root@<pod-hostname> "tail -100 /tmp/cast2md-node.log"
 ```
 
 ### Server-Side RunPod Management
@@ -724,11 +734,11 @@ The server includes a RunPod service for managing GPU workers via API. This enab
 2. Set environment variables:
    ```bash
    RUNPOD_API_KEY=...           # Required
-   RUNPOD_TS_AUTH_KEY=...       # Required (Tailscale auth key)
    RUNPOD_SERVER_URL=https://<your-tailnet>
    RUNPOD_SERVER_IP=100.x.x.x   # Tailscale IP
    ```
-3. Enable in settings: `runpod_enabled=true`
+3. Ensure a RunPod Secret named `ts_auth_key` exists in your RunPod account (used by pods for Tailscale auth)
+4. Enable in settings: `runpod_enabled=true`
 
 #### API Endpoints
 
@@ -740,7 +750,6 @@ The server includes a RunPod service for managing GPU workers via API. This enab
 | `/api/runpod/pods` | DELETE | Terminate all pods |
 | `/api/runpod/pods/{pod_id}` | DELETE | Terminate specific pod |
 | `/api/runpod/pods/{instance_id}/persistent` | PATCH | Set dev mode (persistent) on/off |
-| `/api/runpod/pods/{instance_id}/update-code` | POST | Update code on running pod (dev mode) |
 | `/api/runpod/setup-states/{instance_id}` | DELETE | Dismiss a setup state |
 
 #### Dev Mode
@@ -763,23 +772,8 @@ curl -X PATCH https://<your-tailnet>/api/runpod/pods/{instance_id}/persistent \
 ```
 
 Dev mode is useful for:
-- Testing code changes on a live pod
 - Debugging transcription issues
 - Extended monitoring
-
-**Updating code on a running pod:**
-
-```bash
-# Via API
-curl -X POST https://<your-tailnet>/api/runpod/pods/{instance_id}/update-code
-
-# What it does:
-# 1. Stops the worker process
-# 2. Reinstalls cast2md from git (pip install --no-cache-dir)
-# 3. Restarts the worker with correct environment (TRANSCRIPTION_BACKEND, WHISPER_MODEL)
-```
-
-This avoids the ~2 minute overhead of recreating the entire pod for each code change.
 
 **Setup state persistence:**
 
