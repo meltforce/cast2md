@@ -6,7 +6,7 @@ on:
       - '[0-9]+.[0-9]+*'  # Matches 2025.01, 2025.01.1
 
 jobs:
-  build:
+  docker:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -34,8 +34,23 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+  pypi:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+
+      - name: Build package
+        run: uv build
+
+      - name: Publish to PyPI
+        run: uv publish
+        env:
+          UV_PUBLISH_TOKEN: ${{ secrets.PYPI_TOKEN }}
+
   release:
-    needs: build
+    needs: [docker, pypi]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -46,8 +61,14 @@ jobs:
         with:
           generate_release_notes: true
           body: |
-            ## Docker
+            ## Docker (Linux server)
 
             ```bash
             docker pull meltforce/cast2md:${{ github.ref_name }}
+            ```
+
+            ## PyPI (Apple Silicon nodes)
+
+            ```bash
+            pip install "cast2md[node,node-mlx]==${{ github.ref_name }}"
             ```
