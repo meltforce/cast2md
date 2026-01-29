@@ -61,14 +61,48 @@ jobs:
         with:
           generate_release_notes: true
           body: |
-            ## Docker (Linux server)
+            ## Server (Docker Compose)
+
+            **Fresh install:**
 
             ```bash
-            docker pull meltforce/cast2md:${{ github.ref_name }}
+            git clone https://github.com/meltforce/cast2md.git
+            cd cast2md
+            cp .env.example .env
+            # Edit .env — set POSTGRES_PASSWORD and configure storage paths
+            docker compose -f compose.example.yml up -d
             ```
 
-            ## PyPI (Apple Silicon nodes)
+            **Upgrade existing server:**
 
             ```bash
+            docker compose pull
+            docker compose up -d
+            ```
+
+            **Pin to this version** in `.env`:
+
+            ```
+            VERSION=${{ github.ref_name }}
+            ```
+
+            ## Transcriber Node
+
+            **Install or update** (macOS / Linux):
+
+            ```bash
+            curl -fsSL https://raw.githubusercontent.com/meltforce/cast2md/main/scripts/cast2md-node.sh | bash
+            ```
+
+            The script auto-detects Apple Silicon and installs the MLX backend.
+            Existing git-based installs are migrated automatically on update.
+
+            **Or install manually via pip:**
+
+            ```bash
+            # Apple Silicon (MLX)
             pip install "cast2md[node,node-mlx]==${{ github.ref_name }}"
+
+            # Other platforms
+            pip install "cast2md[node]==${{ github.ref_name }}"
             ```
