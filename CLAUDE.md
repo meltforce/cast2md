@@ -2,36 +2,85 @@
 
 ## Deployment
 
-The production server runs on `<server>` (Tailscale hostname).
+The production server runs on `cast2md` (Tailscale hostname) via Docker Compose.
 
-**Important:** Always commit, push, and deploy before testing any server-relevant code changes. The server runs from the git repository, not from your local files.
-
-To deploy:
+To deploy a new Docker image version:
 ```bash
 git add -A && git commit -m "Your message" && git push
-ssh root@<server> "cd /opt/cast2md && git pull && systemctl restart cast2md"
+# CI builds the image on push/tag, then:
+ssh root@cast2md "cd /opt/cast2md && docker compose pull cast2md && docker compose up -d"
 ```
+
+To deploy code changes during development (without rebuilding the image), test on the dev machine first (see Development section below).
 
 ## Architecture
 
-- **Server**: Runs on the server via systemd (`systemctl restart cast2md`)
+- **Production**: Runs entirely via Docker Compose (app + PostgreSQL)
 - **Node workers**: Remote transcription nodes connect to the server
-- **Local workers**: Download workers and one local transcription worker run on the server
-- **Database**: PostgreSQL with pgvector, runs in Docker (`docker compose up -d postgres`)
+- **Local workers**: Download workers and one local transcription worker run in the app container
+- **Database**: PostgreSQL with pgvector, runs in Docker (`docker compose up -d`)
 
-### Production Database
+### Production Stack
 
-PostgreSQL runs as a Docker container on the server:
+Both PostgreSQL and the cast2md app run as Docker containers:
 
 ```bash
-# Start PostgreSQL (required before cast2md service)
-cd /opt/cast2md && docker compose up -d postgres
+# Start/restart the full stack
+ssh root@cast2md "cd /opt/cast2md && docker compose up -d"
+
+# View logs
+ssh root@cast2md "cd /opt/cast2md && docker compose logs -f cast2md"
 
 # Check status
-docker ps | grep postgres
+ssh root@cast2md "docker compose -f /opt/cast2md/docker-compose.yml ps"
 ```
 
-The container uses `pgvector/pgvector:pg16` image with data persisted in a Docker volume (`postgres_data`).
+Configuration is in `/opt/cast2md/.env` (not checked into git). The Docker Compose file reads env vars from `.env` and passes them to the containers.
+
+**Important:** The `.env` file contains secrets (RUNPOD_API_KEY, database credentials). Never commit it. The Docker image is `meltforce/cast2md:<version>`, built by CI.
+
+## Development (Dev Machine)
+
+The dev machine (`jesus`) runs a test instance from the git checkout for fast iteration on migrations, API changes, UI, and worker logic.
+
+### Setup
+
+PostgreSQL runs via Docker Compose (same as production):
+```bash
+cd ~/projects/cast2md
+docker compose up -d postgres
+```
+
+The app runs from the local git checkout in a virtualenv:
+```bash
+.venv/bin/python -m cast2md serve --host 0.0.0.0 --port 8000
+```
+
+### Configuration
+
+Dev config is in `.env` (local, not committed):
+```
+DATABASE_URL=postgresql://cast2md:dev@localhost:5432/cast2md
+STORAGE_PATH=./data/podcasts
+TEMP_DOWNLOAD_PATH=./data/temp
+WHISPER_MODEL=base
+WHISPER_DEVICE=cpu
+WHISPER_COMPUTE_TYPE=int8
+```
+
+Key difference from production: `DATABASE_URL` points to `localhost:5432` (Docker postgres exposes the port to the host), while in Docker Compose production, the app uses `postgres:5432` (Docker internal DNS).
+
+### Workflow
+
+1. Make code changes
+2. Start dev server: `.venv/bin/python -m cast2md serve --host 0.0.0.0 --port 8000`
+3. Test at `http://localhost:8000`
+4. Stop with Ctrl+C when done
+
+No systemd service -- run on demand. Reinstall after dependency changes:
+```bash
+.venv/bin/python -m pip install -e .
+```
 
 ## Database Selection
 
