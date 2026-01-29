@@ -491,13 +491,23 @@ update_install() {
 
     stop_service
 
+    # Migrate from git-based install if needed
+    OLD_REPO_DIR="$INSTALL_DIR/cast2md"
+    if [ -d "$OLD_REPO_DIR/.git" ]; then
+        echo "Migrating from git-based install to PyPI..."
+        rm -rf "$OLD_REPO_DIR"
+        print_success "Removed old git repo"
+    fi
+
     ensure_uv
 
     echo "Upgrading cast2md..."
     if [ "$PLATFORM" = "macos" ] && [ "$(uname -m)" = "arm64" ]; then
         USE_MLX=true
+        WHISPER_BACKEND="mlx"
     else
         USE_MLX=false
+        WHISPER_BACKEND="faster-whisper"
     fi
 
     if [ "$USE_MLX" = true ]; then
@@ -506,9 +516,15 @@ update_install() {
         uv pip install --python "$VENV_DIR/bin/python" --upgrade "cast2md[node]"
     fi
 
-    # Ensure wrapper scripts exist (for upgrades from older versions)
-    if [ "$PLATFORM" = "macos" ] && [ -f "$PLIST_PATH" ]; then
-        create_macos_wrapper_scripts
+    # Regenerate service files (fixes WorkingDirectory for git→PyPI migration)
+    if [ "$PLATFORM" = "macos" ]; then
+        if [ -f "$PLIST_PATH" ]; then
+            setup_launchd_service
+        fi
+    else
+        if [ -f "$SYSTEMD_SERVICE" ]; then
+            setup_systemd_service
+        fi
     fi
 
     start_service
@@ -597,8 +613,8 @@ uninstall() {
 show_menu() {
     print_header
 
-    # Check if already installed
-    if [ -f "$VENV_DIR/bin/cast2md" ]; then
+    # Check if already installed (new PyPI-based or old git-based)
+    if [ -f "$VENV_DIR/bin/cast2md" ] || [ -d "$INSTALL_DIR/cast2md/.git" ]; then
         echo "Existing installation found."
         echo ""
         echo "What would you like to do?"
@@ -621,7 +637,7 @@ show_menu() {
 
     case "$MENU_CHOICE" in
         1)
-            if [ -f "$VENV_DIR/bin/cast2md" ]; then
+            if [ -f "$VENV_DIR/bin/cast2md" ] || [ -d "$INSTALL_DIR/cast2md/.git" ]; then
                 detect_platform
                 update_install
             else
