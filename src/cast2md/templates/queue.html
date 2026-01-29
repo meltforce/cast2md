@@ -120,6 +120,9 @@
                 <span class="status-badge status-new">QUEUED</span>
                 {% elif item.job.status.value == 'failed' %}
                 <span class="status-badge status-failed">FAILED</span>
+                {% if item.episode.permanent_failure %}
+                <span class="status-badge" style="background: var(--del-color); color: white; font-size: 0.65rem;">PERMANENT</span>
+                {% endif %}
                 {% elif item.job.status.value == 'completed' %}
                 <span class="status-badge status-completed">DONE</span>
                 {% endif %}
