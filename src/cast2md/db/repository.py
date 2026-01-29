@@ -1206,6 +1206,7 @@ class JobRepository:
                   AND attempts < max_attempts
                   AND (next_retry_at IS NULL OR next_retry_at <= %s)
                 ORDER BY priority ASC, scheduled_at ASC
+                FOR UPDATE SKIP LOCKED
                 LIMIT 1
             """
         else:
@@ -1216,6 +1217,7 @@ class JobRepository:
                   AND attempts < max_attempts
                   AND (next_retry_at IS NULL OR next_retry_at <= %s)
                 ORDER BY priority ASC, scheduled_at ASC
+                FOR UPDATE SKIP LOCKED
                 LIMIT 1
             """
 
@@ -1652,7 +1654,7 @@ class JobRepository:
 
         if retry and job.attempts < job.max_attempts:
             # Schedule retry with exponential backoff (5min, 25min, 125min)
-            backoff_minutes = 5 ** job.attempts
+            backoff_minutes = min(5 ** job.attempts, 720)
             next_retry = now + timedelta(minutes=backoff_minutes)
 
             execute(

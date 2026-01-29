@@ -135,6 +135,17 @@ MIGRATIONS: list[dict] = [
             "ALTER TABLE pod_setup_states ADD COLUMN IF NOT EXISTS setup_token TEXT DEFAULT ''",
         ],
     },
+    {
+        "version": 18,
+        "description": "Add unique partial index to prevent duplicate active jobs per episode",
+        "sql": [
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_job_queue_episode_type_active
+            ON job_queue (episode_id, job_type)
+            WHERE status IN ('queued', 'running')
+            """,
+        ],
+    },
 ]
 
 

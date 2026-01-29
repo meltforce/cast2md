@@ -14,6 +14,7 @@ Connection = Any
 # PostgreSQL connection pool (lazy-initialized)
 _pg_pool: Any = None
 _pg_pool_initialized: bool = False
+_pgvector_registered_conns: set = set()
 
 
 class DatabaseConnection(Protocol):
@@ -112,13 +113,16 @@ def _get_pg_connection() -> Any:
     pool = _init_pg_pool()
     conn = pool.getconn()
 
-    # Register pgvector on each connection if available
-    try:
-        from pgvector.psycopg2 import register_vector
+    # Register pgvector once per connection (avoid repeated pg_type queries)
+    conn_id = id(conn)
+    if conn_id not in _pgvector_registered_conns:
+        try:
+            from pgvector.psycopg2 import register_vector
 
-        register_vector(conn)
-    except (ImportError, Exception):
-        pass
+            register_vector(conn)
+            _pgvector_registered_conns.add(conn_id)
+        except (ImportError, Exception):
+            pass
 
     return conn
 
@@ -196,6 +200,30 @@ def init_db() -> None:
         run_migrations(conn)
 
 
+def get_pool_stats() -> dict | None:
+    """Get connection pool utilization stats.
+
+    Returns:
+        Dict with pool stats, or None if pool not initialized.
+    """
+    if _pg_pool is None:
+        return None
+
+    try:
+        config = get_db_config()
+        # ThreadedConnectionPool tracks used connections internally
+        # _used is a dict of {conn: key} for checked-out connections
+        used = len(getattr(_pg_pool, "_used", {}))
+        return {
+            "min_size": config.pool_min_size,
+            "max_size": config.pool_max_size,
+            "used": used,
+            "available": config.pool_max_size - used,
+        }
+    except Exception:
+        return None
+
+
 def close_pool() -> None:
     """Close the PostgreSQL connection pool.
 
@@ -207,4 +235,5 @@ def close_pool() -> None:
         _pg_pool.closeall()
         _pg_pool = None
         _pg_pool_initialized = False
+        _pgvector_registered_conns.clear()
         logger.info("PostgreSQL connection pool closed")

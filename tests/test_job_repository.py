@@ -3,6 +3,7 @@
 from datetime import datetime, timedelta
 
 from cast2md.db.models import EpisodeStatus, JobStatus, JobType
+from cast2md.db.repository import EpisodeRepository
 
 
 class TestJobCreation:
@@ -117,7 +118,7 @@ class TestReclaimStaleJobs:
         db_conn.commit()
 
         # Reclaim with 2 hour timeout
-        requeued, failed = job_repo.reclaim_stale_jobs(timeout_hours=2)
+        requeued, failed = job_repo.reclaim_stale_jobs(timeout_minutes=120)
 
         assert requeued == 1
         assert failed == 0
@@ -149,7 +150,7 @@ class TestReclaimStaleJobs:
         db_conn.commit()
 
         # Reclaim with 2 hour timeout
-        requeued, failed = job_repo.reclaim_stale_jobs(timeout_hours=2)
+        requeued, failed = job_repo.reclaim_stale_jobs(timeout_minutes=120)
 
         assert requeued == 0
         assert failed == 1
@@ -206,7 +207,7 @@ class TestReclaimStaleJobs:
         )
         db_conn.commit()
 
-        requeued, failed = job_repo.reclaim_stale_jobs(timeout_hours=2)
+        requeued, failed = job_repo.reclaim_stale_jobs(timeout_minutes=120)
 
         assert requeued == 1
         assert failed == 1
@@ -245,7 +246,7 @@ class TestReclaimStaleJobs:
         db_conn.commit()
 
         # Reclaim should fail this job, not requeue it
-        requeued, failed = job_repo.reclaim_stale_jobs(timeout_hours=2)
+        requeued, failed = job_repo.reclaim_stale_jobs(timeout_minutes=120)
 
         assert requeued == 0
         assert failed == 1
@@ -343,7 +344,7 @@ class TestBatchForceResetStuck:
         )
         db_conn.commit()
 
-        requeued, failed = job_repo.batch_force_reset_stuck(threshold_hours=2)
+        requeued, failed = job_repo.batch_force_reset_stuck(threshold_minutes=120)
 
         assert requeued == 0
         assert failed == 1
@@ -477,7 +478,7 @@ class TestMarkRunningLocalNode:
         )
         db_conn.commit()
 
-        requeued, failed = job_repo.reclaim_stale_jobs(timeout_hours=2)
+        requeued, failed = job_repo.reclaim_stale_jobs(timeout_minutes=120)
         assert requeued == 1
 
         job = job_repo.get_by_id(job.id)
@@ -515,7 +516,7 @@ class TestReclaimUsesStartedAt:
         db_conn.commit()
 
         # Should still be reclaimed based on started_at, not claimed_at
-        requeued, _ = job_repo.reclaim_stale_jobs(timeout_hours=2)
+        requeued, _ = job_repo.reclaim_stale_jobs(timeout_minutes=120)
         assert requeued == 1
 
         job = job_repo.get_by_id(job.id)
@@ -544,7 +545,7 @@ class TestReclaimUsesStartedAt:
         db_conn.commit()
 
         # Should NOT be reclaimed - started_at is within 2-hour timeout
-        requeued, failed = job_repo.reclaim_stale_jobs(timeout_hours=2)
+        requeued, failed = job_repo.reclaim_stale_jobs(timeout_minutes=120)
         assert requeued == 0
         assert failed == 0
 
@@ -585,8 +586,18 @@ class TestAtomicJobClaim:
         job = job_repo.get_by_id(sample_job.id)
         assert job.status == JobStatus.QUEUED
 
-    def test_claim_next_job_respects_priority(self, job_repo, sample_episode):
+    def test_claim_next_job_respects_priority(self, db_conn, job_repo, sample_episode):
         """Test that claim_next_job respects priority ordering."""
+        # Create a second episode so each job has a unique (episode_id, job_type)
+        episode_repo = EpisodeRepository(db_conn)
+        episode2 = episode_repo.create(
+            feed_id=sample_episode.feed_id,
+            guid="test-priority-ep2",
+            title="Priority Test Episode 2",
+            audio_url="https://example.com/ep2.mp3",
+            published_at=datetime.utcnow(),
+        )
+
         # Create jobs with different priorities (lower = higher priority)
         low_priority = job_repo.create(
             episode_id=sample_episode.id,
@@ -594,7 +605,7 @@ class TestAtomicJobClaim:
             priority=20,
         )
         high_priority = job_repo.create(
-            episode_id=sample_episode.id,
+            episode_id=episode2.id,
             job_type=JobType.DOWNLOAD,
             priority=5,
         )
@@ -609,6 +620,16 @@ class TestAtomicJobClaim:
 
     def test_claim_next_job_local_only(self, db_conn, job_repo, sample_episode):
         """Test local_only flag only claims unassigned jobs."""
+        # Create a second episode so each job has a unique (episode_id, job_type)
+        episode_repo = EpisodeRepository(db_conn)
+        episode2 = episode_repo.create(
+            feed_id=sample_episode.feed_id,
+            guid="test-local-only-ep2",
+            title="Local Only Test Episode 2",
+            audio_url="https://example.com/local-ep2.mp3",
+            published_at=datetime.utcnow(),
+        )
+
         # Create job assigned to a remote node
         remote_job = job_repo.create(
             episode_id=sample_episode.id,
@@ -622,9 +643,9 @@ class TestAtomicJobClaim:
         )
         db_conn.commit()
 
-        # Create unassigned job
+        # Create unassigned job (different episode to satisfy unique constraint)
         local_job = job_repo.create(
-            episode_id=sample_episode.id,
+            episode_id=episode2.id,
             job_type=JobType.TRANSCRIBE,
             priority=10,
         )
