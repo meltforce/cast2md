@@ -1,6 +1,6 @@
 site_name: cast2md
 site_description: Podcast transcription service - download episodes via RSS and transcribe with Whisper
-site_url: https://meltforce.github.io/cast2md
+site_url: https://cast2md.meltforce.org
 repo_url: https://github.com/meltforce/cast2md
 repo_name: meltforce/cast2md
 
