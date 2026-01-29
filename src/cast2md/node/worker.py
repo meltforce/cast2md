@@ -86,6 +86,7 @@ class TranscriberNodeWorker:
         self._prefetch_lock = threading.Lock()
         self._prefetch_thread: Optional[threading.Thread] = None
         self._prefetch_stop = threading.Event()  # Signal to stop prefetch thread
+        self._prefetch_claimed_ids: set[int] = set()  # Job IDs claimed but still downloading
 
         # Auto-termination settings - both checks respect persistent/dev mode
         # Set NODE_PERSISTENT=1 to disable all auto-termination (dev mode / permanent workers)
@@ -237,6 +238,7 @@ class TranscriberNodeWorker:
         with self._prefetch_lock:
             jobs_to_release = list(self._prefetch_queue)
             self._prefetch_queue.clear()
+            self._prefetch_claimed_ids.clear()
 
         for prefetched in jobs_to_release:
             job_id = prefetched.job.get("job_id")
@@ -271,7 +273,7 @@ class TranscriberNodeWorker:
 
         while not self._stop_event.is_set():
             try:
-                # Collect all claimed job IDs (current + prefetch queue)
+                # Collect all claimed job IDs (current + prefetch queue + in-flight downloads)
                 claimed_job_ids = []
                 if self._current_job_id:
                     claimed_job_ids.append(self._current_job_id)
@@ -279,6 +281,9 @@ class TranscriberNodeWorker:
                     for prefetched in self._prefetch_queue:
                         job_id = prefetched.job.get("job_id")
                         if job_id:
+                            claimed_job_ids.append(job_id)
+                    for job_id in self._prefetch_claimed_ids:
+                        if job_id not in claimed_job_ids:
                             claimed_job_ids.append(job_id)
 
                 response = self._client.post(
@@ -479,10 +484,15 @@ class TranscriberNodeWorker:
                     self._prefetch_stop.wait(timeout=self._poll_interval)
                     continue
 
+                job_id = job['job_id']
                 logger.info(
-                    f"Prefetching job {job['job_id']}: {job.get('episode_title', 'Unknown')}"
+                    f"Prefetching job {job_id}: {job.get('episode_title', 'Unknown')}"
                     f" (queue: {queue_size}/{self._prefetch_max_size})"
                 )
+
+                # Track as in-flight so heartbeat reports it to server
+                with self._prefetch_lock:
+                    self._prefetch_claimed_ids.add(job_id)
 
                 # Create temp dir for prefetch
                 temp_dir = tempfile.TemporaryDirectory()
@@ -490,19 +500,22 @@ class TranscriberNodeWorker:
 
                 if error or not audio_path:
                     logger.warning(f"Prefetch download failed: {error}")
+                    with self._prefetch_lock:
+                        self._prefetch_claimed_ids.discard(job_id)
                     # Release the job we claimed
                     try:
-                        self._client.post(f"/api/nodes/jobs/{job['job_id']}/release", timeout=5.0)
+                        self._client.post(f"/api/nodes/jobs/{job_id}/release", timeout=5.0)
                     except Exception:
                         pass
                     temp_dir.cleanup()
                 else:
                     with self._prefetch_lock:
+                        self._prefetch_claimed_ids.discard(job_id)
                         self._prefetch_queue.append(
                             PrefetchedJob(job=job, audio_path=audio_path, temp_dir=temp_dir)
                         )
                     logger.info(
-                        f"Prefetch ready: {job['job_id']} "
+                        f"Prefetch ready: {job_id} "
                         f"(queue: {len(self._prefetch_queue)}/{self._prefetch_max_size})"
                     )
 
