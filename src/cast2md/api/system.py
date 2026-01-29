@@ -8,7 +8,7 @@ from pydantic import BaseModel
 
 from cast2md.config.settings import get_settings
 from cast2md.db.config import get_db_config
-from cast2md.db.connection import get_db
+from cast2md.db.connection import get_db, get_pool_stats
 from cast2md.db.models import EpisodeStatus
 from cast2md.db.repository import EpisodeRepository, FeedRepository
 
@@ -84,12 +84,22 @@ def get_status():
     )
 
 
+class PoolStats(BaseModel):
+    """Connection pool statistics."""
+
+    min_size: int
+    max_size: int
+    used: int
+    available: int
+
+
 class HealthCheck(BaseModel):
     """Health check response."""
 
     status: Literal["healthy", "unhealthy"]
     database: bool
     storage: bool
+    pool: PoolStats | None = None
     message: str | None = None
 
 
@@ -121,6 +131,10 @@ def health_check():
     except Exception as e:
         errors.append(f"Storage: {e}")
 
+    # Get pool stats
+    pool_stats_raw = get_pool_stats()
+    pool = PoolStats(**pool_stats_raw) if pool_stats_raw else None
+
     # Determine overall health
     is_healthy = all(checks.values())
     status = "healthy" if is_healthy else "unhealthy"
@@ -130,6 +144,7 @@ def health_check():
         status=status,
         database=checks["database"],
         storage=checks["storage"],
+        pool=pool,
         message=message,
     )
 

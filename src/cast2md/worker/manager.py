@@ -23,11 +23,11 @@ logger = logging.getLogger(__name__)
 
 
 def _is_permanent_download_error(error_message: str) -> bool:
-    """Check if a download error indicates a permanent failure (e.g., 404/410).
+    """Check if a download error indicates a permanent failure (e.g., 401/403/404/410).
 
-    These errors mean the audio file no longer exists and retrying won't help.
+    These errors mean the audio file is inaccessible and retrying won't help.
     """
-    return "HTTP 404" in error_message or "HTTP 410" in error_message
+    return any(code in error_message for code in ("HTTP 401", "HTTP 403", "HTTP 404", "HTTP 410"))
 
 
 def _is_distributed_enabled() -> bool:

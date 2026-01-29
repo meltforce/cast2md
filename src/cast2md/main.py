@@ -22,7 +22,7 @@ from cast2md.api.search import router as search_router
 from cast2md.api.settings import router as settings_router
 from cast2md.api.system import router as system_router
 from cast2md.config.settings import get_settings
-from cast2md.db.connection import init_db
+from cast2md.db.connection import close_pool, init_db
 from cast2md.scheduler import start_scheduler, stop_scheduler
 from cast2md.web.views import configure_templates, router as web_router
 from cast2md.worker import get_worker_manager
@@ -172,6 +172,8 @@ async def lifespan(app: FastAPI):
     worker_manager.stop()
     logger.info("Workers stopped")
     stop_scheduler()
+    close_pool()
+    logger.info("Shutdown complete")
 
 
 # Create FastAPI app

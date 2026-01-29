@@ -74,7 +74,7 @@ class TestEmbeddingsConstants:
 
     def test_default_model_name(self):
         """Test default model name is set."""
-        assert DEFAULT_MODEL_NAME == "all-MiniLM-L6-v2"
+        assert DEFAULT_MODEL_NAME == "paraphrase-multilingual-MiniLM-L12-v2"
 
     def test_embedding_dim(self):
         """Test embedding dimension is correct for the model."""

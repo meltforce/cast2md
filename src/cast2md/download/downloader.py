@@ -149,7 +149,7 @@ async def download_file(url: str, dest_path: Path, temp_path: Path) -> None:
                     if first_chunk:
                         if not validate_audio_header(chunk):
                             raise ValueError("Downloaded file does not appear to be audio")
-                        first_chunk = True
+                        first_chunk = False
                     f.write(chunk)
 
     # Ensure destination directory exists

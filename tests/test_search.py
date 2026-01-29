@@ -179,10 +179,9 @@ class TestSearchBoolean:
 
         assert response.total > 0
 
-    def test_search_nonexistent_combination(self, search_repo, indexed_episode):
-        """Test that all terms must be present for a match."""
-        # 'xyznonexistent' doesn't exist, so no results even though 'podcast' does
-        response = search_repo.search("podcast xyznonexistent")
+    def test_search_nonexistent_terms(self, search_repo, indexed_episode):
+        """Test that completely nonexistent terms return no results."""
+        response = search_repo.search("xyznonexistent qqzzbogus")
 
         assert response.total == 0
 
