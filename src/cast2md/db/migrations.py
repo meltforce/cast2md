@@ -110,6 +110,24 @@ MIGRATIONS: list[dict] = [
             """,
         ],
     },
+    {
+        "version": 16,
+        "description": "Rewrite storage paths from bare-metal to Docker container paths",
+        "sql": [
+            # Transcript paths
+            """
+            UPDATE episode
+            SET transcript_path = REPLACE(transcript_path, '/mnt/nas/cast2md/', '/app/data/podcasts/')
+            WHERE transcript_path LIKE '/mnt/nas/cast2md/%'
+            """,
+            # Audio paths
+            """
+            UPDATE episode
+            SET audio_path = REPLACE(audio_path, '/mnt/nas/cast2md/', '/app/data/podcasts/')
+            WHERE audio_path LIKE '/mnt/nas/cast2md/%'
+            """,
+        ],
+    },
 ]
 
 

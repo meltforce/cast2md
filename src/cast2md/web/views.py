@@ -235,6 +235,9 @@ def configure_templates(t: Jinja2Templates):
     templates.env.filters["render_transcript"] = render_transcript_html
     templates.env.filters["search_snippet"] = sanitize_search_snippet
     templates.env.filters["timeago"] = timeago
+    # Add global template variables
+    import cast2md
+    templates.env.globals["app_version"] = cast2md.__version__
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -686,10 +689,6 @@ def admin_status_page(request: Request):
         },
     }
 
-    # Get version
-    import cast2md
-    app_version = cast2md.__version__
-
     return templates.TemplateResponse(
         "status.html",
         {
@@ -700,7 +699,6 @@ def admin_status_page(request: Request):
             "worker_groups": worker_groups,
             "search_stats": search_stats,
             "performance_stats": performance_stats,
-            "app_version": app_version,
         },
     )
 
