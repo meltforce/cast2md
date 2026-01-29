@@ -204,6 +204,9 @@
                        onchange="updateSelectedCount()" {% if episode.status.value != 'new' or episode.id in queued_episode_ids %}disabled{% endif %}>
             </td>
             <td>
+                {% if episode.permanent_failure %}
+                <span class="truncate" style="display: block; color: var(--muted-color);">{{ episode.title }}</span>
+                {% else %}
                 {% set ep_params = [] %}
                 {% if query %}{% set _ = ep_params.append('q=' ~ query|urlencode) %}{% endif %}
                 {% if status_filter %}{% set _ = ep_params.append('status=' ~ status_filter) %}{% endif %}
@@ -212,6 +215,7 @@
                 <a href="/episodes/{{ episode.id }}{% if ep_params %}?{{ ep_params|join('&') }}{% endif %}" class="truncate" style="display: block;">
                     {{ episode.title }}
                 </a>
+                {% endif %}
             </td>
             <td style="white-space: nowrap;">{% if episode.duration_seconds %}{{ '%d:%02d' % (episode.duration_seconds // 60, episode.duration_seconds % 60) }}{% endif %}</td>
             <td style="white-space: nowrap;">{{ episode.published_at.strftime('%Y-%m-%d') if episode.published_at else 'Unknown' }}</td>
