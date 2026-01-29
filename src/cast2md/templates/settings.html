@@ -248,19 +248,22 @@ async function loadSettings() {
             settings.forEach(({ key, info }) => {
                 const isBool = info.type === 'bool';
                 const isChecked = info.value === true || info.value === 'true' || info.value === '1';
+                const locked = info.env_override;
+                const disabledAttr = locked ? 'disabled' : '';
+                const envHint = locked ? '<small style="color: var(--pico-muted-color); font-style: italic;">Set by environment variable</small>' : '';
 
                 let inputHtml = '';
                 if (info.type === 'int') {
-                    inputHtml = `<input type="number" name="${key}" id="${key}" min="${info.min || ''}" max="${info.max || ''}" value="${info.value}">`;
+                    inputHtml = `<input type="number" name="${key}" id="${key}" min="${info.min || ''}" max="${info.max || ''}" value="${info.value}" ${disabledAttr}>`;
                 } else if (info.type === 'select') {
                     const options = info.options.map(opt =>
                         `<option value="${opt}" ${info.value === opt ? 'selected' : ''}>${opt}</option>`
                     ).join('');
-                    inputHtml = `<select name="${key}" id="${key}">${options}</select>`;
+                    inputHtml = `<select name="${key}" id="${key}" ${disabledAttr}>${options}</select>`;
                 } else if (info.type === 'bool') {
-                    inputHtml = `<input type="checkbox" name="${key}" id="${key}" value="true" ${isChecked ? 'checked' : ''} role="switch">`;
+                    inputHtml = `<input type="checkbox" name="${key}" id="${key}" value="true" ${isChecked ? 'checked' : ''} role="switch" ${disabledAttr}>`;
                 } else {
-                    inputHtml = `<input type="text" name="${key}" id="${key}" value="${info.value || ''}">`;
+                    inputHtml = `<input type="text" name="${key}" id="${key}" value="${info.value || ''}" ${disabledAttr}>`;
                 }
 
                 if (isBool) {
@@ -269,6 +272,7 @@ async function loadSettings() {
                             ${inputHtml} ${info.label}
                         </label>
                         <small style="margin-top: -0.5rem; margin-bottom: 1rem; display: block;">${info.description}</small>
+                        ${envHint}
                     `;
                 } else {
                     html += `
@@ -276,6 +280,7 @@ async function loadSettings() {
                             ${info.label}
                             ${inputHtml}
                             <small>${info.description}</small>
+                            ${envHint}
                         </label>
                     `;
                 }
