@@ -2,13 +2,16 @@
 
 cast2md can be installed in several ways depending on your needs.
 
+!!! info "Single server handles everything"
+    A single cast2md server handles the complete workflow -- downloading, transcription, and search. Transcriber nodes are optional and only needed to speed up transcription for large backlogs.
+
 ## Installation Methods
 
 | Method | Best For | Requirements |
 |--------|----------|--------------|
-| [Docker](docker.md) | Production, quick start | Docker, Docker Compose |
-| [Manual Install](manual.md) | Development, customization | Python 3.11+, PostgreSQL |
-| [Transcriber Node](node.md) | Remote transcription workers | Python 3.11+, network access to server |
+| [Docker](docker.md) | Server: production, quick start | Docker, Docker Compose |
+| [Manual Install](manual.md) | Server: development, customization | Python 3.11+, PostgreSQL |
+| [Transcriber Node](node.md) | Optional remote transcription workers | Python 3.11+, network access to server |
 
 ## Quick Start (Docker)
 

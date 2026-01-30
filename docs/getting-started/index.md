@@ -1,10 +1,37 @@
 # Getting Started
 
-cast2md is a podcast transcription service that downloads episodes via RSS and transcribes them using Whisper. It prioritizes external transcript sources (Podcasting 2.0, Pocket Casts) before falling back to local transcription.
+cast2md is a podcast transcription service. Add your podcast feeds, and cast2md builds a searchable transcript library -- automatically.
 
-## Key Concepts
+## How It Works
 
-### Transcript-First Workflow
+```
+New Episode Discovered
+        │
+        ▼
+  Check External Transcripts
+  (Podcast 2.0, Pocket Casts)
+        │
+   ┌────┴────┐
+   │         │
+Found    Not Found
+   │         │
+   ▼         ▼
+ Done    Download Audio
+            │
+            ▼
+      Transcribe (Whisper)
+            │
+            ▼
+          Done
+```
+
+1. **Feed discovery** -- add RSS feeds, episodes are discovered automatically
+2. **Transcript download** -- checks publisher transcripts and Pocket Casts first
+3. **Audio fallback** -- downloads audio only when no external transcript exists
+4. **Whisper transcription** -- local or distributed transcription
+5. **Search & access** -- full-text and semantic search, REST API, MCP for Claude
+
+## Transcript-First Workflow
 
 When a new episode is discovered, cast2md doesn't immediately download audio. Instead, it first checks for existing transcripts:
 
@@ -12,86 +39,29 @@ When a new episode is discovered, cast2md doesn't immediately download audio. In
 2. **Pocket Casts** -- auto-generated transcripts from the Pocket Casts API
 3. **Whisper** -- local transcription after audio download (last resort)
 
-This saves storage and processing time. Audio is only downloaded when no external transcript is available.
+This saves storage and processing time -- audio is only downloaded when no external transcript is available.
 
-### Architecture
+!!! tip "Audio download is always available"
+    You can always download audio manually for any episode, regardless of transcript availability. Use "Download Audio" on the episode detail page or the CLI/API.
 
-```
-┌─────────────────────────────────────────┐
-│            cast2md Server               │
-│                                         │
-│  ┌──────────┐  ┌───────────────────┐    │
-│  │ Web UI   │  │ REST API          │    │
-│  └──────────┘  └───────────────────┘    │
-│  ┌──────────┐  ┌───────────────────┐    │
-│  │ Workers  │  │ PostgreSQL + pgvec│    │
-│  └──────────┘  └───────────────────┘    │
-└────────────────────┬────────────────────┘
-                     │
-        ┌────────────┼────────────┐
-        │            │            │
-   ┌─────────┐ ┌─────────┐ ┌─────────┐
-   │ Node A  │ │ Node B  │ │ RunPod  │
-   │ M4 Mac  │ │ GPU PC  │ │ A5000   │
-   └─────────┘ └─────────┘ └─────────┘
-         (optional remote workers)
-```
+## Search
 
-**Components:**
+cast2md includes hybrid search combining full-text and semantic search:
 
-- **Server** -- FastAPI application with web UI, REST API, and background workers
-- **PostgreSQL** -- database with pgvector extension for semantic search
-- **Workers** -- download workers and local transcription worker run in the server process
-- **Remote nodes** (optional) -- additional machines for distributed transcription
-- **RunPod** (optional) -- on-demand GPU pods for batch processing
+- **Keyword search** -- PostgreSQL full-text search for exact term matching
+- **Semantic search** -- sentence-transformers embeddings with pgvector for meaning-based queries (e.g., "cold water swimming" finds episodes about "Eisbaden")
+- **Hybrid mode** (default) -- combines both using Reciprocal Rank Fusion for best relevance
 
-### Episode Lifecycle
+Search works across episode titles, descriptions, and transcript content.
 
-Each episode passes through several states:
+## Single Server is Enough
 
-| State | Description |
-|-------|-------------|
-| `new` | Just discovered |
-| `awaiting_transcript` | Checking external sources, will retry |
-| `needs_audio` | No external transcript, audio download needed |
-| `downloading` | Audio being downloaded |
-| `audio_ready` | Audio ready for Whisper |
-| `transcribing` | Being transcribed |
-| `completed` | Transcript available |
-| `failed` | Processing failed |
+A single cast2md server handles the complete workflow -- downloading episodes, transcribing audio, and searching transcripts. No additional setup is needed beyond the server itself.
 
-See [Episode States](../features/episode-states.md) for the full state machine.
-
-### Interfaces
-
-cast2md provides multiple interfaces:
-
-| Interface | Description |
-|-----------|-------------|
-| **Web UI** | Manage feeds, view episodes, search transcripts |
-| **CLI** | Command-line tool for all operations |
-| **REST API** | Full API for automation and integration |
-| **MCP Server** | Claude integration via Model Context Protocol |
-
-### Transcription Backends
-
-| Backend | Use Case | Languages | Speed |
-|---------|----------|-----------|-------|
-| **Whisper** (faster-whisper) | Local CPU/GPU transcription | 99+ languages | Varies by model |
-| **Whisper** (mlx-whisper) | Apple Silicon Macs | 99+ languages | Fast on M-series |
-| **Parakeet** | RunPod GPU pods | 25 EU languages | ~100x realtime |
-
-### Search
-
-cast2md includes hybrid search combining:
-
-- **Full-text search** -- PostgreSQL tsvector for keyword matching
-- **Semantic search** -- sentence-transformers embeddings with pgvector for meaning-based queries
-- **Reciprocal Rank Fusion** -- combines both result sets for best relevance
+Remote transcriber nodes and RunPod GPU workers are entirely optional. They speed up transcription for large backlogs but aren't required for normal use.
 
 ## Next Steps
 
 - [Install cast2md](../installation/index.md)
 - [Configure your environment](../configuration/index.md)
-- [Learn the Web UI](../usage/web-ui.md)
-- [Set up distributed transcription](../distributed/index.md)
+- [Learn about search and feeds](../usage/index.md)

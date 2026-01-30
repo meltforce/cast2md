@@ -33,9 +33,13 @@
 
     Full-text and semantic search across episode metadata and transcript content with pgvector.
 
--   :material-api: **REST API & MCP Server**
+-   :material-api: **REST API**
 
-    Full API for automation. Claude integration via Model Context Protocol.
+    Full API for automation and integration with other tools.
+
+-   :material-robot: **MCP Server**
+
+    Chat with your podcasts. Claude integration via Model Context Protocol.
 
 </div>
 
@@ -72,46 +76,16 @@ See the [Installation Guide](installation/index.md) for full details.
 
 ---
 
-## How It Works
-
-```
-New Episode Discovered
-        │
-        ▼
-  Check External Transcripts
-  (Podcast 2.0, Pocket Casts)
-        │
-   ┌────┴────┐
-   │         │
-Found    Not Found
-   │         │
-   ▼         ▼
- Done    Download Audio
-            │
-            ▼
-      Transcribe (Whisper)
-            │
-            ▼
-          Done
-```
-
-1. **Feed discovery** -- add RSS feeds, episodes are discovered automatically
-2. **Transcript download** -- checks publisher transcripts and Pocket Casts first
-3. **Audio fallback** -- downloads audio only when no external transcript exists
-4. **Whisper transcription** -- local or distributed transcription
-5. **Search & access** -- full-text and semantic search, REST API, MCP for Claude
-
----
-
 ## Documentation
 
 | Section | Description |
 |---------|-------------|
-| [Getting Started](getting-started/index.md) | Architecture overview and key concepts |
+| [Getting Started](getting-started/index.md) | What cast2md does and how it works |
 | [Installation](installation/index.md) | Docker, manual install, and node setup |
 | [Configuration](configuration/index.md) | Environment variables and settings |
-| [Usage](usage/index.md) | Web UI, CLI, REST API, and MCP server |
-| [Features](features/index.md) | Transcript sources, search, episode states |
+| [Usage](usage/index.md) | Search and feed management |
+| [Administration](administration/index.md) | Status monitoring, settings, queue, CLI, API, and MCP |
+| [Features](features/index.md) | Architecture, transcript sources, search, episode states |
 | [Distributed Transcription](distributed/index.md) | Multi-machine setup and RunPod GPU workers |
 | [Deployment](deployment/index.md) | Production deployment and server sizing |
 | [Development](development/index.md) | Dev setup, testing, and UI guidelines |

@@ -1,6 +1,6 @@
 # Docker Installation
 
-The recommended way to run cast2md in production.
+The recommended way to run the cast2md server in production. This installs everything needed for the full workflow -- episode downloading, transcription, search, and the web UI.
 
 ## Prerequisites
 

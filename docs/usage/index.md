@@ -1,15 +1,6 @@
 # Usage
 
-cast2md provides four interfaces for managing podcast transcriptions.
-
-## Interfaces
-
-| Interface | Description | Best For |
-|-----------|-------------|----------|
-| [Web UI](web-ui.md) | Browser-based management | Day-to-day use, monitoring |
-| [CLI](cli.md) | Command-line tool | Automation, scripting, setup |
-| [REST API](api.md) | HTTP API | Integration with other tools |
-| [MCP Server](mcp.md) | Model Context Protocol | Claude AI integration |
+cast2md provides a web interface for managing podcast feeds and searching transcripts.
 
 ## Common Workflows
 
@@ -45,17 +36,15 @@ cast2md provides four interfaces for managing podcast transcriptions.
 
 ### Search Transcripts
 
-The search page (`/search`) provides unified search across episode metadata and transcript content:
+The [search page](search.md) (`/search`) provides unified search across episode metadata and transcript content:
 
 - **Keyword search** -- PostgreSQL full-text search
 - **Semantic search** -- find content by meaning, not just exact words
 - **Hybrid mode** -- combines both for best results
 
-### Monitor Processing
+## Sections
 
-The status page (`/status`) shows:
-
-- System health and worker status
-- Processing queue with job details
-- Remote transcriber node status
-- Episode counts by state
+| Page | Description |
+|------|-------------|
+| [Search](search.md) | Unified search across episodes and transcripts |
+| [Feeds](feeds.md) | Feed management, episode actions, and feed deletion |
