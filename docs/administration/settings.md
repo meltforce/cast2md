@@ -11,5 +11,6 @@ The settings page (`/settings`) provides configuration for all server options.
 - **Transcript Discovery** -- retry settings
 - **Distributed Transcription** -- enable/disable, node management
 - **Transcriber Nodes** -- list, add, test, and delete nodes
-- **RunPod** -- GPU worker configuration and management
 - **Notifications** -- ntfy integration
+
+RunPod GPU worker management has its own page -- see [RunPod](runpod.md).

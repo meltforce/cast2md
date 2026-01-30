@@ -1,4 +1,4 @@
-# Chat about Podcasts
+# Chat about your Podcasts
 
 ![Claude chatting about podcasts via MCP](../assets/images/claude.png)
 

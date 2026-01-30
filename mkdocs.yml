@@ -65,12 +65,13 @@ nav:
     - usage/index.md
     - Search: usage/search.md
     - Feeds: usage/feeds.md
-    - Chat about Podcasts: usage/chat.md
+    - Chat: usage/chat.md
   - Administration:
     - administration/index.md
     - Status: administration/status.md
-    - Settings: administration/settings.md
     - Queue: administration/queue.md
+    - Settings: administration/settings.md
+    - RunPod: administration/runpod.md
     - CLI Reference: usage/cli.md
     - MCP Server: usage/mcp.md
     - REST API: usage/api.md
