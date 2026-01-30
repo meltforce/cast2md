@@ -2,8 +2,7 @@
 
 The cast2md web interface is accessible at `http://localhost:8000` (or your configured host/port).
 
-!!! info "Screenshot Placeholder"
-    Screenshots will be added once the documentation site is live. See [Screenshots](../getting-started/screenshots.md).
+See [Screenshots](../getting-started/screenshots.md) for a visual tour of the interface.
 
 ## Pages
 
