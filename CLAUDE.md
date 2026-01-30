@@ -108,7 +108,7 @@ Public docs are at [meltforce.org/cast2md](https://meltforce.org/cast2md), built
 
 **Key files:**
 - `mkdocs.yml` - Site config and navigation (Zensical reads this natively)
-- `docs/CNAME` - Custom domain (`meltforce.org`)
+- No `docs/CNAME` -- site is served via Caddy reverse proxy to GitHub Pages
 - `docs/internal/` - Internal docs (not in nav, but still publicly accessible by URL)
 - `cast2md-requirements.md` - Central requirements document with architecture, data model, and development phases
 
