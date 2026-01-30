@@ -24,6 +24,12 @@ The search page provides unified search across episode metadata and transcript c
 
 ![Search](../assets/images/search.png)
 
+## Queue
+
+The queue page shows active and completed jobs with filtering by status.
+
+![Queue](../assets/images/queue.png)
+
 ## Status Page
 
 The admin status page shows system health, worker status, remote transcriber nodes, and processing queue.
