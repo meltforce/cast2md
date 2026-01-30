@@ -7,7 +7,8 @@ cast2md provides several tools for monitoring and managing the server.
 | Page | Description |
 |------|-------------|
 | [Status](status.md) | System health, workers, remote nodes, processing queue |
-| [Settings](settings.md) | Server configuration, transcriber nodes, RunPod management |
+| [Settings](settings.md) | Server configuration, transcriber nodes, notifications |
+| [RunPod](runpod.md) | GPU worker management, pod creation, model configuration |
 | [Queue](queue.md) | Job processing queue with filtering |
 
 ## Command-Line & API

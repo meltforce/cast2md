@@ -6,6 +6,12 @@ The search page provides unified search across episode metadata and transcript c
 
 ![Search](../assets/images/search.png)
 
+## Chat about Podcasts
+
+Chat with your podcasts using Claude or another LLM via the MCP server.
+
+![Claude](../assets/images/claude.png)
+
 ## Feed List
 
 The main feeds page shows all subscribed podcasts with episode counts and transcript progress.
@@ -41,12 +47,6 @@ The queue page shows active and completed jobs with filtering by status.
 The settings page provides configuration for all server options, transcriber node management, and RunPod GPU worker controls.
 
 ![Settings](../assets/images/settings.png)
-
-## Chat about Podcasts
-
-Chat with your podcasts using Claude or another LLM via the MCP server.
-
-![Claude](../assets/images/claude.png)
 
 ## RunPod GPU Workers
 
