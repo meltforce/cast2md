@@ -1,5 +1,11 @@
 # Screenshots
 
+## Search
+
+The search page provides unified search across episode metadata and transcript content with result type badges (title, keyword, semantic).
+
+![Search](../assets/images/search.png)
+
 ## Feed List
 
 The main feeds page shows all subscribed podcasts with episode counts and transcript progress.
@@ -18,23 +24,17 @@ Episode pages show full metadata, transcript viewer with timestamps, and action 
 
 ![Episode Detail](../assets/images/episode-detail.png)
 
-## Search
+## Status Page
 
-The search page provides unified search across episode metadata and transcript content with result type badges (title, keyword, semantic).
+The admin status page shows system health, worker status, remote transcriber nodes, and processing queue.
 
-![Search](../assets/images/search.png)
+![Status](../assets/images/status.png)
 
 ## Queue
 
 The queue page shows active and completed jobs with filtering by status.
 
 ![Queue](../assets/images/queue.png)
-
-## Status Page
-
-The admin status page shows system health, worker status, remote transcriber nodes, and processing queue.
-
-![Status](../assets/images/status.png)
 
 ## Settings
 
@@ -48,9 +48,9 @@ The RunPod section provides on-demand GPU worker management for large transcript
 
 ![RunPod](../assets/images/runpod.png)
 
-## Node Status UI
+## Local Worker
 
 !!! info "Coming Soon"
-    Screenshot of the node status UI will be added here.
+    Screenshot of the local worker status UI will be added here.
 
 Each transcriber node runs a local web interface showing node configuration, current job progress, and queue statistics.
