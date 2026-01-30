@@ -29,16 +29,16 @@ Open `http://localhost:8000` to access the web UI.
 
 ## Documentation
 
-Full documentation is available at **[cast2md.meltforce.org](https://cast2md.meltforce.org)**.
+Full documentation is available at **[meltforce.org/cast2md](https://meltforce.org/cast2md)**.
 
 | Section | Description |
 |---------|-------------|
-| [Getting Started](https://cast2md.meltforce.org/getting-started/) | Architecture and key concepts |
-| [Installation](https://cast2md.meltforce.org/installation/) | Docker, manual install, transcriber nodes |
-| [Configuration](https://cast2md.meltforce.org/configuration/) | Environment variables, Whisper models |
-| [Usage](https://cast2md.meltforce.org/usage/) | Web UI, CLI, REST API, MCP server |
-| [Distributed Transcription](https://cast2md.meltforce.org/distributed/) | Multi-machine setup, RunPod GPU workers |
-| [Deployment](https://cast2md.meltforce.org/deployment/) | Production deployment, server sizing |
+| [Getting Started](https://meltforce.org/cast2md/getting-started/) | Architecture and key concepts |
+| [Installation](https://meltforce.org/cast2md/installation/) | Docker, manual install, transcriber nodes |
+| [Configuration](https://meltforce.org/cast2md/configuration/) | Environment variables, Whisper models |
+| [Usage](https://meltforce.org/cast2md/usage/) | Web UI, CLI, REST API, MCP server |
+| [Distributed Transcription](https://meltforce.org/cast2md/distributed/) | Multi-machine setup, RunPod GPU workers |
+| [Deployment](https://meltforce.org/cast2md/deployment/) | Production deployment, server sizing |
 
 ## License
 
