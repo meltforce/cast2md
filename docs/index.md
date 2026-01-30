@@ -1,6 +1,6 @@
 # cast2md
 
-**Podcast transcription service** -- download episodes via RSS and transcribe with Whisper. Automatically fetches publisher-provided transcripts (Podcasting 2.0) or Pocket Casts auto-generated transcripts before falling back to local transcription.
+**Podcast transcription service** - download episodes via RSS and transcribe with Whisper. Automatically fetches publisher-provided transcripts (Podcasting 2.0) or Pocket Casts auto-generated transcripts before falling back to local transcription.
 
 !!! note "Personal Project"
     This is a personal project under active development. I'm sharing it in case others find it useful, but I'm not currently providing support or reviewing pull requests.
@@ -25,21 +25,21 @@
 
     Local transcription with faster-whisper or mlx-whisper. Supports CPU, CUDA, and Apple Silicon.
 
--   :material-server-network: **Distributed Transcription**
-
-    Use remote machines (M4 Macs, GPU PCs, RunPod) to transcribe in parallel.
-
 -   :material-magnify: **Hybrid Search**
 
     Full-text and semantic search across episode metadata and transcript content with pgvector.
 
--   :material-api: **REST API**
-
-    Full API for automation and integration with other tools.
-
 -   :material-robot: **MCP Server**
 
     Chat with your podcasts. Claude integration via Model Context Protocol.
+
+-   :material-server-network: **Distributed Transcription**
+
+    Use remote machines (M4 Macs, GPU PCs, RunPod) to transcribe in parallel.
+
+-   :material-api: **REST API**
+
+    Full API for automation and integration with other tools.
 
 </div>
 

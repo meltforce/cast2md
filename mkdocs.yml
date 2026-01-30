@@ -49,7 +49,9 @@ markdown_extensions:
 
 nav:
   - Home: index.md
-  - Getting Started: getting-started/index.md
+  - Getting Started:
+    - getting-started/index.md
+    - Screenshots: getting-started/screenshots.md
   - Installation:
     - installation/index.md
     - Docker: installation/docker.md
@@ -63,6 +65,7 @@ nav:
     - usage/index.md
     - Search: usage/search.md
     - Feeds: usage/feeds.md
+    - Chat about Podcasts: usage/chat.md
   - Administration:
     - administration/index.md
     - Status: administration/status.md
@@ -89,4 +92,3 @@ nav:
   - Development:
     - development/index.md
     - UI Guidelines: development/ui-guidelines.md
-  - Screenshots: getting-started/screenshots.md

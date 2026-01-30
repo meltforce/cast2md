@@ -42,6 +42,12 @@ The settings page provides configuration for all server options, transcriber nod
 
 ![Settings](../assets/images/settings.png)
 
+## Chat about Podcasts
+
+Chat with your podcasts using Claude or another LLM via the MCP server.
+
+![Claude](../assets/images/claude.png)
+
 ## RunPod GPU Workers
 
 The RunPod section provides on-demand GPU worker management for large transcription backlogs.
