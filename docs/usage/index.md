@@ -48,3 +48,4 @@ The [search page](search.md) (`/search`) provides unified search across episode 
 |------|-------------|
 | [Search](search.md) | Unified search across episodes and transcripts |
 | [Feeds](feeds.md) | Feed management, episode actions, and feed deletion |
+| [Chat about Podcasts](chat.md) | Use Claude or another LLM to chat about your podcast library |
