@@ -2,6 +2,12 @@
 
 cast2md provides a comprehensive set of features for podcast transcription and search.
 
+## Architecture
+
+cast2md is a FastAPI application with background workers, PostgreSQL with pgvector, and an optional distributed transcription layer.
+
+See [Architecture](architecture.md) for the system diagram and component overview.
+
 ## Core Features
 
 ### Transcript-First Workflow

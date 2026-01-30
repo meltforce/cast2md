@@ -49,9 +49,7 @@ markdown_extensions:
 
 nav:
   - Home: index.md
-  - Getting Started:
-    - getting-started/index.md
-    - Screenshots: getting-started/screenshots.md
+  - Getting Started: getting-started/index.md
   - Installation:
     - installation/index.md
     - Docker: installation/docker.md
@@ -63,12 +61,19 @@ nav:
     - Whisper Models: configuration/whisper-models.md
   - Usage:
     - usage/index.md
-    - Web UI: usage/web-ui.md
+    - Search: usage/search.md
+    - Feeds: usage/feeds.md
+  - Administration:
+    - administration/index.md
+    - Status: administration/status.md
+    - Settings: administration/settings.md
+    - Queue: administration/queue.md
     - CLI Reference: usage/cli.md
-    - REST API: usage/api.md
     - MCP Server: usage/mcp.md
+    - REST API: usage/api.md
   - Features:
     - features/index.md
+    - Architecture: features/architecture.md
     - Transcript Sources: features/transcript-sources.md
     - Search: features/search.md
     - Episode States: features/episode-states.md
@@ -84,3 +89,4 @@ nav:
   - Development:
     - development/index.md
     - UI Guidelines: development/ui-guidelines.md
+  - Screenshots: getting-started/screenshots.md

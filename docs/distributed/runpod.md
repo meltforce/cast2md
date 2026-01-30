@@ -26,12 +26,21 @@ RunPod pods are managed by the cast2md server. They:
 # Required
 RUNPOD_ENABLED=true
 RUNPOD_API_KEY=your_runpod_api_key
-RUNPOD_TS_AUTH_KEY=tskey-auth-xxx
 
 # Server connection (for pods to reach the server)
 RUNPOD_SERVER_URL=https://your-server.ts.net
 RUNPOD_SERVER_IP=100.x.x.x    # Tailscale IP (required, MagicDNS unavailable in pods)
 ```
+
+### Tailscale Auth Key
+
+The Tailscale auth key must be configured as a **RunPod Secret**, not a server environment variable.
+
+1. Go to [RunPod Console → Settings → Secrets](https://www.runpod.io/console/user/secrets)
+2. Create a secret named exactly **`ts_auth_key`**
+3. Set the value to your Tailscale auth key (`tskey-auth-...`)
+
+Pods reference this secret via `{{ RUNPOD_SECRET_ts_auth_key }}` in their startup template. The key is injected as `TS_AUTH_KEY` at pod startup.
 
 ### Settings
 
