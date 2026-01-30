@@ -5,8 +5,7 @@
 !!! note "Personal Project"
     This is a personal project under active development. I'm sharing it in case others find it useful, but I'm not currently providing support or reviewing pull requests.
 
-!!! info "Screenshot Placeholder"
-    Screenshots of the web UI will be added here once the documentation site is live.
+![Search](assets/images/search.png)
 
 ---
 

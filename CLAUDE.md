@@ -99,8 +99,18 @@ No systemd service -- run on demand. Reinstall after dependency changes:
 
 ## Documentation
 
+Public docs are at [cast2md.meltforce.org](https://cast2md.meltforce.org), built with **Zensical** (MkDocs Material successor).
+
+- Source: `docs/` directory + `mkdocs.yml`
+- CI: `.github/workflows/docs.yml` builds on pushes to `docs/**` or `mkdocs.yml`
+- Hosting: GitHub Pages (source: GitHub Actions, not "Deploy from branch")
+- Local preview: `pip install zensical && zensical serve`
+
+**Key files:**
+- `mkdocs.yml` - Site config and navigation (Zensical reads this natively)
+- `docs/CNAME` - Custom domain (`cast2md.meltforce.org`)
+- `docs/internal/` - Internal docs (not in nav, but still publicly accessible by URL)
 - `cast2md-requirements.md` - Central requirements document with architecture, data model, and development phases
-- `docs/` - Additional documentation (distributed transcription setup, architecture diagrams, etc.)
 
 ## Testing
 
