@@ -1,11 +1,12 @@
 site_name: cast2md
-site_description: Podcast transcription service - download episodes via RSS and transcribe with Whisper
+site_description: Turn podcast RSS feeds into searchable transcripts with automated fetching, Whisper transcription, and LLM access via MCP.
 site_url: https://meltforce.org/cast2md
 repo_url: https://github.com/meltforce/cast2md
 repo_name: meltforce/cast2md
 
 theme:
   name: material
+  custom_dir: docs/overrides
   palette:
     - scheme: default
       primary: indigo

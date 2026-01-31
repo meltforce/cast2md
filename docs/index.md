@@ -1,9 +1,11 @@
+---
+og_title: "cast2md — Podcast RSS to Searchable, LLM-Ready Transcripts"
+og_description: "Turn podcast RSS feeds into searchable transcripts with automated fetching, Whisper transcription, and LLM access via MCP."
+---
+
 # cast2md
 
-**Podcast transcription service** - download episodes via RSS and transcribe with Whisper. Automatically fetches publisher-provided transcripts (Podcasting 2.0) or Pocket Casts auto-generated transcripts before falling back to local transcription.
-
-!!! note "Personal Project"
-    This is a personal project under active development. I'm sharing it in case others find it useful, but I'm not currently providing support or reviewing pull requests.
+**Turn podcast RSS feeds into a searchable, LLM-ready transcript library.** Automatically fetches existing transcripts from publishers and Pocket Casts, or transcribes locally with Whisper. Search across everything, or chat with your podcasts via MCP.
 
 ![Search](assets/images/search.png)
 
@@ -17,6 +19,14 @@
 
     Add podcast feeds via RSS or Apple Podcasts URLs. Automatic episode discovery and polling.
 
+-   :material-robot: **Chat with Your Podcasts**
+
+    Ask questions, summarize episodes, and explore topics across your library. Claude integration via Model Context Protocol.
+
+-   :material-magnify: **Hybrid Search**
+
+    Full-text and semantic search across episode metadata and transcript content with pgvector.
+
 -   :material-text-search: **Transcript-First Workflow**
 
     Fetches transcripts from Podcasting 2.0 tags and Pocket Casts before downloading audio for Whisper.
@@ -24,14 +34,6 @@
 -   :material-microphone: **Whisper Transcription**
 
     Local transcription with faster-whisper or mlx-whisper. Supports CPU, CUDA, and Apple Silicon.
-
--   :material-magnify: **Hybrid Search**
-
-    Full-text and semantic search across episode metadata and transcript content with pgvector.
-
--   :material-robot: **MCP Server**
-
-    Chat with your podcasts. Claude integration via Model Context Protocol.
 
 -   :material-server-network: **Distributed Transcription**
 
@@ -73,6 +75,9 @@
     ```
 
 See the [Installation Guide](installation/index.md) for full details.
+
+!!! note "Personal Project"
+    This is a personal project under active development. I'm sharing it in case others find it useful, but I'm not currently providing support or reviewing pull requests.
 
 ---
 
