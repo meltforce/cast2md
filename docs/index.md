@@ -1,4 +1,5 @@
 ---
+title: Podcast RSS to Searchable, LLM-Ready Transcripts
 og_title: "cast2md — Podcast RSS to Searchable, LLM-Ready Transcripts"
 og_description: "Turn podcast RSS feeds into searchable transcripts with automated fetching, Whisper transcription, and LLM access via MCP."
 ---
