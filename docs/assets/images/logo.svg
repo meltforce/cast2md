@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
   <!-- Rounded indigo square -->
-  <rect width="512" height="512" rx="80" fill="#3F51B5"/>
+  <rect width="512" height="512" rx="80" fill="#0172AD"/>
 
   <!-- Microphone (left side) -->
   <rect x="130" y="120" width="80" height="160" rx="40" fill="white"/>
