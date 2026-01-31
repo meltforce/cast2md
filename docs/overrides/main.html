@@ -11,6 +11,21 @@
 {% endblock %}
 
 {% block extrahead %}
+  <style>
+    :root,
+    [data-md-color-scheme="default"] {
+      --md-primary-fg-color: #0172AD;
+      --md-primary-fg-color--light: #0189CF;
+      --md-primary-fg-color--dark: #015887;
+      --md-accent-fg-color: #0172AD;
+    }
+    [data-md-color-scheme="slate"] {
+      --md-primary-fg-color: #01AAFF;
+      --md-primary-fg-color--light: #33BBFF;
+      --md-primary-fg-color--dark: #0189CF;
+      --md-accent-fg-color: #01AAFF;
+    }
+  </style>
   <meta property="og:type" content="website">
   {% if page.canonical_url %}
     <meta property="og:url" content="{{ page.canonical_url }}">
