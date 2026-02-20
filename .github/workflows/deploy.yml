@@ -15,6 +15,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: meltforce/cast2md:edge
+          build-args: |
+            VERSION=edge-${{ github.sha }}
+
       - name: Connect to Tailscale
         uses: tailscale/github-action@v4
         with:
@@ -24,6 +40,7 @@ jobs:
 
       - name: Deploy
         run: |
-          # Project-specific pre-deploy steps can be added here
           ssh -o StrictHostKeyChecking=no root@cast2md \
-            "cd /opt/cast2md && docker compose pull cast2md && docker compose up -d cast2md"
+            "docker pull meltforce/cast2md:edge && \
+             docker tag meltforce/cast2md:edge meltforce/cast2md:latest && \
+             cd /opt/cast2md && docker compose up -d cast2md"
