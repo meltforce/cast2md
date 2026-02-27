@@ -1,6 +1,7 @@
 """MCP server setup using FastMCP."""
 
 from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp.server import TransportSecuritySettings
 
 # Module-level server instance - will be configured before tools/resources import
 mcp: FastMCP = None  # type: ignore
@@ -33,6 +34,8 @@ IMPORTANT: When an episode was mentioned earlier in the conversation, use its ID
         host=host,
         port=port,
         stateless_http=stateless,
+        # Disable DNS rebinding protection — server is behind Tailscale (private network)
+        transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False),
     )
 
     # Only initialize database in local mode (not when using remote API)
