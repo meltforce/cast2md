@@ -165,7 +165,10 @@ async def lifespan(app: FastAPI):
     worker_manager.start()
     logger.info("Workers started")
 
-    yield
+    # Start MCP session manager (must be running for Streamable HTTP to work)
+    async with _mcp_server.session_manager.run():
+        logger.info("MCP server started at /mcp")
+        yield
 
     # Shutdown
     logger.info("Shutting down cast2md...")
@@ -205,6 +208,13 @@ app.include_router(search_router)
 app.include_router(settings_router)
 app.include_router(system_router)
 app.include_router(web_router)
+
+# Mount MCP server (Streamable HTTP) at /mcp
+from cast2md.mcp.server import create_server as create_mcp_server
+
+_mcp_server = create_mcp_server(skip_db_init=True, stateless=True)
+_mcp_http_app = _mcp_server.streamable_http_app()
+app.mount("", _mcp_http_app)
 
 
 def run_server(host: str = "0.0.0.0", port: int = 8000, reload: bool = False):
