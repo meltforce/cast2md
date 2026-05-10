@@ -53,7 +53,7 @@ og_description: "Turn podcast RSS feeds into searchable transcripts with automat
 === "Docker (Recommended)"
 
     ```bash
-    git clone https://github.com/meltforce/cast2md.git
+    git clone https://codeberg.org/meltforce/cast2md.git
     cd cast2md
     cp .env.example .env
     # Edit .env -- set POSTGRES_PASSWORD at minimum
@@ -66,7 +66,7 @@ og_description: "Turn podcast RSS feeds into searchable transcripts with automat
 
     ```bash
     curl -LsSf https://astral.sh/uv/install.sh | sh
-    git clone https://github.com/meltforce/cast2md.git
+    git clone https://codeberg.org/meltforce/cast2md.git
     cd cast2md
     uv sync --frozen
     cp .env.example .env

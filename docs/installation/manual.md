@@ -20,7 +20,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 ### 2. Clone and Install
 
 ```bash
-git clone https://github.com/meltforce/cast2md.git
+git clone https://codeberg.org/meltforce/cast2md.git
 cd cast2md
 uv sync --frozen
 ```
