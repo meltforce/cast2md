@@ -23,7 +23,8 @@ class PodSetupConfig:
     # Transcription
     model: str  # e.g., "parakeet-tdt-0.6b-v3" or "large-v3-turbo"
 
-    # Installation
+    # Installation — env name kept as RUNPOD_GITHUB_REPO for backwards-compat
+    # with existing prod env files; the URL prefix below is now codeberg.org.
     github_repo: str = "meltforce/cast2md"  # For pip install
 
     # Worker behavior
@@ -96,7 +97,7 @@ def setup_pod(
 
     # Install cast2md (always install to get latest code)
     run_ssh(
-        f"pip install --no-cache-dir 'cast2md[node] @ git+https://github.com/{config.github_repo}.git'",
+        f"pip install --no-cache-dir 'cast2md[node] @ git+https://codeberg.org/{config.github_repo}.git'",
         "Installing cast2md",
         600,
     )

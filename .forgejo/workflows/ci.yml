@@ -1,0 +1,188 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+    tags:    ['[0-9]+.[0-9]+*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    runs-on: docker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install uv
+        run: pip install uv
+      - name: Validate package builds
+        run: uv build
+
+  docker-edge:
+    needs: [build]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: docker-buildx
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: git.coydog-fence.ts.net
+          username: ${{ secrets.REGISTRY_USER }}
+          password: ${{ secrets.REGISTRY_TOKEN }}
+      - uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: git.coydog-fence.ts.net/meltforce.net/cast2md:edge
+          build-args: |
+            VERSION=edge-${{ github.sha }}
+          cache-from: type=registry,ref=git.coydog-fence.ts.net/meltforce.net/cast2md:cache
+          cache-to: type=registry,ref=git.coydog-fence.ts.net/meltforce.net/cast2md:cache,mode=max
+
+  deploy-edge:
+    needs: [docker-edge]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: host
+    steps:
+      - name: Pull + redeploy on cast2md host
+        run: |
+          ssh -o StrictHostKeyChecking=accept-new \
+              -o BatchMode=yes \
+              root@cast2md.coydog-fence.ts.net \
+              'cd /opt/docker/stacks/cast2md && docker compose pull && docker compose up -d'
+
+  build-afterburner:
+    if: |
+      (github.event_name == 'push' && github.ref == 'refs/heads/main' &&
+       contains(toJSON(github.event.commits.*.modified), 'deploy/afterburner/Dockerfile'))
+      || github.event_name == 'workflow_dispatch'
+    runs-on: docker-buildx
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL || true
+          docker system prune -af || true
+          df -h
+      - uses: docker/login-action@v3
+        with:
+          registry: docker.io
+          username: ${{ secrets.DOCKERHUB_USER }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - uses: docker/build-push-action@v5
+        with:
+          context: deploy/afterburner
+          push: true
+          tags: |
+            meltforce/cast2md-afterburner:latest
+            meltforce/cast2md-afterburner:cuda124
+            meltforce/cast2md-afterburner:${{ github.sha }}
+          no-cache: true
+
+  release:
+    needs: [build]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: docker-buildx
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install uv
+        run: pip install uv
+
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: codeberg.org
+          username: ${{ secrets.CODEBERG_USER }}
+          password: ${{ secrets.CODEBERG_TOKEN }}
+      - name: Build + push release image to Codeberg
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            codeberg.org/meltforce/cast2md:latest
+            codeberg.org/meltforce/cast2md:${{ github.ref_name }}
+          build-args: |
+            VERSION=${{ github.ref_name }}
+
+      - name: Build + publish to PyPI
+        env:
+          UV_PUBLISH_TOKEN: ${{ secrets.PYPI_TOKEN }}
+        run: |
+          uv build
+          uv publish
+
+      - name: Create Codeberg release
+        env:
+          CODEBERG_TOKEN: ${{ secrets.CODEBERG_TOKEN }}
+        run: |
+          TAG="${{ github.ref_name }}"
+          PREV=$(git tag --sort=-creatordate | grep -v "^${TAG}$" | head -1 || echo "")
+          if [ -n "$PREV" ]; then
+            CHANGELOG=$(git log "${PREV}..${TAG}" --pretty=format:'- %s (%an)' --no-merges)
+          else
+            CHANGELOG=$(git log "${TAG}" --pretty=format:'- %s (%an)' --no-merges | head -50)
+          fi
+          BODY=$(jq -Rsa . <<EOF
+          ## Changes since ${PREV:-the beginning}
+
+          ${CHANGELOG}
+
+          ## Installation
+
+          \`\`\`bash
+          docker pull codeberg.org/meltforce/cast2md:${TAG}
+          # or
+          pip install cast2md==${TAG}
+          \`\`\`
+          EOF
+          )
+          curl -fsSL -X POST \
+            -H "Authorization: token ${CODEBERG_TOKEN}" \
+            -H "Content-Type: application/json" \
+            -d "{\"tag_name\":\"${TAG}\",\"name\":\"${TAG}\",\"body\":${BODY},\"draft\":false,\"prerelease\":false}" \
+            "https://codeberg.org/api/v1/repos/meltforce/cast2md/releases"
+
+  docs:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: docker
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build docs (Zensical)
+        run: |
+          pip install zensical
+          zensical build
+      - name: Add .domains for Codeberg Pages
+        run: echo 'cast2md.meltforce.org' > site/.domains
+      - name: Push to Codeberg pages branch
+        env:
+          CODEBERG_USER: ${{ secrets.CODEBERG_USER }}
+          CODEBERG_TOKEN: ${{ secrets.CODEBERG_TOKEN }}
+        run: |
+          cd site
+          git init -q
+          git config user.email "ci@meltforce.net"
+          git config user.name  "cast2md ci"
+          git checkout -q -b pages
+          git add -A
+          git commit -q -m "docs: build from ${GITHUB_SHA::7}"
+          git push -qf "https://${CODEBERG_USER}:${CODEBERG_TOKEN}@codeberg.org/meltforce/cast2md.git" pages

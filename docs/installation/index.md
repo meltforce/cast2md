@@ -18,7 +18,7 @@ cast2md can be installed in several ways depending on your needs.
 The fastest way to get running:
 
 ```bash
-git clone https://github.com/meltforce/cast2md.git
+git clone https://codeberg.org/meltforce/cast2md.git
 cd cast2md
 cp .env.example .env
 # Edit .env -- set POSTGRES_PASSWORD at minimum
