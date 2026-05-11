@@ -9,7 +9,7 @@ Deploy code changes to the production server from your phone using Claude.
 3. Forgejo Actions (on bob-01) builds a Docker image from the current code
 4. The workflow SSHs into the server via Tailscale and deploys it
 
-The workflow pushes the image as `git.coydog-fence.ts.net/meltforce.net/cast2md:edge` on the in-tailnet Forgejo registry, then retags it as `codeberg.org/meltforce/cast2md:latest` on the server. That local-tag matches the image name in `/opt/cast2md/docker-compose.yml` (a copy of `compose.example.yml`), so `docker compose up -d` picks up the freshly pulled image without modifying compose. Tagged releases push to `codeberg.org/meltforce/cast2md:<version>` (public).
+The workflow pushes the image as `git.coydog-fence.ts.net/meltforce.net/cast2md:edge` on the in-tailnet Forgejo registry. The production `/opt/cast2md/docker-compose.yml` pins `image: git.coydog-fence.ts.net/meltforce.net/cast2md:edge`, so a plain `docker compose pull && docker compose up -d` on the cast2md host picks up the new edge build over anonymous OCI (repo is public, no `docker login` needed). Tagged releases push to `codeberg.org/meltforce/cast2md:<version>` (public release stream — that's what `compose.example.yml` in the repo points at for fresh installs).
 
 ## Steps
 
@@ -31,18 +31,20 @@ If the push didn't trigger a deploy (e.g., you only want to redeploy):
 To go back to the last tagged release:
 
 ```bash
-ssh root@cast2md.coydog-fence.ts.net "docker pull codeberg.org/meltforce/cast2md:latest && \
-    cd /opt/cast2md && docker compose up -d cast2md"
+ssh root@cast2md.coydog-fence.ts.net "cd /opt/cast2md && \
+    docker pull codeberg.org/meltforce/cast2md:latest && \
+    sed -i 's|image:.*cast2md.*|image: codeberg.org/meltforce/cast2md:latest|' docker-compose.yml && \
+    docker compose up -d cast2md"
 ```
 
 Or from Claude: ask to run this command.
 
-Since edge builds retag `codeberg.org/meltforce/cast2md:latest` locally on the server, a rollback simply re-pulls the public release image from Codeberg under the same tag.
+Rolling back swaps the production `image:` line in `docker-compose.yml` from the Forgejo edge tag to the Codeberg release tag, then `compose up -d`. Forward again: swap the image line back to `git.coydog-fence.ts.net/meltforce.net/cast2md:edge` and pull.
 
 ## What's deployed?
 
 ```bash
-ssh root@cast2md.coydog-fence.ts.net "docker inspect codeberg.org/meltforce/cast2md:latest --format '{{index .Config.Labels \"org.opencontainers.image.version\"}}'"
+ssh root@cast2md.coydog-fence.ts.net "docker inspect git.coydog-fence.ts.net/meltforce.net/cast2md:edge --format '{{index .Config.Labels \"org.opencontainers.image.version\"}}'"
 ```
 
 - `edge-<sha>` = deployed from main (the SHA tells you which commit)

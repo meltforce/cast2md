@@ -57,9 +57,7 @@ jobs:
           ssh -o StrictHostKeyChecking=accept-new \
               -o BatchMode=yes \
               root@cast2md.coydog-fence.ts.net \
-              'docker pull git.coydog-fence.ts.net/meltforce.net/cast2md:edge && \
-               docker tag git.coydog-fence.ts.net/meltforce.net/cast2md:edge codeberg.org/meltforce/cast2md:latest && \
-               cd /opt/cast2md && docker compose up -d cast2md'
+              'cd /opt/cast2md && docker compose pull && docker compose up -d cast2md'
 
   build-afterburner:
     if: |
