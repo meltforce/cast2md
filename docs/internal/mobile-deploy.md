@@ -9,7 +9,7 @@ Deploy code changes to the production server from your phone using Claude.
 3. Forgejo Actions (on bob-01) builds a Docker image from the current code
 4. The workflow SSHs into the server via Tailscale and deploys it
 
-The workflow pushes the image as `git.coydog-fence.ts.net/meltforce.net/cast2md:edge` on the in-tailnet Forgejo registry. The production `/opt/cast2md/docker-compose.yml` pins `image: git.coydog-fence.ts.net/meltforce.net/cast2md:edge`, so a plain `docker compose pull && docker compose up -d` on the cast2md host picks up the new edge build over anonymous OCI (repo is public, no `docker login` needed). Tagged releases push to `codeberg.org/meltforce/cast2md:<version>` (public release stream — that's what `compose.example.yml` in the repo points at for fresh installs).
+The workflow pushes the image as `git.coydog-fence.ts.net/meltforce.net/cast2md:edge` on the in-tailnet Forgejo registry. cast2md is deployed via the homelab `docker-stacks` catalog (`configuration/docker-stacks/stacks/cast2md.yml`), so the production compose lives at `/opt/docker/stacks/cast2md/` and pins `image: git.coydog-fence.ts.net/meltforce.net/cast2md:edge`. A plain `docker compose pull && docker compose up -d` on the cast2md host picks up the new edge build over anonymous OCI (repo is public, no `docker login` needed). Tagged releases push to `codeberg.org/meltforce/cast2md:<version>` (public release stream — that's what `compose.example.yml` in the repo points at for fresh installs).
 
 ## Steps
 

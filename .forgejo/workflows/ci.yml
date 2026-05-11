@@ -57,7 +57,7 @@ jobs:
           ssh -o StrictHostKeyChecking=accept-new \
               -o BatchMode=yes \
               root@cast2md.coydog-fence.ts.net \
-              'cd /opt/cast2md && docker compose pull && docker compose up -d cast2md'
+              'cd /opt/docker/stacks/cast2md && docker compose pull && docker compose up -d'
 
   build-afterburner:
     if: |
