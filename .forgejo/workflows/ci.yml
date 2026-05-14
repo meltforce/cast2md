@@ -135,7 +135,7 @@ jobs:
             "https://codeberg.org/api/v1/repos/meltforce/cast2md/releases"
 
   docs:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
     runs-on: docker
     steps:
       - uses: actions/checkout@v4
@@ -146,8 +146,10 @@ jobs:
           python-version: "3.12"
       - name: Build docs (Zensical)
         run: |
+          set -euxo pipefail
           pip install zensical
           zensical build
+          ls -la site | head -20
       - name: Add .domains for Codeberg Pages
         run: echo 'cast2md.meltforce.org' > site/.domains
       - name: Push to Codeberg pages branch
@@ -155,11 +157,14 @@ jobs:
           CODEBERG_USER: ${{ secrets.CODEBERG_USER }}
           CODEBERG_TOKEN: ${{ secrets.CODEBERG_TOKEN }}
         run: |
+          set -euxo pipefail
+          test -n "$CODEBERG_USER" || { echo "CODEBERG_USER empty"; exit 1; }
+          test -n "$CODEBERG_TOKEN" || { echo "CODEBERG_TOKEN empty"; exit 1; }
           cd site
-          git init -q
+          git init
           git config user.email "ci@meltforce.net"
           git config user.name  "cast2md ci"
-          git checkout -q -b pages
+          git checkout -b pages
           git add -A
-          git commit -q -m "docs: build from ${GITHUB_SHA::7}"
-          git push -qf "https://${CODEBERG_USER}:${CODEBERG_TOKEN}@codeberg.org/meltforce/cast2md.git" pages
+          git commit -m "docs: build from ${GITHUB_SHA::7}"
+          git push -f "https://${CODEBERG_USER}:${CODEBERG_TOKEN}@codeberg.org/meltforce/cast2md.git" pages
