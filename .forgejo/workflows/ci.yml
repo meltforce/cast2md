@@ -184,10 +184,13 @@ jobs:
       # existierender gh-pages-Branch würde beim nächsten Sync gelöscht.
       - name: Push to gh-pages branch (Forgejo → Mirror → GitHub)
         env:
-          FORGEJO_PUSH_TOKEN: ${{ secrets.FORGEJO_PUSH_TOKEN }}
+          FJ_PUSH_TOKEN: ${{ secrets.FJ_PUSH_TOKEN }}
         run: |
-          set -euxo pipefail
-          test -n "$FORGEJO_PUSH_TOKEN" || { echo "FORGEJO_PUSH_TOKEN empty"; exit 1; }
+          # Kein -x: der Push-URL enthält den Token, und ein Trace davon steht
+          # ungefiltert im Job-Log. Der Presence-Guard darunter ist das, was der
+          # Incident vom 2026-05-14 eigentlich wollte — nicht der Trace.
+          set -euo pipefail
+          test -n "$FJ_PUSH_TOKEN" || { echo "FJ_PUSH_TOKEN empty"; exit 1; }
           cd site
           git init
           git config user.email "25252086+meltforce@users.noreply.github.com"
@@ -195,4 +198,4 @@ jobs:
           git checkout -b gh-pages
           git add -A
           git commit -m "docs: build from ${GITHUB_SHA::7}"
-          git push -f "https://${FORGEJO_PUSH_TOKEN}@git.coydog-fence.ts.net/meltforce.net/cast2md.git" gh-pages
+          git push -f "https://${FJ_PUSH_TOKEN}@git.coydog-fence.ts.net/meltforce.net/cast2md.git" gh-pages
