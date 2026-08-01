@@ -20,7 +20,7 @@ services:
     # Postgres not exposed externally
 
   cast2md:
-    image: codeberg.org/meltforce/cast2md:${VERSION:-latest}
+    image: ghcr.io/meltforce/cast2md:${VERSION:-latest}
     restart: unless-stopped
     ports:
       - "${PORT:-8000}:8000"

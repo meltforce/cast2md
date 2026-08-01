@@ -100,7 +100,7 @@ These are never stored in the database:
 | `RUNPOD_WHISPER_MODEL` | `parakeet-tdt-0.6b-v3` | Default model for pods |
 | `RUNPOD_IMAGE_NAME` | `meltforce/cast2md-afterburner:cuda124` | Docker image for pods |
 | `RUNPOD_TS_HOSTNAME` | `runpod-afterburner` | Base Tailscale hostname |
-| `RUNPOD_GITHUB_REPO` | `meltforce/cast2md` | Source repo for pod code updates (resolved as `git+https://codeberg.org/<value>.git`; env-var name kept for backwards-compat) |
+| `RUNPOD_GITHUB_REPO` | `meltforce/cast2md` | Source repo for pod code updates (resolved as `git+https://github.com/<value>.git`; env-var name kept for backwards-compat) |
 | `RUNPOD_SERVER_URL` | *(empty)* | Server URL for pod registration |
 | `RUNPOD_SERVER_IP` | *(empty)* | Tailscale IP of server |
 

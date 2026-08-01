@@ -82,17 +82,17 @@ jobs:
       - uses: docker/setup-buildx-action@v3
       - uses: docker/login-action@v3
         with:
-          registry: codeberg.org
-          username: ${{ secrets.CODEBERG_USER }}
-          password: ${{ secrets.CODEBERG_TOKEN }}
-      - name: Build + push release image to Codeberg
+          registry: ghcr.io
+          username: meltforce
+          password: ${{ secrets.GH_PAT }}
+      - name: Build + push release image to ghcr.io
         uses: docker/build-push-action@v5
         with:
           context: .
           push: true
           tags: |
-            codeberg.org/meltforce/cast2md:latest
-            codeberg.org/meltforce/cast2md:${{ github.ref_name }}
+            ghcr.io/meltforce/cast2md:latest
+            ghcr.io/meltforce/cast2md:${{ github.ref_name }}
           build-args: |
             VERSION=${{ github.ref_name }}
 
@@ -103,10 +103,33 @@ jobs:
           uv build
           uv publish
 
-      - name: Create Codeberg release
+      # The tag has to exist on GitHub before the release can reference it.
+      # Forgejo is canonical; GitHub gets the tag via the push-mirror, which is
+      # asynchronous — so wait rather than assume.
+      - name: Wait for tag to propagate to GitHub
         env:
-          CODEBERG_TOKEN: ${{ secrets.CODEBERG_TOKEN }}
+          GH_PAT: ${{ secrets.GH_PAT }}
         run: |
+          set -euo pipefail
+          TAG="${{ github.ref_name }}"
+          for i in $(seq 1 10); do
+            if curl -sSf -H "Authorization: token ${GH_PAT}" \
+                 "https://api.github.com/repos/meltforce/cast2md/git/ref/tags/${TAG}" > /dev/null; then
+              echo "Tag ${TAG} is on GitHub."
+              exit 0
+            fi
+            echo "Tag not yet on GitHub (attempt $i/10), sleeping 30s..."
+            sleep 30
+          done
+          echo "Tag never appeared on GitHub within 5 minutes — failing." >&2
+          exit 1
+
+      - name: Create GitHub release
+        env:
+          GH_PAT: ${{ secrets.GH_PAT }}
+        run: |
+          set -euo pipefail
+          test -n "$GH_PAT" || { echo "GH_PAT empty"; exit 1; }
           TAG="${{ github.ref_name }}"
           PREV=$(git tag --sort=-creatordate | grep -v "^${TAG}$" | head -1 || echo "")
           if [ -n "$PREV" ]; then
@@ -122,17 +145,18 @@ jobs:
           ## Installation
 
           \`\`\`bash
-          docker pull codeberg.org/meltforce/cast2md:${TAG}
+          docker pull ghcr.io/meltforce/cast2md:${TAG}
           # or
           pip install cast2md==${TAG}
           \`\`\`
           EOF
           )
           curl -fsSL -X POST \
-            -H "Authorization: token ${CODEBERG_TOKEN}" \
+            -H "Authorization: token ${GH_PAT}" \
+            -H "Accept: application/vnd.github+json" \
             -H "Content-Type: application/json" \
             -d "{\"tag_name\":\"${TAG}\",\"name\":\"${TAG}\",\"body\":${BODY},\"draft\":false,\"prerelease\":false}" \
-            "https://codeberg.org/api/v1/repos/meltforce/cast2md/releases"
+            "https://api.github.com/repos/meltforce/cast2md/releases"
 
   docs:
     if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
@@ -150,21 +174,25 @@ jobs:
           pip install zensical
           zensical build
           ls -la site | head -20
-      - name: Add .domains for Codeberg Pages
-        run: echo 'cast2md.meltforce.org' > site/.domains
-      - name: Push to Codeberg pages branch
+      - name: Add CNAME for GitHub Pages
+        run: |
+          echo 'cast2md.meltforce.org' > site/CNAME
+          # Jekyll would swallow every path starting with an underscore.
+          touch site/.nojekyll
+      # Pushed to Forgejo, not to GitHub: der Push-Mirror ist `git push --mirror`
+      # und prunet jeden Ref, den es lokal nicht gibt. Ein nur auf GitHub
+      # existierender gh-pages-Branch würde beim nächsten Sync gelöscht.
+      - name: Push to gh-pages branch (Forgejo → Mirror → GitHub)
         env:
-          CODEBERG_USER: ${{ secrets.CODEBERG_USER }}
-          CODEBERG_TOKEN: ${{ secrets.CODEBERG_TOKEN }}
+          FORGEJO_PUSH_TOKEN: ${{ secrets.FORGEJO_PUSH_TOKEN }}
         run: |
           set -euxo pipefail
-          test -n "$CODEBERG_USER" || { echo "CODEBERG_USER empty"; exit 1; }
-          test -n "$CODEBERG_TOKEN" || { echo "CODEBERG_TOKEN empty"; exit 1; }
+          test -n "$FORGEJO_PUSH_TOKEN" || { echo "FORGEJO_PUSH_TOKEN empty"; exit 1; }
           cd site
           git init
-          git config user.email "ci@meltforce.net"
+          git config user.email "25252086+meltforce@users.noreply.github.com"
           git config user.name  "cast2md ci"
-          git checkout -b pages
+          git checkout -b gh-pages
           git add -A
           git commit -m "docs: build from ${GITHUB_SHA::7}"
-          git push -f "https://${CODEBERG_USER}:${CODEBERG_TOKEN}@codeberg.org/meltforce/cast2md.git" pages
+          git push -f "https://${FORGEJO_PUSH_TOKEN}@git.coydog-fence.ts.net/meltforce.net/cast2md.git" gh-pages

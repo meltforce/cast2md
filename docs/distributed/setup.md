@@ -75,7 +75,7 @@ Perform these steps on each machine you want to use as a transcriber node.
 ### Quick Install (Recommended)
 
 ```bash
-curl -fsSL https://codeberg.org/meltforce/cast2md/raw/branch/main/scripts/cast2md-node.sh | bash
+curl -fsSL https://raw.githubusercontent.com/meltforce/cast2md/main/scripts/cast2md-node.sh | bash
 ```
 
 This script:
@@ -97,7 +97,7 @@ This script:
 #### Step 1: Install cast2md
 
 ```bash
-git clone https://codeberg.org/meltforce/cast2md.git
+git clone https://github.com/meltforce/cast2md.git
 cd cast2md
 
 # Create virtual environment

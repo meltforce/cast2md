@@ -9,7 +9,7 @@ Deploy code changes to the production server from your phone using Claude.
 3. Forgejo Actions (on bob-01) builds a Docker image from the current code
 4. The workflow SSHs into the server via Tailscale and deploys it
 
-The workflow pushes the image as `git.coydog-fence.ts.net/meltforce.net/cast2md:edge` on the in-tailnet Forgejo registry. cast2md is deployed via the homelab `docker-stacks` catalog (`configuration/docker-stacks/stacks/cast2md.yml`), so the production compose lives at `/opt/docker/stacks/cast2md/` and pins `image: git.coydog-fence.ts.net/meltforce.net/cast2md:edge`. A plain `docker compose pull && docker compose up -d` on the cast2md host picks up the new edge build over anonymous OCI (repo is public, no `docker login` needed). Tagged releases push to `codeberg.org/meltforce/cast2md:<version>` (public release stream — that's what `compose.example.yml` in the repo points at for fresh installs).
+The workflow pushes the image as `git.coydog-fence.ts.net/meltforce.net/cast2md:edge` on the in-tailnet Forgejo registry. cast2md is deployed via the homelab `docker-stacks` catalog (`configuration/docker-stacks/stacks/cast2md.yml`), so the production compose lives at `/opt/docker/stacks/cast2md/` and pins `image: git.coydog-fence.ts.net/meltforce.net/cast2md:edge`. A plain `docker compose pull && docker compose up -d` on the cast2md host picks up the new edge build over anonymous OCI (repo is public, no `docker login` needed). Tagged releases push to `ghcr.io/meltforce/cast2md:<version>` (public release stream — that's what `compose.example.yml` in the repo points at for fresh installs).
 
 ## Steps
 
@@ -32,14 +32,14 @@ To go back to the last tagged release:
 
 ```bash
 ssh root@cast2md.coydog-fence.ts.net "cd /opt/cast2md && \
-    docker pull codeberg.org/meltforce/cast2md:latest && \
-    sed -i 's|image:.*cast2md.*|image: codeberg.org/meltforce/cast2md:latest|' docker-compose.yml && \
+    docker pull ghcr.io/meltforce/cast2md:latest && \
+    sed -i 's|image:.*cast2md.*|image: ghcr.io/meltforce/cast2md:latest|' docker-compose.yml && \
     docker compose up -d cast2md"
 ```
 
 Or from Claude: ask to run this command.
 
-Rolling back swaps the production `image:` line in `docker-compose.yml` from the Forgejo edge tag to the Codeberg release tag, then `compose up -d`. Forward again: swap the image line back to `git.coydog-fence.ts.net/meltforce.net/cast2md:edge` and pull.
+Rolling back swaps the production `image:` line in `docker-compose.yml` from the Forgejo edge tag to the ghcr.io release tag, then `compose up -d`. Forward again: swap the image line back to `git.coydog-fence.ts.net/meltforce.net/cast2md:edge` and pull.
 
 ## What's deployed?
 

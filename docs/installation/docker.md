@@ -12,7 +12,7 @@ The recommended way to run the cast2md server in production. This installs every
 ### 1. Clone the Repository
 
 ```bash
-git clone https://codeberg.org/meltforce/cast2md.git
+git clone https://github.com/meltforce/cast2md.git
 cd cast2md
 ```
 

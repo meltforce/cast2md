@@ -18,7 +18,7 @@ Podcast transcription service -- download episodes via RSS and transcribe with W
 ## Quick Start
 
 ```bash
-git clone https://codeberg.org/meltforce/cast2md.git
+git clone https://github.com/meltforce/cast2md.git
 cd cast2md
 cp .env.example .env
 # Edit .env -- set POSTGRES_PASSWORD at minimum
@@ -43,8 +43,4 @@ Full documentation is available at **[meltforce.org/cast2md](https://meltforce.o
 ## License
 
 MIT
-
----
-
-_This project moved from GitHub to [codeberg.org/meltforce/cast2md](https://codeberg.org/meltforce/cast2md). Please update bookmarks and pull URLs._
 

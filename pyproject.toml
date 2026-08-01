@@ -68,8 +68,8 @@ node-mlx = [
 
 [project.urls]
 Homepage = "https://cast2md.meltforce.org"
-Repository = "https://codeberg.org/meltforce/cast2md"
-Issues = "https://codeberg.org/meltforce/cast2md/issues"
+Repository = "https://github.com/meltforce/cast2md"
+Issues = "https://github.com/meltforce/cast2md/issues"
 
 [project.scripts]
 cast2md = "cast2md.cli:cli"

@@ -10,7 +10,7 @@ Install cast2md as a remote transcription worker that connects to a running cast
 The install script handles everything automatically:
 
 ```bash
-curl -fsSL https://codeberg.org/meltforce/cast2md/raw/branch/main/scripts/cast2md-node.sh | bash
+curl -fsSL https://raw.githubusercontent.com/meltforce/cast2md/main/scripts/cast2md-node.sh | bash
 ```
 
 The script:
@@ -31,7 +31,7 @@ The script:
 ### 1. Clone and Install
 
 ```bash
-git clone https://codeberg.org/meltforce/cast2md.git
+git clone https://github.com/meltforce/cast2md.git
 cd cast2md
 
 python3 -m venv .venv
