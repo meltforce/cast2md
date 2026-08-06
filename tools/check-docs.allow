@@ -1,0 +1,51 @@
+# Suppressions for the language sweep in tools/check-docs.sh.
+#
+# Format per line: <path>%%<substring>
+# A hit is suppressed when its path matches the entry AND the offending line
+# contains the substring. Both halves are required, so an entry cannot silence
+# a whole file.
+#
+# Add a specific line here when the sweep fires on German *language data*, on a
+# verbatim quote, or on an English word the heuristic cannot tell apart. Never
+# weaken the patterns in check-docs.sh instead — that stops the guard catching
+# the case it exists for.
+#
+# The document contract check (check-docs.sh with no --language) does not read
+# this file. A finding there is fixed in the document, not suppressed.
+
+# German stopword list for full-text search. This is search payload, not prose:
+# the words are the data the tokenizer removes from a German query.
+src/cast2md/search/repository.py%%"der", "die", "das", "den", "dem", "des",
+src/cast2md/search/repository.py%%"ein", "eine", "einen", "einer", "einem", "eines",
+src/cast2md/search/repository.py%%"und", "oder", "aber", "wenn", "weil", "dass", "als", "auch", "noch",
+src/cast2md/search/repository.py%%"wie", "was", "wer", "wo", "wann", "warum", "welche", "welcher", "welches",
+src/cast2md/search/repository.py%%"mit", "von", "zu", "zum", "zur", "bei", "beim", "nach", "vor", "für",
+src/cast2md/search/repository.py%%"über", "unter", "auf", "an", "am", "in", "im", "aus", "um",
+src/cast2md/search/repository.py%%"durch", "gegen", "ohne", "bis", "seit", "ob",
+src/cast2md/search/repository.py%%"ist", "sind", "war", "waren", "wird", "werden", "wurde", "wurden",
+src/cast2md/search/repository.py%%"hat", "haben", "hatte", "hatten", "kann", "können", "konnte", "konnten",
+src/cast2md/search/repository.py%%"muss", "müssen", "musste", "mussten", "soll", "sollen", "sollte", "sollten",
+src/cast2md/search/repository.py%%"will", "wollen", "wollte", "wollten", "darf", "dürfen", "durfte", "durften",
+src/cast2md/search/repository.py%%"macht", "machen", "machte", "machten", "geht", "gehen", "ging", "gingen",
+src/cast2md/search/repository.py%%"sagt", "sagen", "sagte", "sagten", "weiß", "wissen", "wusste", "wussten",
+src/cast2md/search/repository.py%%"nicht", "nur", "schon", "sehr", "so", "ja", "nein", "man", "sich",
+src/cast2md/search/repository.py%%"diesem", "dieser", "dieses", "diese", "diesen",
+src/cast2md/search/repository.py%%"jetzt", "hier", "dort", "dann", "denn", "doch", "immer", "wieder",
+
+# German example queries in the MCP tool description, and the connecting-word
+# regex that strips them. Both are user-facing input handling for German
+# podcasts, not documentation.
+src/cast2md/mcp/tools.py%%re.sub(r"\b(im|in|vom|von|des|der|the|from|about|über)\b"
+src/cast2md/mcp/tools.py%%"Was ist der Inhalt der letzten Folge des KI Podcasts?"
+src/cast2md/mcp/tools.py%%"Was wurde im KI Podcast über MCP gesagt?"
+src/cast2md/mcp/tools.py%%"Was wird über Protein gesagt?"
+src/cast2md/mcp/tools.py%%"Peter Attia über Krafttraining"
+
+# The language rule quotes its own counter-example ("Rolle" in the text, `role`
+# in the YAML). Removing the quote removes the illustration.
+STANDARDS.md%%("Rolle" in the text,
+
+# Skill descriptions carry their trigger phrases in the language they are spoken
+# in. The operator speaks German; an English-only description would not route.
+.claude/skills/verify/SKILL.md%%"prüf das", "läuft das durch"
+.claude/skills/runpod-afterburner/SKILL.md%%description:

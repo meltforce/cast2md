@@ -27,14 +27,14 @@ jobs:
 
   build-deploy:
     needs: [build]
-    # KEIN github.event_name-Vergleich hier: bei einem `uses:`-Job wird die
-    # Bedingung im *aufgerufenen* Workflow ausgewertet, wo das Event
-    # `workflow_call` heisst. Sie war damit immer falsch — build und deploy
-    # wurden seit Anfang Juni 2026 still uebersprungen, waehrend der Caller
-    # weiter "success" meldete. Folge: :edge war seit 2026-05-11 eingefroren.
-    # github.ref bleibt korrekt und ist auf PRs refs/pull/N/merge.
-    # (Die Bedingungen an den normalen Jobs weiter unten sind davon nicht
-    # betroffen — die laufen im eigenen Workflow-Kontext.)
+    # NO github.event_name comparison here: on a `uses:` job the condition is
+    # evaluated in the *called* workflow, where the event is named
+    # `workflow_call`. It was therefore never true — build and deploy were
+    # silently skipped from early June 2026 on, while the caller kept
+    # reporting "success", and :edge stayed frozen at 2026-05-11.
+    # github.ref stays correct and is refs/pull/N/merge on PRs.
+    # (The conditions on the ordinary jobs below are unaffected — those run in
+    # their own workflow context.)
     if: github.ref == 'refs/heads/main'
     uses: meltforce.net/ci-workflows/.forgejo/workflows/build-push-deploy.yml@v1
     with:
@@ -187,16 +187,16 @@ jobs:
           echo 'cast2md.meltforce.org' > site/CNAME
           # Jekyll would swallow every path starting with an underscore.
           touch site/.nojekyll
-      # Pushed to Forgejo, not to GitHub: der Push-Mirror ist `git push --mirror`
-      # und prunet jeden Ref, den es lokal nicht gibt. Ein nur auf GitHub
-      # existierender gh-pages-Branch würde beim nächsten Sync gelöscht.
+      # Pushed to Forgejo, not to GitHub: the push-mirror runs
+      # `git push --mirror` and prunes every ref absent on Forgejo. A gh-pages
+      # branch existing only on GitHub is deleted on the next sync.
       - name: Push to gh-pages branch (Forgejo → Mirror → GitHub)
         env:
           FJ_PUSH_TOKEN: ${{ secrets.FJ_PUSH_TOKEN }}
         run: |
-          # Kein -x: der Push-URL enthält den Token, und ein Trace davon steht
-          # ungefiltert im Job-Log. Der Presence-Guard darunter ist das, was der
-          # Incident vom 2026-05-14 eigentlich wollte — nicht der Trace.
+          # No -x: the push URL embeds the token, and a trace of it lands
+          # unfiltered in the job log. The presence guard below is what the
+          # 2026-05-14 incident actually called for; the trace was not.
           set -euo pipefail
           test -n "$FJ_PUSH_TOKEN" || { echo "FJ_PUSH_TOKEN empty"; exit 1; }
           cd site

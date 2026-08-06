@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git ls-files:*)",
+      "Bash(uv build)",
+      "Bash(uv run pytest:*)",
+      "Bash(.venv/bin/python -m pytest:*)",
+      "Bash(.venv/bin/ruff:*)",
+      "Bash(ruff check:*)",
+      "Bash(ruff format --check:*)",
+      "Bash(tools/check-docs.sh:*)",
+      "Bash(docker compose ps:*)",
+      "Bash(docker compose logs:*)",
+      "Bash(curl https://cast2md.coydog-fence.ts.net/api/health)",
+      "Bash(curl -s https://cast2md.coydog-fence.ts.net/api/*)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./data/**)",
+      "Bash(git add -A:*)",
+      "Bash(git add .:*)",
+      "Bash(git push --force:*)",
+      "Bash(git push -f:*)",
+      "Bash(docker compose down:*)",
+      "Bash(docker system prune:*)"
+    ]
+  }
+}

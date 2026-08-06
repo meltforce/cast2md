@@ -87,9 +87,12 @@ models/
 # Screenshots
 screenshots/
 
-# Claude Code
+# Claude Code -- project scope is committed, session and machine state is not
 .claude/*
 !.claude/skills/
+!.claude/settings.json
+!.claude/project-standards.json
+.claude/settings.local.json
 CLAUDE.local.md
 .mcp.json
 
