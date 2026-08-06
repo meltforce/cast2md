@@ -5,6 +5,15 @@ APP_DIR="/opt/cast2md"
 DATA_DIR="$APP_DIR/data"
 NAS_MOUNT="/mnt/nas/cast2md"
 
+# Forgejo is the canonical source and the default for internal installs.
+# Override for hosts outside the tailnet, which cannot resolve git.coydog-fence.ts.net:
+#   CAST2MD_REPO=https://github.com/meltforce/cast2md.git ./install.sh
+CAST2MD_REPO="${CAST2MD_REPO:-https://git.coydog-fence.ts.net/meltforce.net/cast2md.git}"
+
+# PostgreSQL connection for the generated .env. The application has no SQLite
+# path any more -- db/config.py parses this URL into connection parameters.
+CAST2MD_DATABASE_URL="${CAST2MD_DATABASE_URL:-postgresql://cast2md:changeme@localhost:5432/cast2md}"
+
 echo "=== cast2md Installation Script ==="
 echo ""
 
@@ -32,8 +41,8 @@ if [ -d "$APP_DIR" ]; then
     echo "Updating existing installation..."
     cd $APP_DIR && git pull
 else
-    echo "Cloning repository..."
-    git clone https://github.com/meltforce/cast2md.git $APP_DIR
+    echo "Cloning repository from $CAST2MD_REPO ..."
+    git clone "$CAST2MD_REPO" $APP_DIR
 fi
 
 cd $APP_DIR
@@ -51,22 +60,25 @@ mkdir -p $DATA_DIR/temp
 if [ ! -f "$APP_DIR/.env" ]; then
     echo "Creating default .env configuration..."
     cat > "$APP_DIR/.env" << EOF
-DATABASE_PATH=$DATA_DIR/cast2md.db
+DATABASE_URL=$CAST2MD_DATABASE_URL
 STORAGE_PATH=$NAS_MOUNT
 TEMP_DOWNLOAD_PATH=$DATA_DIR/temp
 WHISPER_MODEL=base
 WHISPER_DEVICE=cpu
 WHISPER_COMPUTE_TYPE=int8
 EOF
-    echo "Created .env file - please review and adjust settings as needed"
+    echo "Created .env file - set DATABASE_URL to a reachable PostgreSQL instance before starting"
 else
     echo ".env file already exists, keeping current configuration"
 fi
 
-# Initialize database if needed
-if [ ! -f "$DATA_DIR/cast2md.db" ]; then
-    echo "Initializing database..."
-    .venv/bin/python -m cast2md init-db
+# Initialize database schema. This script does not install or provision
+# PostgreSQL -- DATABASE_URL has to point at a running instance with the
+# pgvector extension available. init-db is idempotent, so it runs on updates too.
+echo "Initializing database schema..."
+if ! .venv/bin/python -m cast2md init-db; then
+    echo "Error: init-db failed. Check DATABASE_URL in $APP_DIR/.env and that PostgreSQL is reachable." >&2
+    exit 1
 fi
 
 # Install systemd service
