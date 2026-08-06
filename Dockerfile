@@ -58,8 +58,12 @@ ENV PATH="/app/.venv/bin:$PATH"
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/app/src
 
-# OCI labels for version tracking
+# OCI labels for version tracking. The CI workflow passes VERSION=edge-<sha>,
+# so this carries the exact commit. It is also exposed as an env var, because a
+# label can only be read over the Docker socket on the host -- CI verifies the
+# deploy through /api/health over HTTPS and has no SSH there.
 ARG VERSION=dev
+ENV CAST2MD_BUILD_VERSION="${VERSION}"
 LABEL org.opencontainers.image.version="${VERSION}"
 LABEL org.opencontainers.image.source="https://github.com/meltforce/cast2md"
 

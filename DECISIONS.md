@@ -60,16 +60,34 @@ requires `"status":"healthy"`.
 condition was found by reading the file rather than by any signal. The gate
 converts that silence into a red run.
 
-The health poll is deliberately weaker than it looks and is documented as such
-in the job: it proves the deploy left a serving instance, not that this commit
-is the one serving. No image label or endpoint carries the revision — that is an
-open roadmap item spanning this repo and `ci-workflows`.
-
 **Verified on the first run** (`fc094bd`, 2026-08-06): all seven jobs green,
 `deploy-gate` among them. An ordinary `runs-on: docker` job does reach
 `cast2md.coydog-fence.ts.net` over the tailnet, so the health step needs no
 Tailscale action of its own. That was the one assumption in the job that no
 prior run had tested.
+
+**Revision check added the same day.** The gate originally proved only that the
+deploy left *a* serving instance. It now compares the commit as well, which
+closes the remaining half of the same failure class: if the push left `:edge`
+pointing at the old image, `docker compose pull` fetches that one, `up -d`
+reports up-to-date, and health is green over a deploy that changed nothing.
+
+The mechanism turned out to need no new plumbing. `build-push-deploy.yml` has
+passed `VERSION=edge-<sha>` as a build arg since `v1`, and the `Dockerfile`
+already wrote it to `org.opencontainers.image.version` — the commit was in the
+image all along, readable only over the Docker socket. One `ENV` line makes it
+readable to the process, `/api/health` reports it as `build`, and the gate
+compares it against `github.sha` over HTTPS.
+
+**Alternative considered.** Comparing image digests over SSH inside the shared
+`build-push-deploy.yml`. Rejected: it would force cast2md off `v1`, and `v3`
+copies the calling repo's `docker-compose.yml` to the target — here the dev
+stack, with a hardcoded password and Postgres published to the host, over the
+production `compose.yaml` that homelab owns. The bump is worth doing, with
+`sync_compose: false`, but it is its own change and is on the roadmap.
+
+`tests/test_health.py` pins the field name and the shell extraction, because a
+rename on the Python side would otherwise only surface as a failing deploy.
 
 **Alternative considered.** Removing the `if:` from `build-deploy` so it can
 never be skipped. Rejected: it would then also run on pull requests, deploying

@@ -40,8 +40,8 @@ uv build
 ```
 
 All four must pass — CI runs the same set in the `test` job, so a failure here
-is a failure there. The expected result is **102 passed**, `All checks passed!`
-and `80 files already formatted`.
+is a failure there. The expected result is **105 passed**, `All checks passed!`
+and `81 files already formatted`.
 
 **Without Postgres, 68 tests error at fixture setup** with
 `ValueError: DATABASE_URL environment variable is required` and 34 pass. That is
@@ -104,6 +104,15 @@ curl -s https://cast2md.coydog-fence.ts.net/api/health
 
 Test through the URL, never `ssh <host> "curl localhost:8000/..."` — the second
 exercises a different path than users take and hides reverse-proxy faults.
+
+The `build` field reads `edge-<sha>` and names the commit actually serving.
+`git log --oneline -1` on `main` should match it; if it does not, `main` has
+moved ahead of production. `deploy-gate` checks the same thing in CI, so a
+mismatch here means either a run is still going or one failed.
+
+**Never rename the `build` field or change its shape** without updating the
+`sed` expression in `deploy-gate` and `tests/test_health.py`. The test exists to
+make that coupling fail locally rather than at deploy time.
 
 ## Before a release
 

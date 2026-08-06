@@ -1,5 +1,6 @@
 """System API endpoints."""
 
+import os
 from typing import Literal
 
 from fastapi import APIRouter
@@ -103,6 +104,10 @@ class HealthCheck(BaseModel):
     storage: bool
     pool: PoolStats | None = None
     message: str | None = None
+    # Build identity, from the CI build arg (`edge-<sha>` for :edge images) via
+    # the Dockerfile. "dev" outside a CI-built image. This is what lets a deploy
+    # be verified as *this* commit rather than merely as "something answers".
+    build: str = "dev"
 
 
 @router.get("/health", response_model=HealthCheck)
@@ -148,6 +153,7 @@ def health_check():
         storage=checks["storage"],
         pool=pool,
         message=message,
+        build=os.environ.get("CAST2MD_BUILD_VERSION", "dev"),
     )
 
     if not is_healthy:

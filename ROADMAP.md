@@ -17,7 +17,7 @@ each becomes its own `[open]` row before the entry is moved out.
 
 | Status | Item | Where | Trigger | Notes |
 |---|---|---|---|---|
-| `[open]` | Put the commit revision into the image and check it after deploy | `Dockerfile`, `ci-workflows` | | `deploy-gate` proves the deploy job ran and left a healthy instance; it cannot prove *this* commit is serving. The `Dockerfile` sets `org.opencontainers.image.version` from a build arg but no `.revision`, and no endpoint exposes one. Needs the shared `build-push-deploy.yml` to pass the SHA, so it spans two repos. |
+| `[open]` | Move cast2md off `build-push-deploy.yml@v1` | `.forgejo/workflows/ci.yml` | | `v1` is from 2026-05-12; the other callers are on `v3`. Missing since then: authenticated Docker Hub login against the 429 rate limit (`v2`) and the compose sync (`v3`). **A bump needs `sync_compose: false`** — homelab owns the deployed `compose.yaml`, and `v3` would otherwise copy this repo's `docker-compose.yml`, the dev stack with password `dev` and port 5432 published, over it. `v2` also makes `DOCKERHUB_USERNAME`/`TOKEN` required secrets, which this repo does not pass today. |
 
 ## Documentation
 

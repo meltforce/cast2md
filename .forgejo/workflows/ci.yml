@@ -111,25 +111,42 @@ jobs:
             exit 1
           fi
 
-      - name: Verify the deployed instance answers
+      - name: Verify this commit is the one serving
+        env:
+          # What the build arg becomes: build-push-deploy.yml passes
+          # VERSION=edge-<sha>, the Dockerfile puts it in CAST2MD_BUILD_VERSION,
+          # and /api/health reports it as `build`.
+          EXPECTED: edge-${{ github.sha }}
         run: |
           set -euo pipefail
-          # Confirms the deploy left a serving instance behind. It does NOT
-          # prove this commit is the one running -- no image label or endpoint
-          # carries the revision (open roadmap item). Retries because the
-          # container is restarted moments earlier.
+          # A green build-deploy is not proof the new image is running: if the
+          # push left :edge pointing at the old image, `docker compose pull`
+          # fetches that one, `up -d` reports up-to-date, and health is green
+          # over a deploy that changed nothing. Comparing the build string is
+          # what separates "deployed" from "still the previous commit".
           for attempt in 1 2 3 4 5 6; do
             body="$(curl -fsS --max-time 10 https://cast2md.coydog-fence.ts.net/api/health || true)"
-            case "${body}" in
-              *'"status":"healthy"'*)
-                echo "health: ${body}"
-                exit 0
-                ;;
-            esac
-            echo "attempt ${attempt}: not healthy yet (${body:-no response})"
+            # Tolerates whitespace around the colon: FastAPI emits compact JSON,
+            # but nothing in the contract promises it stays that way.
+            got="$(printf '%s' "${body}" \
+                   | sed -n 's/.*"build"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
+            if [ "${got}" = "${EXPECTED}" ]; then
+              case "${body}" in
+                *'"status":"healthy"'*)
+                  echo "serving ${got}, healthy"
+                  exit 0
+                  ;;
+              esac
+              echo "attempt ${attempt}: right build, not healthy yet"
+            else
+              echo "attempt ${attempt}: build is '${got:-unknown}', want '${EXPECTED}'"
+            fi
             sleep 10
           done
-          echo "::error::/api/health did not report healthy within 60s of the deploy."
+          echo "::error::After 60s, /api/health does not report a healthy ${EXPECTED}."
+          echo "A different build string means the deploy ran but the new image"
+          echo "never reached the host — check whether :edge was actually moved."
+          echo "It can also mean a later push overtook this run; compare the SHAs."
           exit 1
 
   build-afterburner:
