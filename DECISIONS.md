@@ -45,6 +45,40 @@ needs `git config blame.ignoreRevsFile .git-blame-ignore-revs` once.
 **Trigger to re-open.** A `ruff format` release whose output changes materially,
 or a decision to adopt a different line length.
 
+## 2026-08-06 — runs queue per ref instead of cancelling each other
+
+**Decided:** 2026-08-06
+
+**Decision.** `ci.yml` sets `concurrency` at workflow scope with
+`group: <workflow>-<ref>` and `cancel-in-progress: false`.
+
+**Reasoning.** Forgejo aborted running push runs of the same workflow and branch
+on the next push, hardcoded, up to v12 (forgejo#5914: "can lead to partial and
+broken deploys"). `concurrency` became configurable in v14; this instance is on
+16.0.2 and nothing had been set.
+
+The cost was paid the same day this repo's deploy checks were built: the deploy
+of `730bdd7` ended as `cancelled` because the next commit landed four minutes
+later. Production stayed on the previous image, and nothing was red — `cancelled`
+is a third outcome next to `success` and `failure`, and `deploy-gate` cannot
+report on a run killed before its jobs start. The gate was not bypassed; it never
+ran.
+
+**Workflow scope, not job scope.** `deploy-gate` compares the running build
+against `github.sha`, so a second deploy starting while the first run's gate is
+still polling would make that comparison fail on a correct deploy. Serialising
+the whole run keeps it meaningful. The group carries the ref, so a pull request
+never queues behind `main`.
+
+**Cost accepted.** Two pushes in quick succession now take roughly twice as long
+to reach production, because the second waits rather than replacing the first.
+With one developer that is a few minutes; the alternative is a deploy that
+disappears without a trace.
+
+**Trigger to re-open.** Queueing becoming a bottleneck — at which point the
+narrower fix is job-scoped concurrency on `build-deploy` plus folding the
+revision check into the same job, so there is nothing left to race against.
+
 ## 2026-08-06 — a skipped deploy fails the pipeline
 
 **Decided:** 2026-08-06

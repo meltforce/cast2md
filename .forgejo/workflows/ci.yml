@@ -12,6 +12,26 @@ permissions:
   contents: read
   packages: write
 
+# Queue runs of this workflow per ref instead of letting a new push abort the
+# one in flight. Forgejo aborted running push runs unconditionally up to v12
+# (forgejo#5914, "can lead to partial and broken deploys"); `concurrency` became
+# configurable in v14, and this instance is on 16.0.2.
+#
+# That is not theoretical here: on 2026-08-06 the deploy of 730bdd7 ended as
+# `cancelled` because the next commit landed four minutes later, so production
+# stayed on the previous image with nothing red to show for it. `cancelled` is a
+# third outcome next to success and failure, and deploy-gate cannot report on a
+# run that was killed before its jobs started -- see homelab/INCIDENTS.md,
+# 2026-08-01 (afternoon).
+#
+# Workflow scope rather than job scope: deploy-gate compares the running build
+# against github.sha, so a second deploy must not start while the first run's
+# gate is still checking. Serialising the whole run keeps that comparison
+# meaningful. The group includes the ref, so a PR never queues behind main.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build:
     runs-on: docker
