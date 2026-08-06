@@ -17,9 +17,8 @@ each becomes its own `[open]` row before the entry is moved out.
 
 | Status | Item | Where | Trigger | Notes |
 |---|---|---|---|---|
-| `[open]` | Run `pytest` and `ruff` in CI | `.forgejo/workflows/ci.yml` | | The `build` job runs `uv build` only. The job needs a Postgres service container: without `DATABASE_URL`, 68 of 102 tests error at fixture setup and 34 pass. `ruff` needs the baseline below cleared first, or it fails every run. |
-| `[open]` | Clear the 366 `ruff` findings | `src/`, `tests/` | | 196 are auto-fixable with `ruff check --fix`. This is pre-existing debt, not a regression — `ruff` has never run in CI. Until it is cleared, `ruff` cannot gate anything. |
-| `[open]` | Decide whether the deploy gate needs a positive signal | `.forgejo/workflows/ci.yml` | After the CI test job lands | A skipped `build-deploy` still reports success. The 2026-08-01 incident was found by inspection, not by an alert; nothing currently distinguishes "deployed" from "silently skipped". |
+| `[open]` | Put the commit revision into the image and check it after deploy | `Dockerfile`, `ci-workflows` | | `deploy-gate` proves the deploy job ran and left a healthy instance; it cannot prove *this* commit is serving. The `Dockerfile` sets `org.opencontainers.image.version` from a build arg but no `.revision`, and no endpoint exposes one. Needs the shared `build-push-deploy.yml` to pass the SHA, so it spans two repos. |
+| `[open]` | Watch the first `deploy-gate` run for tailnet reachability | `.forgejo/workflows/ci.yml` | Next push to `main` | The health check assumes the runner reaches `cast2md.coydog-fence.ts.net`. `build-deploy` reaches the same host over Tailscale SSH, so it should hold — but it is untested from an ordinary `runs-on: docker` job. If it fails on DNS rather than on health, the step needs the Tailscale action rather than removal. |
 
 ## Documentation
 

@@ -25,8 +25,44 @@ jobs:
       - name: Validate package builds
         run: uv build
 
+  test:
+    runs-on: docker
+    # 68 of the 102 tests take a real database: their fixtures open a
+    # connection at setup and fail with "DATABASE_URL environment variable is
+    # required" without one. pgvector rather than plain postgres because the
+    # search schema declares vector(384) columns.
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: cast2md
+          POSTGRES_USER: cast2md
+          POSTGRES_PASSWORD: ci
+        options: >-
+          --health-cmd "pg_isready -U cast2md"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://cast2md:ci@postgres:5432/cast2md
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install uv
+        run: pip install uv
+      - name: Install dependencies
+        run: uv sync --extra dev --frozen
+      - name: Lint
+        run: |
+          uv run ruff check src tests
+          uv run ruff format --check src tests
+      - name: Test
+        run: uv run pytest -q
+
   build-deploy:
-    needs: [build]
+    needs: [build, test]
     # NO github.event_name comparison here: on a `uses:` job the condition is
     # evaluated in the *called* workflow, where the event is named
     # `workflow_call`. It was therefore never true — build and deploy were
@@ -43,6 +79,58 @@ jobs:
     secrets:
       REGISTRY_USER: ${{ secrets.REGISTRY_USER }}
       REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
+
+  deploy-gate:
+    # Turns a skipped deploy into a red pipeline. Without this job, a
+    # `build-deploy` that never ran is indistinguishable from one that
+    # succeeded: a `uses:` job whose `if:` evaluates false is reported as
+    # `skipped`, and a skipped job does not fail the workflow. That is exactly
+    # how build and deploy went unnoticed for two months in 2026 (see the
+    # comment on build-deploy and the pointer in INCIDENTS.md).
+    #
+    # The github.event_name comparison IS correct here, unlike on build-deploy:
+    # this is an ordinary `runs-on:` job, so its condition is evaluated in this
+    # workflow's context where the event really is `push`. Do not remove it --
+    # without it the job would fail every pull request, where build-deploy is
+    # skipped by design.
+    needs: [build-deploy]
+    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: docker
+    steps:
+      - name: Require build-deploy to have run
+        env:
+          RESULT: ${{ needs.build-deploy.result }}
+        run: |
+          set -euo pipefail
+          echo "build-deploy result: ${RESULT}"
+          if [ "${RESULT}" != "success" ]; then
+            echo "::error::build-deploy did not run to success (result: ${RESULT})."
+            echo "A 'skipped' result means the job's if: condition was false --"
+            echo "check whether it compares github.event_name, which is"
+            echo "'workflow_call' inside the called workflow and never 'push'."
+            exit 1
+          fi
+
+      - name: Verify the deployed instance answers
+        run: |
+          set -euo pipefail
+          # Confirms the deploy left a serving instance behind. It does NOT
+          # prove this commit is the one running -- no image label or endpoint
+          # carries the revision (open roadmap item). Retries because the
+          # container is restarted moments earlier.
+          for attempt in 1 2 3 4 5 6; do
+            body="$(curl -fsS --max-time 10 https://cast2md.coydog-fence.ts.net/api/health || true)"
+            case "${body}" in
+              *'"status":"healthy"'*)
+                echo "health: ${body}"
+                exit 0
+                ;;
+            esac
+            echo "attempt ${attempt}: not healthy yet (${body:-no response})"
+            sleep 10
+          done
+          echo "::error::/api/health did not report healthy within 60s of the deploy."
+          exit 1
 
   build-afterburner:
     if: |

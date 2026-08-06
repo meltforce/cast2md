@@ -33,23 +33,27 @@ and the German example query in `src/cast2md/mcp/tools.py`.
 ```bash
 uv sync --extra dev              # no .venv in a fresh checkout
 docker compose up -d postgres    # 68 of 102 tests need a database
-.venv/bin/python -m pytest
+DATABASE_URL="postgresql://cast2md:dev@localhost:5432/cast2md" .venv/bin/python -m pytest -q
 .venv/bin/ruff check src tests
+.venv/bin/ruff format --check src tests
 uv build
 ```
 
-`pytest` reads `testpaths = ["tests"]` from `pyproject.toml`. `ruff` is
-configured for line length 100 and rule sets `E,F,I,N,W,UP`.
+All four must pass — CI runs the same set in the `test` job, so a failure here
+is a failure there. The expected result is **102 passed**, `All checks passed!`
+and `80 files already formatted`.
 
 **Without Postgres, 68 tests error at fixture setup** with
 `ValueError: DATABASE_URL environment variable is required` and 34 pass. That is
 not a passing run. If you cannot start Postgres, report the numbers rather than
 the word "passed".
 
-**`ruff check` currently reports 366 pre-existing findings** (196 auto-fixable).
-Compare against that baseline: what matters is whether your change adds to it,
-not that the command exits non-zero. Clearing the baseline is an open roadmap
-item, not part of an unrelated change.
+**`ruff format --check` is part of the gate, not optional.** The formatter owns
+line length here and E501 is in `ignore` — see `DECISIONS.md`, 2026-08-06. Run
+`ruff format src tests` to fix, never re-enable E501 to work around it.
+
+**On a Mac, `docker` may not be on `PATH`** even with Docker Desktop installed:
+the binary lives in `/Applications/Docker.app/Contents/Resources/bin/`.
 
 **A missing interpreter is not a test result.** If `.venv/bin/python` does not
 exist, run `uv sync --extra dev` first; if that also fails, say the suite was

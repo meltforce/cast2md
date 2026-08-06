@@ -14,6 +14,65 @@ place with the old form recorded under revisions — the entry is not duplicated
 
 ---
 
+## 2026-08-06 — `ruff format` owns line length; E501 is not enforced separately
+
+**Decided:** 2026-08-06
+
+**Decision.** `ruff format` is applied to `src/` and `tests/` and checked in CI
+with `ruff format --check`. `E501` is in `ignore` in `pyproject.toml`.
+
+**Reasoning.** `ruff` had never run in CI, so 366 findings had accumulated. The
+formatter run (47 of 80 files) cleared most of them and took E501 from 141 to
+83. Every one of the 83 survivors was classified: 55 in string literals, 23 in
+SQL and shell heredocs inside triple-quoted strings, 3 comments, 2 docstrings.
+Not one was wrappable Python. Breaking them by hand would make the SQL less
+readable and would change behaviour inside the RunPod pod startup scripts.
+
+Enforcing both a formatter and a line-length lint means two authorities for one
+question, and the lint can only ever fire on what the formatter deliberately
+left alone.
+
+**Alternative considered.** Keeping E501 and hand-wrapping the 83. Rejected on
+the classification above. Also considered: skipping the formatter and only
+ignoring E501 — rejected because it leaves the other 58 E501 findings that the
+formatter does fix, and leaves the codebase without a formatting authority.
+
+**Cost accepted.** The format run rewrites 47 files, so `git blame` on those
+lines points at commit `6f3e133`. That commit is listed in
+`.git-blame-ignore-revs`, which the forge reads automatically; a local checkout
+needs `git config blame.ignoreRevsFile .git-blame-ignore-revs` once.
+
+**Trigger to re-open.** A `ruff format` release whose output changes materially,
+or a decision to adopt a different line length.
+
+## 2026-08-06 — a skipped deploy fails the pipeline
+
+**Decided:** 2026-08-06
+
+**Decision.** A `deploy-gate` job runs after `build-deploy` on every push to
+`main` with `if: always()`, and exits 1 unless `needs.build-deploy.result` is
+`success`. It then polls `/api/health` on the production host for up to 60s and
+requires `"status":"healthy"`.
+
+**Reasoning.** A `uses:` job whose `if:` evaluates false is reported as
+`skipped`, and a skipped job does not fail the workflow. Between early June and
+2026-08-01 that produced a green pipeline over a deploy that never ran, and the
+condition was found by reading the file rather than by any signal. The gate
+converts that silence into a red run.
+
+The health poll is deliberately weaker than it looks and is documented as such
+in the job: it proves the deploy left a serving instance, not that this commit
+is the one serving. No image label or endpoint carries the revision — that is an
+open roadmap item spanning this repo and `ci-workflows`.
+
+**Alternative considered.** Removing the `if:` from `build-deploy` so it can
+never be skipped. Rejected: it would then also run on pull requests, deploying
+unreviewed code to production.
+
+**Trigger to re-open.** The revision landing in the image, at which point the
+health poll should compare it against `github.sha` instead of only checking
+liveness.
+
 ## 2026-08-06 — infrastructure postmortems live in `homelab`, not here
 
 **Decided:** 2026-08-06

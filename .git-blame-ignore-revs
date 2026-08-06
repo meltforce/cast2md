@@ -1,0 +1,9 @@
+# Commits that only moved code around. `git blame` skips them with:
+#
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+#
+# Forgejo and GitHub read this file automatically; a local checkout needs the
+# config line above once. Only add a commit here when it changed no behaviour.
+
+# style: apply ruff format and clear the 366-finding lint backlog (2026-08-06)
+6f3e133755140a3983095f04d2f4687d8fe213b8
