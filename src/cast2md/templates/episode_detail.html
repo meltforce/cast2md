@@ -32,6 +32,10 @@
                 {% if feed.link %}
                 <a href="{{ feed.link }}" target="_blank" role="button" class="outline secondary" style="padding: 0.25rem 0.75rem; font-size: 0.875rem;">Podcast Website</a>
                 {% endif %}
+                {# vimmary pulls the transcript itself; this link only carries the episode ID. #}
+                {% if vimmary_url and episode.status.value == 'completed' %}
+                <a href="{{ vimmary_url }}/podcasts/new?episode={{ episode.id }}" target="_blank" role="button" class="outline" style="padding: 0.25rem 0.75rem; font-size: 0.875rem;">Summarize in vimmary</a>
+                {% endif %}
             </div>
         </div>
     </div>

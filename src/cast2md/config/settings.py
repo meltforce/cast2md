@@ -65,6 +65,11 @@ class Settings(BaseSettings):
     # iTunes search settings
     itunes_country: str = "de"  # ISO 3166-1 alpha-2 country code for iTunes store
 
+    # vimmary integration. Setting this shows a "Summarize in vimmary" button
+    # on completed episodes; vimmary itself pulls the transcripts, so there is
+    # no server-to-server coupling in this direction.
+    vimmary_url: str = ""  # e.g., https://vimmary.example.ts.net
+
     # Notifications (ntfy)
     ntfy_enabled: bool = False
     ntfy_url: str = "https://ntfy.sh"
@@ -148,6 +153,7 @@ _DEFAULTS = {
     "request_timeout": 30,
     "stuck_threshold_minutes": 30,
     "itunes_country": "de",
+    "vimmary_url": "",
     "ntfy_enabled": False,
     "ntfy_url": "https://ntfy.sh",
     "ntfy_topic": "",

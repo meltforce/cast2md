@@ -495,6 +495,9 @@ def episode_detail(
             "current_model": current_model,
             "back_label": back_label,
             "back_href": back_href,
+            # Empty unless the operator configured vimmary; the template hides
+            # the button in that case.
+            "vimmary_url": settings.vimmary_url.rstrip("/"),
         },
     )
 
