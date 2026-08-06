@@ -20,6 +20,7 @@ Podcast transcription service -- download episodes via RSS and transcribe with W
 ```bash
 git clone https://github.com/meltforce/cast2md.git
 cd cast2md
+cp compose.example.yml compose.yaml
 cp .env.example .env
 # Edit .env -- set POSTGRES_PASSWORD at minimum
 docker compose up -d
@@ -27,18 +28,25 @@ docker compose up -d
 
 Open `http://localhost:8000` to access the web UI.
 
+**Which compose file.** `compose.example.yml` is the template for running
+cast2md: it pulls the published image and requires `POSTGRES_PASSWORD` to be
+set. `docker-compose.yml` in this repo is the **development** stack -- it builds
+from source, hardcodes the database password to `dev` and publishes port 5432 to
+the host. Copying the example to `compose.yaml` as above takes precedence, so
+`docker compose` picks the right one.
+
 ## Documentation
 
-Full documentation is available at **[meltforce.org/cast2md](https://meltforce.org/cast2md)**.
+Full documentation is available at **[cast2md.meltforce.org](https://cast2md.meltforce.org)**.
 
 | Section | Description |
 |---------|-------------|
-| [Getting Started](https://meltforce.org/cast2md/getting-started/) | Architecture and key concepts |
-| [Installation](https://meltforce.org/cast2md/installation/) | Docker, manual install, transcriber nodes |
-| [Configuration](https://meltforce.org/cast2md/configuration/) | Environment variables, Whisper models |
-| [Usage](https://meltforce.org/cast2md/usage/) | Web UI, CLI, REST API, MCP server |
-| [Distributed Transcription](https://meltforce.org/cast2md/distributed/) | Multi-machine setup, RunPod GPU workers |
-| [Deployment](https://meltforce.org/cast2md/deployment/) | Production deployment, server sizing |
+| [Getting Started](https://cast2md.meltforce.org/getting-started/) | Architecture and key concepts |
+| [Installation](https://cast2md.meltforce.org/installation/) | Docker, manual install, transcriber nodes |
+| [Configuration](https://cast2md.meltforce.org/configuration/) | Environment variables, Whisper models |
+| [Usage](https://cast2md.meltforce.org/usage/) | Web UI, CLI, REST API, MCP server |
+| [Distributed Transcription](https://cast2md.meltforce.org/distributed/) | Multi-machine setup, RunPod GPU workers |
+| [Deployment](https://cast2md.meltforce.org/deployment/) | Production deployment, server sizing |
 
 ## License
 

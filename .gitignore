@@ -87,6 +87,10 @@ models/
 # Screenshots
 screenshots/
 
+# Local instance config: the Quick Start copies compose.example.yml here, and
+# docker compose prefers compose.yaml over docker-compose.yml
+compose.yaml
+
 # Claude Code -- project scope is committed, session and machine state is not
 .claude/*
 !.claude/skills/
