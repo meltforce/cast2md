@@ -1,25 +1,80 @@
 # cast2md - Project Knowledge
 
+## Repository and CI
+
+Forgejo is canonical: `origin` is `https://git.coydog-fence.ts.net/meltforce.net/cast2md.git`.
+GitHub (`github.com/meltforce/cast2md`) receives commits and tags through a
+Forgejo push-mirror and serves as the public distribution channel only.
+
+- CI is `.forgejo/workflows/ci.yml` (Forgejo Actions). There is no `.github/workflows/`.
+- The push-mirror runs `git push --mirror`, which prunes every ref not present on
+  Forgejo. A branch created only on GitHub is deleted on the next sync -- this is
+  why the `docs` job pushes `gh-pages` to Forgejo rather than to GitHub.
+- `build-deploy` calls the shared workflow
+  `meltforce.net/ci-workflows/.forgejo/workflows/build-push-deploy.yml@v1`,
+  a second Forgejo repository that has to be kept in step with this one.
+
+### GitHub references that must stay
+
+Some code fetches from GitHub on purpose. Do not rewrite these to Forgejo.
+
+| Location | Why GitHub |
+|---|---|
+| `services/pod_setup.py:100`, `deploy/afterburner/afterburner.py:706` | RunPod pods run Tailscale in userspace mode. Their outbound HTTP proxy has no CONNECT tunneling, and `git.coydog-fence.ts.net` answers on HTTPS only (port 80 refused), so `pip install git+https://git.coydog-fence.ts.net/...` cannot work from a pod. |
+| `docs/installation/*.md`, `README.md` | The docs are published at cast2md.meltforce.org. Readers outside the tailnet cannot resolve the Forgejo host. |
+| `pyproject.toml` (`Repository`, `Issues`), `mkdocs.yml` (`repo_url`), `Dockerfile` (`image.source`) | Public-facing metadata for PyPI, the docs site, and image provenance. |
+
+This works because the push-mirror keeps GitHub current, including
+`raw.githubusercontent.com/meltforce/cast2md/main/scripts/cast2md-node.sh`,
+which `docs/installation/node.md` pipes into bash.
+
+Internal installs use Forgejo: `deploy/install.sh` defaults to the Forgejo clone
+URL and takes `CAST2MD_REPO` to override it for hosts outside the tailnet.
+
+| Job | Trigger | Output |
+|---|---|---|
+| `build` | every push and PR | `uv build` validation, no artifact |
+| `build-deploy` | push to `main` | `:edge` image in the Forgejo registry, deploy to `cast2md.coydog-fence.ts.net` |
+| `build-afterburner` | `deploy/afterburner/Dockerfile` changed on `main`, or `workflow_dispatch` | `docker.io/meltforce/cast2md-afterburner` |
+| `release` | tag matching `[0-9]+.[0-9]+*` | `ghcr.io/meltforce/cast2md`, PyPI, GitHub release |
+| `docs` | push to `main` or `workflow_dispatch` | `gh-pages` branch on Forgejo |
+
 ## Deployment
 
-The production server runs on `cast2md` (Tailscale hostname) via Docker Compose. The server has no git repo -- only `docker-compose.yml`, `.env`, and data.
+The production server runs on `cast2md` (Tailscale hostname) via Docker Compose. The server has no git repo.
 
-To deploy a tagged release (after CI builds it):
+- Compose file and `.env`: `/opt/docker/stacks/cast2md/` (`compose.yaml`, not `docker-compose.yml`)
+- Data bind-mount: `/opt/cast2md/data/` -- this path holds data only, no configuration
+- App image: `git.coydog-fence.ts.net/meltforce.net/cast2md:edge`, overridable via `APP_IMAGE`
+
+**Production tracks `:edge`, not a release tag.** The `build-deploy` job rebuilds
+`:edge` and redeploys on every push to `main`, so `main` reaches production
+without a tag. Tagged releases publish to ghcr.io and PyPI for external users
+and do not change what this server runs.
+
+Manual redeploy (CI normally does this):
 ```bash
-ssh root@cast2md "cd /opt/cast2md && docker compose pull cast2md && docker compose up -d cast2md"
+ssh root@cast2md "cd /opt/docker/stacks/cast2md && docker compose pull cast2md && docker compose up -d cast2md"
 ```
 
-Production uses the `latest` tag, which CI updates on every tagged release.
-
-**Docker Hub** is only updated by CI on tagged releases. Never push dev builds to Docker Hub -- other users could pull an undefined state.
+**Docker Hub** now receives only `meltforce/cast2md-afterburner`, built when
+`deploy/afterburner/Dockerfile` changes on `main`. The application image moved to
+`ghcr.io/meltforce/cast2md` for releases and to the Forgejo registry for `:edge`.
+Never push dev builds to a public registry -- other users could pull an undefined state.
 
 **Releasing a new version:**
-1. Bump `version` in `pyproject.toml` to match the new tag (e.g., `"2026.01.1"`)
+1. Bump `version` in `pyproject.toml` to match the new tag (e.g., `"2026.08.1"`)
 2. Commit the version bump
-3. `git tag 2026.01.1 && git push origin main 2026.01.1`
-4. CI builds the Docker image and publishes the PyPI package
+3. `git tag 2026.08.1 && git push origin main 2026.08.1`
+4. The `release` job pushes `ghcr.io/meltforce/cast2md:<tag>` and `:latest`, publishes to PyPI, and creates the GitHub release
 
 **Important:** The `pyproject.toml` version must match the git tag. PyPI rejects duplicate versions, so forgetting to bump it will fail the release.
+
+**Important:** The `release` job depends on the push-mirror. Its "Wait for tag to
+propagate to GitHub" step polls `api.github.com` for 5 minutes and exits 1 if the
+tag has not arrived, because the GitHub release must reference an existing tag.
+A stalled mirror therefore fails the release after ghcr.io and PyPI have already
+been published. Requires `secrets.GH_PAT`.
 
 **Important:** Always test on the dev machine first. Never use the production server for testing -- repeated restarts disrupt workers, nodes, and job state.
 
@@ -36,18 +91,18 @@ Both PostgreSQL and the cast2md app run as Docker containers:
 
 ```bash
 # Start/restart the full stack
-ssh root@cast2md "cd /opt/cast2md && docker compose up -d"
+ssh root@cast2md "cd /opt/docker/stacks/cast2md && docker compose up -d"
 
 # View logs
-ssh root@cast2md "cd /opt/cast2md && docker compose logs -f cast2md"
+ssh root@cast2md "cd /opt/docker/stacks/cast2md && docker compose logs -f cast2md"
 
 # Check status
-ssh root@cast2md "docker compose -f /opt/cast2md/docker-compose.yml ps"
+ssh root@cast2md "docker compose -f /opt/docker/stacks/cast2md/compose.yaml ps"
 ```
 
-Configuration is in `/opt/cast2md/.env` (not checked into git). The Docker Compose file reads env vars from `.env` and passes them to the containers.
+Configuration is in `/opt/docker/stacks/cast2md/.env` (not checked into git). The Docker Compose file reads env vars from `.env` and passes them to the containers. `DB_IMAGE` and `APP_IMAGE` have defaults in `compose.yaml` and are only set in `.env` to pin a specific image.
 
-**Important:** The `.env` file contains secrets (RUNPOD_API_KEY, database credentials). Never commit it. The Docker image is `meltforce/cast2md:<version>`, built by CI.
+**Important:** The `.env` file contains secrets (RUNPOD_API_KEY, database credentials). Never commit it. The running image is `git.coydog-fence.ts.net/meltforce.net/cast2md:edge`, built by the `build-deploy` job.
 
 ## Development (Dev Machine)
 
@@ -99,16 +154,22 @@ No systemd service -- run on demand. Reinstall after dependency changes:
 
 ## Documentation
 
-Public docs are at [meltforce.org/cast2md](https://meltforce.org/cast2md), built with **Zensical** (MkDocs Material successor).
+Public docs are at [cast2md.meltforce.org](https://cast2md.meltforce.org), built with **Zensical** (MkDocs Material successor). This matches `site_url` in `mkdocs.yml`; the older `meltforce.org/cast2md` redirects there.
 
 - Source: `docs/` directory + `mkdocs.yml`
-- CI: `.github/workflows/docs.yml` builds on pushes to `docs/**` or `mkdocs.yml`
-- Hosting: GitHub Pages (source: GitHub Actions, not "Deploy from branch")
+- CI: the `docs` job in `.forgejo/workflows/ci.yml`, on every push to `main` (no path filter) or `workflow_dispatch`
+- Publishing: the job builds `site/`, then force-pushes it as branch `gh-pages` to
+  **Forgejo**; the push-mirror carries that branch to GitHub, where Pages serves it
+  from the branch. Pushing `gh-pages` straight to GitHub would break on the next
+  mirror sync (see "Repository and CI").
+- Requires `secrets.FJ_PUSH_TOKEN`. The push step runs without `set -x` because the
+  push URL embeds the token.
 - Local preview: `pip install zensical && zensical serve`
 
 **Key files:**
 - `mkdocs.yml` - Site config and navigation (Zensical reads this natively)
-- No `docs/CNAME` -- site is served via Caddy reverse proxy to GitHub Pages
+- No `docs/CNAME` in the repo -- the `docs` job writes `cast2md.meltforce.org` into
+  `site/CNAME` at build time, alongside `site/.nojekyll`
 - `docs/internal/` - Internal docs (not in nav, but still publicly accessible by URL)
 - `cast2md-requirements.md` - Central requirements document with architecture, data model, and development phases
 
@@ -521,7 +582,7 @@ RunPod pods use a custom Docker image (`meltforce/cast2md-afterburner:cuda124`) 
 
 This may reduce speed from ~87x to ~60-70x realtime but ensures stability across different GPU/driver combinations.
 
-**Building**: The image is built automatically via GitHub Actions when `deploy/afterburner/Dockerfile` changes. See `deploy/afterburner/IMAGE.md` for manual build instructions.
+**Building**: The `build-afterburner` job in `.forgejo/workflows/ci.yml` builds the image when `deploy/afterburner/Dockerfile` changes on `main`, or on `workflow_dispatch`. It pushes to Docker Hub with `--no-cache`. See `deploy/afterburner/IMAGE.md` for manual build instructions.
 
 ### GPU Validation
 
