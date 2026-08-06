@@ -8,9 +8,11 @@ on:
     branches: [main]
   workflow_dispatch:
 
-permissions:
-  contents: read
-  packages: write
+# No `permissions:` block: Forgejo does not support it and logs a warning
+# for every job in the run, including the jobs of any reusable workflow this
+# one calls. Capabilities come from Authorized Integrations instead. These
+# workflows live under .forgejo/ and never run on GitHub, so the field had
+# no effect anywhere.
 
 # Queue runs of this workflow per ref instead of letting a new push abort the
 # one in flight. Forgejo aborted running push runs unconditionally up to v12
