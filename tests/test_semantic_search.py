@@ -2,17 +2,15 @@
 
 import tempfile
 from pathlib import Path
-from unittest.mock import patch, MagicMock
 
 import pytest
 
 from cast2md.search.embeddings import (
-    text_hash,
-    is_embeddings_available,
     DEFAULT_MODEL_NAME,
     EMBEDDING_DIM,
+    is_embeddings_available,
+    text_hash,
 )
-from cast2md.search.repository import TranscriptSearchRepository
 
 
 @pytest.fixture
@@ -142,9 +140,7 @@ class TestHybridSearchKeywordOnly:
         search_repo.index_episode(sample_episode.id, str(transcript_file))
 
         # Search with correct feed ID
-        response = search_repo.hybrid_search(
-            "protein", feed_id=sample_feed.id, mode="keyword"
-        )
+        response = search_repo.hybrid_search("protein", feed_id=sample_feed.id, mode="keyword")
         assert response.total > 0
 
         # Search with wrong feed ID
@@ -183,9 +179,7 @@ class TestHybridSearchResultStructure:
         assert hasattr(result, "score")
         assert hasattr(result, "match_type")
 
-    def test_result_score_is_positive(
-        self, db_conn, sample_episode, search_repo, transcript_file
-    ):
+    def test_result_score_is_positive(self, db_conn, sample_episode, search_repo, transcript_file):
         """Test that RRF scores are positive."""
         cursor = db_conn.cursor()
         cursor.execute(
@@ -258,10 +252,7 @@ class TestHybridSearchModes:
         assert response.mode == "keyword"
 
 
-@pytest.mark.skipif(
-    not is_embeddings_available(),
-    reason="sentence-transformers not installed"
-)
+@pytest.mark.skipif(not is_embeddings_available(), reason="sentence-transformers not installed")
 class TestEmbeddingGeneration:
     """Tests for actual embedding generation (requires sentence-transformers)."""
 
@@ -301,7 +292,7 @@ class TestEmbeddingGeneration:
 
     def test_embedding_to_floats(self):
         """Test converting embedding bytes back to floats."""
-        from cast2md.search.embeddings import generate_embedding, embedding_to_floats
+        from cast2md.search.embeddings import embedding_to_floats, generate_embedding
 
         embedding = generate_embedding("test")
         floats = embedding_to_floats(embedding)

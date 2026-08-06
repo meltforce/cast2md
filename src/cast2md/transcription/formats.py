@@ -8,7 +8,6 @@ import logging
 import re
 from dataclasses import dataclass
 from html import unescape
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -104,11 +103,13 @@ def _merge_word_level_segments(
 
         if start_new and current_texts:
             # Save the current phrase
-            merged.append(TranscriptSegment(
-                start=current_start,
-                end=current_end,
-                text=" ".join(current_texts),
-            ))
+            merged.append(
+                TranscriptSegment(
+                    start=current_start,
+                    end=current_end,
+                    text=" ".join(current_texts),
+                )
+            )
             current_texts = []
             current_start = seg.start
 
@@ -117,11 +118,13 @@ def _merge_word_level_segments(
 
     # Don't forget the last phrase
     if current_texts:
-        merged.append(TranscriptSegment(
-            start=current_start,
-            end=current_end,
-            text=" ".join(current_texts),
-        ))
+        merged.append(
+            TranscriptSegment(
+                start=current_start,
+                end=current_end,
+                text=" ".join(current_texts),
+            )
+        )
 
     return merged
 
@@ -459,7 +462,7 @@ def convert_to_markdown(
         return parse_plain_text(content, title=title), "text"
 
 
-def detect_format_from_url(url: str) -> Optional[str]:
+def detect_format_from_url(url: str) -> str | None:
     """Detect transcript format from URL extension.
 
     Args:

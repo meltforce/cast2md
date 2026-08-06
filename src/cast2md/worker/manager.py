@@ -58,11 +58,11 @@ class WorkerManager:
         self._running = False
         self._download_threads: list[threading.Thread] = []
         self._transcript_download_threads: list[threading.Thread] = []
-        self._transcribe_thread: Optional[threading.Thread] = None
-        self._embed_thread: Optional[threading.Thread] = None
+        self._transcribe_thread: threading.Thread | None = None
+        self._embed_thread: threading.Thread | None = None
         self._stop_event = threading.Event()
         self._coordinator = None
-        self._started_at: Optional[float] = None  # For startup grace period
+        self._started_at: float | None = None  # For startup grace period
 
         # Pause mechanism for transcript download workers
         self._tdl_pause_event = threading.Event()
@@ -89,7 +89,9 @@ class WorkerManager:
                 self._tdl_pause_event.set()
                 logger.info("Transcript download workers resumed")
             else:
-                logger.info(f"Transcript download workers still paused (count: {self._tdl_pause_count})")
+                logger.info(
+                    f"Transcript download workers still paused (count: {self._tdl_pause_count})"
+                )
 
     def start(self):
         """Start the worker threads."""
@@ -279,6 +281,7 @@ class WorkerManager:
 
         try:
             from cast2md.distributed.coordinator import get_coordinator
+
             coordinator = get_coordinator()
             return coordinator.has_external_workers()
         except Exception as e:
@@ -322,7 +325,7 @@ class WorkerManager:
                 logger.error(f"Embedding worker error: {e}")
                 time.sleep(5.0)
 
-    def _claim_next_job(self, job_type: JobType) -> Optional[Job]:
+    def _claim_next_job(self, job_type: JobType) -> Job | None:
         """Atomically claim the next available job from the queue.
 
         Uses UPDATE...RETURNING to prevent race conditions where multiple
@@ -334,9 +337,7 @@ class WorkerManager:
         with get_db_write() as conn:
             repo = JobRepository(conn)
             # For transcription jobs with distributed enabled, only get unassigned jobs
-            local_only = (
-                job_type == JobType.TRANSCRIBE and _is_distributed_enabled()
-            )
+            local_only = job_type == JobType.TRANSCRIBE and _is_distributed_enabled()
             return repo.claim_next_job(job_type, node_id="local", local_only=local_only)
 
     def _process_download_job(self, job_id: int, episode_id: int):
@@ -447,10 +448,9 @@ class WorkerManager:
 
         except Exception as e:
             import traceback
+
             error_detail = f"{type(e).__name__}: {e}"
-            logger.error(
-                f"Transcription job {job_id} failed for '{episode.title}': {error_detail}"
-            )
+            logger.error(f"Transcription job {job_id} failed for '{episode.title}': {error_detail}")
             logger.debug(f"Traceback:\n{traceback.format_exc()}")
             with get_db_write() as conn:
                 job_repo = JobRepository(conn)
@@ -516,6 +516,7 @@ class WorkerManager:
                     # Index transcript for full-text search
                     try:
                         from cast2md.search.repository import TranscriptSearchRepository
+
                         search_repo = TranscriptSearchRepository(conn)
                         search_repo.index_episode(episode.id, str(transcript_path))
                     except Exception as index_error:
@@ -654,7 +655,9 @@ class WorkerManager:
                 with get_db_write() as conn:
                     job_repo = JobRepository(conn)
                     job_repo.mark_failed(
-                        job_id, "Embeddings not available (sentence-transformers not installed)", retry=False
+                        job_id,
+                        "Embeddings not available (sentence-transformers not installed)",
+                        retry=False,
                     )
                 return
 
@@ -725,6 +728,7 @@ class WorkerManager:
                 # Index transcript for full-text search
                 try:
                     from cast2md.search.repository import TranscriptSearchRepository
+
                     search_repo = TranscriptSearchRepository(conn)
                     search_repo.index_episode(episode.id, str(transcript_path))
                 except Exception as index_error:
@@ -735,9 +739,7 @@ class WorkerManager:
                 # Queue embedding job for semantic search
                 self._queue_embedding(conn, episode.id)
 
-                logger.info(
-                    f"Downloaded transcript ({result.source}) for episode: {episode.title}"
-                )
+                logger.info(f"Downloaded transcript ({result.source}) for episode: {episode.title}")
 
                 # Send success notification
                 notify_transcription_complete(episode.title, feed.title)
@@ -851,7 +853,7 @@ class WorkerManager:
 
 
 # Global instance
-_worker_manager: Optional[WorkerManager] = None
+_worker_manager: WorkerManager | None = None
 
 
 def get_worker_manager() -> WorkerManager:

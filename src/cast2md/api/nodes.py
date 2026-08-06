@@ -6,13 +6,10 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 
-logger = logging.getLogger(__name__)
-
-from fastapi import APIRouter, Depends, Header, HTTPException, Response
+from fastapi import APIRouter, Depends, Header, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-from cast2md.config.settings import get_settings
 from cast2md.db.connection import get_db
 from cast2md.db.models import JobStatus, JobType, NodeStatus
 from cast2md.db.repository import (
@@ -21,6 +18,8 @@ from cast2md.db.repository import (
     TranscriberNodeRepository,
 )
 from cast2md.distributed import get_coordinator
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/nodes", tags=["nodes"])
 
@@ -192,8 +191,13 @@ def register_node(request: RegisterNodeRequest):
                 WHERE id = %s
                 """,
                 (
-                    request.url, api_key, request.whisper_model, request.whisper_backend,
-                    NodeStatus.OFFLINE.value, datetime.now().isoformat(), existing.id
+                    request.url,
+                    api_key,
+                    request.whisper_model,
+                    request.whisper_backend,
+                    NodeStatus.OFFLINE.value,
+                    datetime.now().isoformat(),
+                    existing.id,
                 ),
             )
             conn.commit()
@@ -518,9 +522,7 @@ def complete_job(
 
         # Update episode with transcript path and model info
         episode_repo.update_transcript_path_and_model(
-            episode.id,
-            str(transcript_path),
-            request.whisper_model or "unknown"
+            episode.id, str(transcript_path), request.whisper_model or "unknown"
         )
         episode_repo.update_status(episode.id, EpisodeStatus.COMPLETED)
 
@@ -801,7 +803,9 @@ def complete_embed_job(
                 episode_id=job.episode_id,
                 embeddings=request.embeddings,
             )
-            logger.info(f"Stored {count} embeddings for episode {job.episode_id} from node {node.name}")
+            logger.info(
+                f"Stored {count} embeddings for episode {job.episode_id} from node {node.name}"
+            )
         except Exception as e:
             logger.error(f"Failed to store embeddings: {e}")
             raise HTTPException(status_code=500, detail=f"Failed to store embeddings: {e}")
@@ -946,12 +950,14 @@ def get_stale_nodes(offline_hours: int = 24):
         if n.last_heartbeat:
             delta = datetime.now() - n.last_heartbeat
             hours_offline = int(delta.total_seconds() / 3600)
-        nodes.append(StaleNodeInfo(
-            id=n.id,
-            name=n.name,
-            last_heartbeat=n.last_heartbeat.isoformat() if n.last_heartbeat else None,
-            offline_hours=hours_offline,
-        ))
+        nodes.append(
+            StaleNodeInfo(
+                id=n.id,
+                name=n.name,
+                last_heartbeat=n.last_heartbeat.isoformat() if n.last_heartbeat else None,
+                offline_hours=hours_offline,
+            )
+        )
 
     return StaleNodesResponse(
         stale_count=len(nodes),

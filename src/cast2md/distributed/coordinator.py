@@ -38,7 +38,7 @@ class RemoteTranscriptionCoordinator:
 
         self._initialized = True
         self._running = False
-        self._thread: Optional[threading.Thread] = None
+        self._thread: threading.Thread | None = None
         self._stop_event = threading.Event()
 
         # Configuration (can be overridden via settings)
@@ -149,8 +149,7 @@ class RemoteTranscriptionCoordinator:
 
         with self._heartbeat_lock:
             stale_node_ids = [
-                nid for nid, hb in self._node_heartbeats.items()
-                if hb < stale_threshold
+                nid for nid, hb in self._node_heartbeats.items() if hb < stale_threshold
             ]
 
         # Mark stale nodes as offline
@@ -168,9 +167,7 @@ class RemoteTranscriptionCoordinator:
         # Also check DB for nodes not in memory (e.g., registered before coordinator started)
         with get_db() as conn:
             node_repo = TranscriberNodeRepository(conn)
-            stale_nodes = node_repo.get_stale_nodes(
-                timeout_seconds=self._heartbeat_timeout_seconds
-            )
+            stale_nodes = node_repo.get_stale_nodes(timeout_seconds=self._heartbeat_timeout_seconds)
             for node in stale_nodes:
                 # Skip if already processed or if we have a fresh in-memory heartbeat
                 with self._heartbeat_lock:
@@ -237,8 +234,7 @@ class RemoteTranscriptionCoordinator:
 
         with self._heartbeat_lock:
             fresh_heartbeats = sum(
-                1 for hb in self._node_heartbeats.values()
-                if hb >= stale_threshold
+                1 for hb in self._node_heartbeats.values() if hb >= stale_threshold
             )
             if fresh_heartbeats > 0:
                 return True
@@ -258,6 +254,7 @@ class RemoteTranscriptionCoordinator:
         # Check for active RunPod pods
         try:
             from cast2md.services.runpod_service import get_runpod_service
+
             runpod_service = get_runpod_service()
             if runpod_service.is_available():
                 pods = runpod_service.list_pods()
@@ -301,7 +298,7 @@ class RemoteTranscriptionCoordinator:
 
 
 # Global instance
-_coordinator: Optional[RemoteTranscriptionCoordinator] = None
+_coordinator: RemoteTranscriptionCoordinator | None = None
 
 
 def get_coordinator() -> RemoteTranscriptionCoordinator:

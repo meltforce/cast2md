@@ -5,14 +5,17 @@ Supports VTT, SRT, JSON, and plain text formats.
 """
 
 import logging
-from typing import Optional
 
 import httpx
 
 from cast2md.config.settings import get_settings
 from cast2md.db.models import Episode, Feed
 from cast2md.transcription.formats import convert_to_markdown, detect_format_from_url
-from cast2md.transcription.providers.base import TranscriptError, TranscriptProvider, TranscriptResult
+from cast2md.transcription.providers.base import (
+    TranscriptError,
+    TranscriptProvider,
+    TranscriptResult,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -103,8 +106,10 @@ class Podcast20Provider(TranscriptProvider):
 
         except httpx.HTTPStatusError as e:
             logger.warning(f"HTTP error fetching transcript from {url}: {e.response.status_code}")
-            error_type = "forbidden" if e.response.status_code == 403 else (
-                "not_found" if e.response.status_code == 404 else "request_error"
+            error_type = (
+                "forbidden"
+                if e.response.status_code == 403
+                else ("not_found" if e.response.status_code == 404 else "request_error")
             )
             return TranscriptError(
                 error_type=error_type,

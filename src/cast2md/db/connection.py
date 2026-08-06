@@ -1,8 +1,9 @@
 """Database connection management for PostgreSQL."""
 
 import logging
+from collections.abc import Generator
 from contextlib import contextmanager
-from typing import Any, Generator, Protocol
+from typing import Any, Protocol
 
 from cast2md.db.config import get_db_config
 
@@ -54,7 +55,6 @@ def _init_pg_pool() -> Any:
         return _pg_pool
 
     try:
-        import psycopg2
         from psycopg2 import pool
 
         config = get_db_config()
@@ -81,8 +81,7 @@ def _init_pg_pool() -> Any:
         return _pg_pool
     except ImportError:
         raise ImportError(
-            "psycopg2 is required for PostgreSQL support. "
-            "Install with: pip install psycopg2-binary"
+            "psycopg2 is required for PostgreSQL support. Install with: pip install psycopg2-binary"
         )
 
 

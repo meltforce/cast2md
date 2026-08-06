@@ -5,8 +5,8 @@ Used by both the server-side RunPod service and the CLI afterburner script.
 """
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable
 
 logger = logging.getLogger(__name__)
 
@@ -105,7 +105,7 @@ def setup_pod(
     # GPU smoke test for Parakeet - catch CUDA errors before processing real jobs
     if config.is_parakeet:
         run_ssh(
-            "TRANSCRIPTION_BACKEND=parakeet python -c \""
+            'TRANSCRIPTION_BACKEND=parakeet python -c "'
             "from cast2md.transcription.service import TranscriptionService; "
             "import tempfile, numpy as np, soundfile as sf; "
             "svc = TranscriptionService(); "
@@ -163,8 +163,8 @@ chmod +x /tmp/terminate-pod.sh""",
         run_ssh(
             "nohup bash -c '"
             "sleep 10; "  # Initial delay to let worker start
-            "while ps aux | grep -v grep | grep -q \"cast2md node start\"; do sleep 5; done; "
-            "echo \"Worker exited, terminating pod...\" >> /tmp/cast2md-node.log; "
+            'while ps aux | grep -v grep | grep -q "cast2md node start"; do sleep 5; done; '
+            'echo "Worker exited, terminating pod..." >> /tmp/cast2md-node.log; '
             "/tmp/terminate-pod.sh"
             "' > /tmp/watchdog.log 2>&1 &",
             "Starting watchdog",

@@ -2,7 +2,6 @@
 
 import logging
 from dataclasses import dataclass
-from typing import Optional
 
 import httpx
 
@@ -18,8 +17,8 @@ class ItunesPodcast:
     itunes_id: str
     title: str
     author: str
-    feed_url: Optional[str]
-    artwork_url: Optional[str] = None
+    feed_url: str | None
+    artwork_url: str | None = None
 
 
 class ItunesClient:
@@ -30,7 +29,7 @@ class ItunesClient:
 
     BASE_URL = "https://itunes.apple.com"
 
-    def __init__(self, timeout: Optional[float] = None):
+    def __init__(self, timeout: float | None = None):
         """Initialize client.
 
         Args:
@@ -40,7 +39,7 @@ class ItunesClient:
         self.timeout = timeout or settings.request_timeout
         self.user_agent = settings.user_agent
 
-    def lookup(self, itunes_id: str) -> Optional[ItunesPodcast]:
+    def lookup(self, itunes_id: str) -> ItunesPodcast | None:
         """Look up podcast by iTunes ID.
 
         Args:

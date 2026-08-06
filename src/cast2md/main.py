@@ -7,11 +7,10 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
-
-from cast2md import __version__
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from cast2md import __version__
 from cast2md.api.episodes import router as episodes_router
 from cast2md.api.feeds import router as feeds_router
 from cast2md.api.itunes import router as itunes_router
@@ -23,8 +22,10 @@ from cast2md.api.settings import router as settings_router
 from cast2md.api.system import router as system_router
 from cast2md.config.settings import get_settings
 from cast2md.db.connection import close_pool, init_db
+from cast2md.mcp.server import create_server as create_mcp_server
 from cast2md.scheduler import start_scheduler, stop_scheduler
-from cast2md.web.views import configure_templates, router as web_router
+from cast2md.web.views import configure_templates
+from cast2md.web.views import router as web_router
 from cast2md.worker import get_worker_manager
 
 # Configure logging
@@ -66,7 +67,9 @@ def queue_missing_embeddings():
 
     # Check if embedding infrastructure is available
     if not is_embeddings_available():
-        logger.info("Embeddings not available (sentence-transformers not installed), skipping backfill")
+        logger.info(
+            "Embeddings not available (sentence-transformers not installed), skipping backfill"
+        )
         return
 
     with get_db() as conn:
@@ -102,6 +105,7 @@ def setup_signal_handlers():
 
     Ensures SIGTERM/SIGINT trigger FastAPI lifespan shutdown.
     """
+
     def handle_signal(signum, frame):
         sig_name = signal.Signals(signum).name
         # Use print to ensure message appears before exit
@@ -143,6 +147,7 @@ async def lifespan(app: FastAPI):
     # Cleanup orphaned RunPod nodes (from pods that terminated without notifying server)
     try:
         from cast2md.services.runpod_service import get_runpod_service
+
         runpod_service = get_runpod_service()
         if runpod_service.is_available():
             deleted = runpod_service.cleanup_orphaned_nodes()
@@ -209,9 +214,9 @@ app.include_router(settings_router)
 app.include_router(system_router)
 app.include_router(web_router)
 
-# Mount MCP server (Streamable HTTP) at /mcp
-from cast2md.mcp.server import create_server as create_mcp_server
-
+# Mount MCP server (Streamable HTTP) at /mcp. The call stays here rather than
+# moving up with its import: it mounts onto `app`, so every include_router
+# above has to have run first.
 _mcp_server = create_mcp_server(skip_db_init=True, stateless=True)
 _mcp_http_app = _mcp_server.streamable_http_app()
 app.mount("", _mcp_http_app)

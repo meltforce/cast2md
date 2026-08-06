@@ -8,7 +8,7 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
 from cast2md.db.connection import get_db
-from cast2md.db.models import EpisodeStatus, JobType, NodeStatus
+from cast2md.db.models import EpisodeStatus, JobType
 from cast2md.db.repository import (
     EpisodeRepository,
     FeedRepository,
@@ -38,6 +38,7 @@ def _get_raw_version() -> str:
         parts[1] = parts[1].zfill(2)
     return ".".join(parts)
 
+
 # Allowed HTML tags for shownotes
 ALLOWED_TAGS = ["a", "p", "br", "strong", "b", "em", "i", "ul", "ol", "li", "h1", "h2", "h3", "h4"]
 ALLOWED_ATTRIBUTES = {"a": ["href", "title", "target"]}
@@ -48,9 +49,9 @@ def strip_html(text: str | None) -> str:
     if not text:
         return ""
     # Remove HTML tags
-    clean = re.sub(r'<[^>]+>', '', text)
+    clean = re.sub(r"<[^>]+>", "", text)
     # Normalize whitespace
-    clean = re.sub(r'\s+', ' ', clean).strip()
+    clean = re.sub(r"\s+", " ", clean).strip()
     return clean
 
 
@@ -87,7 +88,7 @@ def truncate_html(text: str | None, length: int = 300) -> str:
         return plain
     # Find last space before cutoff
     truncated = plain[:length]
-    last_space = truncated.rfind(' ')
+    last_space = truncated.rfind(" ")
     if last_space > length // 2:
         truncated = truncated[:last_space]
     return truncated + "..."
@@ -114,15 +115,15 @@ def render_transcript_html(content: str) -> str:
     html_parts = []
 
     # Extract header (title + language) before first timestamp
-    header_match = re.match(r'^(.*?)(?=\*\*\[)', content, re.DOTALL)
+    header_match = re.match(r"^(.*?)(?=\*\*\[)", content, re.DOTALL)
     if header_match:
         header = header_match.group(1).strip()
         # Extract title from markdown header
-        title_match = re.search(r'^# (.+)$', header, re.MULTILINE)
+        title_match = re.search(r"^# (.+)$", header, re.MULTILINE)
         if title_match:
             html_parts.append(f'<h3 class="transcript-title">{escape(title_match.group(1))}</h3>')
         # Extract language metadata
-        meta_match = re.search(r'^\*(.+)\*$', header, re.MULTILINE)
+        meta_match = re.search(r"^\*(.+)\*$", header, re.MULTILINE)
         if meta_match:
             html_parts.append(f'<p class="transcript-meta">{escape(meta_match.group(1))}</p>')
 
@@ -142,41 +143,41 @@ def render_transcript_html(content: str) -> str:
                 f'data-start="{segment.start}" data-end="{segment.end}">'
                 f'<a href="#ts-{ts_int}" class="transcript-timestamp">[{ts_display}]</a>'
                 f'<span class="transcript-text">{escape(segment.text)}</span>'
-                f'</div>'
+                f"</div>"
             )
     else:
         # Fallback: render plain text for transcripts without timestamps
         # Extract title and metadata first
-        title_match = re.search(r'^# (.+)$', content, re.MULTILINE)
+        title_match = re.search(r"^# (.+)$", content, re.MULTILINE)
         if title_match:
             html_parts.append(f'<h3 class="transcript-title">{escape(title_match.group(1))}</h3>')
-        meta_match = re.search(r'^\*(.+)\*$', content, re.MULTILINE)
+        meta_match = re.search(r"^\*(.+)\*$", content, re.MULTILINE)
         if meta_match:
             html_parts.append(f'<p class="transcript-meta">{escape(meta_match.group(1))}</p>')
 
         # Get the body text (skip header lines)
-        lines = content.split('\n')
+        lines = content.split("\n")
         body_lines = []
         skip_header = True
         for line in lines:
             if skip_header:
                 # Skip title and metadata lines
-                if line.startswith('#') or (line.startswith('*') and line.endswith('*')):
+                if line.startswith("#") or (line.startswith("*") and line.endswith("*")):
                     continue
-                if line.strip() == '':
+                if line.strip() == "":
                     continue
                 skip_header = False
             body_lines.append(line)
 
         # Render paragraphs
-        body_text = '\n'.join(body_lines)
-        paragraphs = body_text.split('\n\n')
+        body_text = "\n".join(body_lines)
+        paragraphs = body_text.split("\n\n")
         for para in paragraphs:
             para = para.strip()
             if para:
                 html_parts.append(f'<p class="transcript-text">{escape(para)}</p>')
 
-    return '\n'.join(html_parts)
+    return "\n".join(html_parts)
 
 
 def sanitize_search_snippet(text: str | None) -> str:
@@ -188,11 +189,12 @@ def sanitize_search_snippet(text: str | None) -> str:
     if not text:
         return ""
     from html import escape
+
     # First escape everything
     escaped = escape(text)
     # Then restore <mark> and </mark> tags
-    escaped = escaped.replace('&lt;mark&gt;', '<mark>')
-    escaped = escaped.replace('&lt;/mark&gt;', '</mark>')
+    escaped = escaped.replace("&lt;mark&gt;", "<mark>")
+    escaped = escaped.replace("&lt;/mark&gt;", "</mark>")
     return escaped
 
 
@@ -260,6 +262,7 @@ def configure_templates(t: Jinja2Templates):
 def home(request: Request):
     """Home page - redirect to search."""
     from fastapi.responses import RedirectResponse
+
     return RedirectResponse(url="/search", status_code=302)
 
 
@@ -276,10 +279,12 @@ def feeds_index(request: Request):
         # Add episode counts to feeds
         feeds_with_counts = []
         for feed in feeds:
-            feeds_with_counts.append({
-                "feed": feed,
-                "episode_count": episode_repo.count_by_feed(feed.id),
-            })
+            feeds_with_counts.append(
+                {
+                    "feed": feed,
+                    "episode_count": episode_repo.count_by_feed(feed.id),
+                }
+            )
 
     total_episodes = sum(status_counts.values())
 
@@ -334,9 +339,6 @@ def feed_detail(
                 status_code=404,
             )
 
-        # Get total count for the feed (unfiltered, including permanent failures)
-        total_all_raw = episode_repo.count_by_feed(feed_id)
-
         # Count permanent failures
         permanent_failure_count = episode_repo.count_permanent_failures(feed_id)
 
@@ -357,7 +359,9 @@ def feed_detail(
             )
         else:
             episodes = episode_repo.get_by_feed_paginated(
-                feed_id, limit=per_page, offset=offset,
+                feed_id,
+                limit=per_page,
+                offset=offset,
                 exclude_permanent_failures=True,
             )
             total = total_all
@@ -373,11 +377,15 @@ def feed_detail(
 
         # Count episodes needing transcription (new or needs_audio)
         pending_count = episode_repo.count_by_feed_and_status(feed_id, EpisodeStatus.NEW)
-        unavailable_count = episode_repo.count_by_feed_and_status(feed_id, EpisodeStatus.NEEDS_AUDIO)
+        unavailable_count = episode_repo.count_by_feed_and_status(
+            feed_id, EpisodeStatus.NEEDS_AUDIO
+        )
         needs_transcription_count = pending_count + unavailable_count
 
         # Count audio_ready episodes (downloaded but not yet transcribed)
-        audio_ready_count = episode_repo.count_by_feed_and_status(feed_id, EpisodeStatus.AUDIO_READY)
+        audio_ready_count = episode_repo.count_by_feed_and_status(
+            feed_id, EpisodeStatus.AUDIO_READY
+        )
 
         # Get set of episode IDs that have pending/running jobs (for "queued" display)
         episode_ids = [ep.id for ep in episodes]
@@ -447,6 +455,7 @@ def episode_detail(
     if episode.transcript_path:
         try:
             from pathlib import Path
+
             transcript_content = Path(episode.transcript_path).read_text()
         except Exception:
             pass
@@ -494,6 +503,7 @@ def episode_detail(
 def status_page_redirect(request: Request):
     """Redirect old status URL to admin."""
     from fastapi.responses import RedirectResponse
+
     return RedirectResponse(url="/admin", status_code=302)
 
 
@@ -587,21 +597,25 @@ def admin_status_page(request: Request):
             assigned_download_job_ids.add(job.id)
             download_job_index += 1
 
-        download_workers.append({
-            "status": "busy" if job else "idle",
-            "job": job,
-            "episode": episode,
-        })
+        download_workers.append(
+            {
+                "status": "busy" if job else "idle",
+                "job": job,
+                "episode": episode,
+            }
+        )
 
     # Check for orphaned download jobs
     orphaned_downloads = []
     for item in running_download_episodes:
         if item["job"].id not in assigned_download_job_ids:
-            orphaned_downloads.append({
-                "status": "stuck",
-                "job": item["job"],
-                "episode": item["episode"],
-            })
+            orphaned_downloads.append(
+                {
+                    "status": "stuck",
+                    "job": item["job"],
+                    "episode": item["episode"],
+                }
+            )
 
     # Transcript Fetch card
     active_tdl_count = len(running_transcript_download_episodes)
@@ -613,11 +627,13 @@ def admin_status_page(request: Request):
     orphaned_transcript_downloads = []
     for item in running_transcript_download_episodes:
         if item["job"].id not in assigned_transcript_download_job_ids:
-            orphaned_transcript_downloads.append({
-                "status": "stuck",
-                "job": item["job"],
-                "episode": item["episode"],
-            })
+            orphaned_transcript_downloads.append(
+                {
+                    "status": "stuck",
+                    "job": item["job"],
+                    "episode": item["episode"],
+                }
+            )
 
     # Transcription card - server worker
     # Check if server is in standby mode (deferring to external workers)
@@ -654,13 +670,17 @@ def admin_status_page(request: Request):
                     break
 
             is_mlx = node.whisper_backend in ("mlx", "auto")
-            remote_nodes.append({
-                "name": node.name,
-                "status": node.status.value,
-                "job": node_job,
-                "episode": node_episode,
-                "progress": None if is_mlx else (node_job.progress_percent if node_job else None),
-            })
+            remote_nodes.append(
+                {
+                    "name": node.name,
+                    "status": node.status.value,
+                    "job": node_job,
+                    "episode": node_episode,
+                    "progress": None
+                    if is_mlx
+                    else (node_job.progress_percent if node_job else None),
+                }
+            )
 
     # Check for orphaned transcription jobs
     # Exclude prefetched jobs (those with assigned_node_id are claimed by a node)
@@ -670,12 +690,14 @@ def admin_status_page(request: Request):
             # Skip if job is assigned to a node (it's prefetched, not orphaned)
             if item["job"].assigned_node_id:
                 continue
-            orphaned_transcriptions.append({
-                "status": "stuck",
-                "job": item["job"],
-                "episode": item["episode"],
-                "progress": item["job"].progress_percent,
-            })
+            orphaned_transcriptions.append(
+                {
+                    "status": "stuck",
+                    "job": item["job"],
+                    "episode": item["episode"],
+                    "progress": item["job"].progress_percent,
+                }
+            )
 
     # Build worker_groups structure for template
     # Limit orphaned lists to 3, include total count
@@ -723,6 +745,7 @@ def admin_status_page(request: Request):
 def settings_page_redirect(request: Request):
     """Redirect old settings URL to admin."""
     from fastapi.responses import RedirectResponse
+
     return RedirectResponse(url="/admin/settings", status_code=302)
 
 
@@ -739,6 +762,7 @@ def admin_settings_page(request: Request):
 def queue_page_redirect(request: Request, status: str | None = None):
     """Redirect old queue URL to admin."""
     from fastapi.responses import RedirectResponse
+
     url = "/admin/queue"
     if status:
         url += f"?status={status}"
@@ -792,13 +816,15 @@ def admin_queue_page(request: Request, status: str | None = None):
                 runtime_seconds = int((datetime.now() - job.started_at).total_seconds())
                 is_stuck = job.started_at < stuck_threshold
 
-            job_list.append({
-                "job": job,
-                "episode": episode,
-                "feed": feed,
-                "is_stuck": is_stuck,
-                "runtime_seconds": runtime_seconds,
-            })
+            job_list.append(
+                {
+                    "job": job,
+                    "episode": episode,
+                    "feed": feed,
+                    "is_stuck": is_stuck,
+                    "runtime_seconds": runtime_seconds,
+                }
+            )
 
     return templates.TemplateResponse(
         "queue.html",
@@ -847,7 +873,6 @@ def admin_runpod_page(request: Request):
         runpod_status["can_create"] = can_create
         runpod_status["can_create_reason"] = reason
         active_pods = service.list_pods()
-        active_pod_ids = {p.id for p in active_pods}
         runpod_status["active_pods"] = [
             {
                 "id": p.id,
@@ -898,10 +923,30 @@ def admin_runpod_page(request: Request):
     # Fallback GPU types if API unavailable (no pricing)
     if not gpu_types:
         gpu_types = [
-            {"id": "NVIDIA GeForce RTX 4090", "display_name": "RTX 4090", "memory_gb": 24, "price_hr": None},
-            {"id": "NVIDIA GeForce RTX 3090", "display_name": "RTX 3090", "memory_gb": 24, "price_hr": None},
-            {"id": "NVIDIA RTX A4000", "display_name": "RTX A4000", "memory_gb": 16, "price_hr": None},
-            {"id": "NVIDIA GeForce RTX 4080", "display_name": "RTX 4080", "memory_gb": 16, "price_hr": None},
+            {
+                "id": "NVIDIA GeForce RTX 4090",
+                "display_name": "RTX 4090",
+                "memory_gb": 24,
+                "price_hr": None,
+            },
+            {
+                "id": "NVIDIA GeForce RTX 3090",
+                "display_name": "RTX 3090",
+                "memory_gb": 24,
+                "price_hr": None,
+            },
+            {
+                "id": "NVIDIA RTX A4000",
+                "display_name": "RTX A4000",
+                "memory_gb": 16,
+                "price_hr": None,
+            },
+            {
+                "id": "NVIDIA GeForce RTX 4080",
+                "display_name": "RTX 4080",
+                "memory_gb": 16,
+                "price_hr": None,
+            },
             {"id": "NVIDIA L4", "display_name": "L4", "memory_gb": 24, "price_hr": None},
         ]
 
@@ -966,7 +1011,12 @@ def transcript_search_page(
     results = []
     total = 0
     total_pages = 1
-    index_stats = {"total_segments": 0, "indexed_episodes": 0, "embedded_episodes": 0, "total_embeddings": 0}
+    index_stats = {
+        "total_segments": 0,
+        "indexed_episodes": 0,
+        "embedded_episodes": 0,
+        "total_embeddings": 0,
+    }
     feeds = []
     actual_mode = mode
     recent_transcripts = []

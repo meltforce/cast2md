@@ -1,7 +1,5 @@
 """Database configuration for PostgreSQL."""
 
-from functools import lru_cache
-from typing import Optional
 from urllib.parse import urlparse
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -24,7 +22,7 @@ class DatabaseConfig(BaseSettings):
     )
 
     # DATABASE_URL for PostgreSQL connection
-    database_url: Optional[str] = None
+    database_url: str | None = None
 
     # Connection pool settings
     pool_min_size: int = 2
@@ -49,7 +47,7 @@ class DatabaseConfig(BaseSettings):
         url = self.effective_url
         # Normalize postgres:// to postgresql://
         if url.startswith("postgres://"):
-            url = "postgresql://" + url[len("postgres://"):]
+            url = "postgresql://" + url[len("postgres://") :]
         return url
 
     def get_postgres_params(self) -> dict:
@@ -69,7 +67,7 @@ class DatabaseConfig(BaseSettings):
 
 
 # Cached config instance
-_config: Optional[DatabaseConfig] = None
+_config: DatabaseConfig | None = None
 
 
 def get_db_config() -> DatabaseConfig:

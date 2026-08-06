@@ -4,7 +4,7 @@ import logging
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal, Optional
+from typing import Any, Literal
 
 from cast2md.db.sql import execute
 from cast2md.search.parser import merge_word_level_segments, parse_transcript_file
@@ -16,6 +16,11 @@ Connection = Any
 
 # Common stop words (German + English) to filter from OR queries
 # These words are too common to be useful for matching
+# fmt: off
+# One line per thematic group, not one word per line: this is search data,
+# and the grouping is what makes it reviewable. The formatter would explode
+# it to ~340 single-word lines, which also breaks the per-line suppressions
+# in tools/check-docs.allow that mark it as German language data.
 STOP_WORDS = {
     # German pronouns and possessives (with inflections)
     "ich", "du", "er", "sie", "es", "wir", "ihr", "uns", "euch", "ihnen",
@@ -67,6 +72,7 @@ STOP_WORDS = {
     "come", "comes", "came", "coming", "say", "says", "said", "saying",
     "know", "knows", "knew", "knowing", "think", "thinks", "thought",
 }
+# fmt: on
 
 
 def build_flexible_tsquery(query: str) -> str:
@@ -106,7 +112,7 @@ def build_flexible_tsquery(query: str) -> str:
                     parts.append(f"'{word}'")
 
         # Add quoted phrase as AND terms (keep stop words for exact phrases)
-        phrase = remaining[start + 1:end].strip()
+        phrase = remaining[start + 1 : end].strip()
         phrase_words = []
         for w in phrase.split():
             phrase_words.extend(_split_word(w, filter_stop_words=False))
@@ -114,7 +120,7 @@ def build_flexible_tsquery(query: str) -> str:
             phrase_query = " & ".join(f"'{w}'" for w in phrase_words)
             parts.append(f"({phrase_query})")
 
-        remaining = remaining[end + 1:]
+        remaining = remaining[end + 1 :]
 
     # Add remaining words as OR terms
     for word in _split_word(remaining):
@@ -136,11 +142,11 @@ def _split_word(text: str, filter_stop_words: bool = True) -> list[str]:
     - Returns list of clean words
     """
     # Replace hyphens with spaces, then split
-    text = text.replace('-', ' ')
+    text = text.replace("-", " ")
     words = []
     for word in text.split():
         # Remove non-alphanumeric characters (keep umlauts etc via \w)
-        clean = re.sub(r'[^\w]', '', word)
+        clean = re.sub(r"[^\w]", "", word)
         if clean:
             # Filter stop words (case-insensitive)
             if filter_stop_words and clean.lower() in STOP_WORDS:
@@ -157,7 +163,7 @@ class SearchResult:
     episode_title: str
     feed_id: int
     feed_title: str
-    published_at: Optional[str]
+    published_at: str | None
     segment_start: float
     segment_end: float
     snippet: str
@@ -181,7 +187,7 @@ class HybridSearchResult:
     episode_title: str
     feed_id: int
     feed_title: str
-    published_at: Optional[str]
+    published_at: str | None
     segment_start: float
     segment_end: float
     text: str
@@ -250,14 +256,16 @@ class TranscriptSearchRepository:
         Returns:
             Number of segments removed.
         """
-        cursor = execute(self.conn, "DELETE FROM transcript_segments WHERE episode_id = %s", (episode_id,))
+        cursor = execute(
+            self.conn, "DELETE FROM transcript_segments WHERE episode_id = %s", (episode_id,)
+        )
         self.conn.commit()
         return cursor.rowcount
 
     def search(
         self,
         query: str,
-        feed_id: Optional[int] = None,
+        feed_id: int | None = None,
         limit: int = 20,
         offset: int = 0,
     ) -> SearchResponse:
@@ -435,9 +443,7 @@ class TranscriptSearchRepository:
     def get_indexed_episodes(self) -> set[int]:
         """Get set of episode IDs that have been indexed."""
         try:
-            cursor = execute(
-                self.conn, "SELECT DISTINCT episode_id FROM transcript_segments", ()
-            )
+            cursor = execute(self.conn, "SELECT DISTINCT episode_id FROM transcript_segments", ())
             return {row[0] for row in cursor.fetchall()}
         except Exception:
             return set()
@@ -561,9 +567,7 @@ class TranscriptSearchRepository:
     def get_embedded_episodes(self) -> set[int]:
         """Get set of episode IDs that have embeddings."""
         try:
-            cursor = execute(
-                self.conn, "SELECT DISTINCT episode_id FROM segment_embeddings", ()
-            )
+            cursor = execute(self.conn, "SELECT DISTINCT episode_id FROM segment_embeddings", ())
             return {row[0] for row in cursor.fetchall()}
         except Exception:
             # Table doesn't exist (embeddings not available)
@@ -578,9 +582,7 @@ class TranscriptSearchRepository:
             # Table doesn't exist (embeddings not available)
             return 0
 
-    def store_embeddings_from_node(
-        self, episode_id: int, embeddings: list[dict]
-    ) -> int:
+    def store_embeddings_from_node(self, episode_id: int, embeddings: list[dict]) -> int:
         """Store embeddings received from a remote node.
 
         Args:
@@ -766,7 +768,7 @@ class TranscriptSearchRepository:
         t_start = time.perf_counter()
 
         # RRF constant (standard value from literature)
-        K = 60
+        rrf_k = 60
 
         # Dictionary to collect results: key = (result_type, episode_id, segment_start, segment_end)
         results_map: dict[tuple, dict] = {}
@@ -811,7 +813,7 @@ class TranscriptSearchRepository:
 
                         # Use negative segment_start to indicate episode match
                         key = ("episode", row[0], -1, -1)
-                        rrf_score = 1.0 / (K + rank + 1)
+                        rrf_score = 1.0 / (rrf_k + rank + 1)
 
                         # Boost for title matches:
                         # - 5x boost if query matches title exactly (ignoring case)
@@ -826,7 +828,7 @@ class TranscriptSearchRepository:
 
                         # Generate snippet from description (strip HTML and truncate)
                         desc = row[5] or ""
-                        desc_clean = re.sub(r'<[^>]+>', '', desc)
+                        desc_clean = re.sub(r"<[^>]+>", "", desc)
                         snippet = desc_clean[:200] + "..." if len(desc_clean) > 200 else desc_clean
 
                         results_map[key] = {
@@ -859,8 +861,13 @@ class TranscriptSearchRepository:
                 t_keyword_end = time.perf_counter()
                 logger.info(f"[TIMING] Keyword search: {t_keyword_end - t_keyword_start:.3f}s")
                 for rank, result in enumerate(keyword_response.results):
-                    key = ("transcript", result.episode_id, result.segment_start, result.segment_end)
-                    rrf_score = 1.0 / (K + rank + 1)
+                    key = (
+                        "transcript",
+                        result.episode_id,
+                        result.segment_start,
+                        result.segment_end,
+                    )
+                    rrf_score = 1.0 / (rrf_k + rank + 1)
 
                     if key in results_map:
                         results_map[key]["keyword_rank"] = rank
@@ -903,8 +910,13 @@ class TranscriptSearchRepository:
                 logger.info(f"[TIMING] Vector search: {t_vector_end - t_vector_start:.3f}s")
 
                 for rank, row in enumerate(vector_results):
-                    key = ("transcript", row[0], row[5], row[6])  # result_type, episode_id, segment_start, segment_end
-                    rrf_score = 1.0 / (K + rank + 1)
+                    key = (
+                        "transcript",
+                        row[0],
+                        row[5],
+                        row[6],
+                    )  # result_type, episode_id, segment_start, segment_end
+                    rrf_score = 1.0 / (rrf_k + rank + 1)
 
                     if key in results_map:
                         results_map[key]["semantic_rank"] = rank
@@ -938,7 +950,7 @@ class TranscriptSearchRepository:
         )
 
         # Apply pagination (offset + limit)
-        limited = sorted_results[offset:offset + limit]
+        limited = sorted_results[offset : offset + limit]
 
         results = [
             HybridSearchResult(

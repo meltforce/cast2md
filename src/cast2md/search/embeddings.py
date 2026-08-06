@@ -3,7 +3,13 @@
 import hashlib
 import logging
 import struct
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
+
+if TYPE_CHECKING:
+    # Import only for the annotation below: sentence-transformers pulls in
+    # torch and the model files, and this module is imported on every request
+    # path that touches search.
+    from sentence_transformers import SentenceTransformer
 
 logger = logging.getLogger(__name__)
 
@@ -13,8 +19,8 @@ DEFAULT_MODEL_NAME = "paraphrase-multilingual-MiniLM-L12-v2"
 EMBEDDING_DIM = 384  # Dimension of embeddings (same for multilingual model)
 
 # Singleton model instance (lazy-loaded)
-_model: Optional["SentenceTransformer"] = None  # type: ignore
-_model_name: Optional[str] = None
+_model: Optional["SentenceTransformer"] = None
+_model_name: str | None = None
 
 
 def _get_model(model_name: str = DEFAULT_MODEL_NAME):

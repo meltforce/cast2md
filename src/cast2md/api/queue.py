@@ -132,12 +132,14 @@ def _get_job_infos(jobs: list, episode_repo: EpisodeRepository) -> list[JobInfo]
     for job in jobs:
         episode = episode_repo.get_by_id(job.episode_id)
         if episode:
-            result.append(JobInfo(
-                job_id=job.id,
-                episode_id=job.episode_id,
-                episode_title=episode.title,
-                priority=job.priority,
-            ))
+            result.append(
+                JobInfo(
+                    job_id=job.id,
+                    episode_id=job.episode_id,
+                    episode_title=episode.title,
+                    priority=job.priority,
+                )
+            )
     return result
 
 
@@ -201,9 +203,11 @@ def get_queue_status():
     transcribe_standby = False
     try:
         from cast2md.config.settings import get_settings
+
         settings = get_settings()
         if settings.distributed_transcription_enabled:
             from cast2md.distributed.coordinator import get_coordinator
+
             coordinator = get_coordinator()
             transcribe_standby = coordinator.has_external_workers()
     except Exception:
@@ -430,7 +434,9 @@ def queue_process(episode_id: int, request: QueueEpisodeRequest | None = None):
                 job_type=JobType.TRANSCRIBE,
                 priority=priority,
             )
-            return MessageResponse(message="Transcription queued (already downloaded)", job_id=job.id)
+            return MessageResponse(
+                message="Transcription queued (already downloaded)", job_id=job.id
+            )
 
         # Queue download (transcription will be auto-queued after download)
         job = job_repo.create(
@@ -552,6 +558,7 @@ def get_job(job_id: int):
 
 # Batch operations
 
+
 class BatchQueueRequest(BaseModel):
     """Request for batch queue operations."""
 
@@ -580,8 +587,7 @@ def batch_queue_feed(feed_id: int, request: BatchQueueRequest | None = None):
         # Get all episodes for this feed and filter for those needing transcription
         episodes = episode_repo.get_by_feed(feed_id, limit=10000)
         needs_transcription = [
-            e for e in episodes
-            if e.status in (EpisodeStatus.NEW, EpisodeStatus.NEEDS_AUDIO)
+            e for e in episodes if e.status in (EpisodeStatus.NEW, EpisodeStatus.NEEDS_AUDIO)
         ]
 
         queued = 0
@@ -940,13 +946,14 @@ class AllJobsResponse(BaseModel):
 def _get_stuck_threshold() -> int:
     """Get stuck threshold hours from settings."""
     from cast2md.config.settings import get_settings
+
     return get_settings().stuck_threshold_minutes
 
 
 @router.get("/stuck", response_model=StuckJobsResponse)
 def get_stuck_jobs(threshold_minutes: int | None = None):
     """Get jobs that have been running longer than threshold."""
-    from datetime import datetime, timedelta
+    from datetime import datetime
 
     from cast2md.db.repository import FeedRepository
 
@@ -971,17 +978,19 @@ def get_stuck_jobs(threshold_minutes: int | None = None):
             if job.started_at:
                 runtime = int((datetime.now() - job.started_at).total_seconds())
 
-            jobs.append(StuckJobInfo(
-                job_id=job.id,
-                episode_id=job.episode_id,
-                episode_title=episode.title,
-                podcast_title=feed.display_title if feed else "Unknown",
-                job_type=job.job_type.value,
-                started_at=job.started_at.isoformat() if job.started_at else "",
-                runtime_seconds=runtime,
-                attempts=job.attempts,
-                max_attempts=job.max_attempts,
-            ))
+            jobs.append(
+                StuckJobInfo(
+                    job_id=job.id,
+                    episode_id=job.episode_id,
+                    episode_title=episode.title,
+                    podcast_title=feed.display_title if feed else "Unknown",
+                    job_type=job.job_type.value,
+                    started_at=job.started_at.isoformat() if job.started_at else "",
+                    runtime_seconds=runtime,
+                    attempts=job.attempts,
+                    max_attempts=job.max_attempts,
+                )
+            )
 
     return StuckJobsResponse(
         stuck_count=len(jobs),
@@ -1044,24 +1053,26 @@ def get_all_jobs(
                 runtime = int((datetime.now() - job.started_at).total_seconds())
                 is_stuck = job.started_at < stuck_threshold
 
-            job_infos.append(AllJobInfo(
-                job_id=job.id,
-                episode_id=job.episode_id,
-                episode_title=episode.title,
-                podcast_title=feed.display_title if feed else "Unknown",
-                job_type=job.job_type.value,
-                status=job.status.value,
-                is_stuck=is_stuck,
-                priority=job.priority,
-                attempts=job.attempts,
-                max_attempts=job.max_attempts,
-                created_at=job.created_at.isoformat(),
-                scheduled_at=job.scheduled_at.isoformat(),
-                started_at=job.started_at.isoformat() if job.started_at else None,
-                completed_at=job.completed_at.isoformat() if job.completed_at else None,
-                runtime_seconds=runtime,
-                error_message=job.error_message,
-            ))
+            job_infos.append(
+                AllJobInfo(
+                    job_id=job.id,
+                    episode_id=job.episode_id,
+                    episode_title=episode.title,
+                    podcast_title=feed.display_title if feed else "Unknown",
+                    job_type=job.job_type.value,
+                    status=job.status.value,
+                    is_stuck=is_stuck,
+                    priority=job.priority,
+                    attempts=job.attempts,
+                    max_attempts=job.max_attempts,
+                    created_at=job.created_at.isoformat(),
+                    scheduled_at=job.scheduled_at.isoformat(),
+                    started_at=job.started_at.isoformat() if job.started_at else None,
+                    completed_at=job.completed_at.isoformat() if job.completed_at else None,
+                    runtime_seconds=runtime,
+                    error_message=job.error_message,
+                )
+            )
 
     return AllJobsResponse(
         total=len(job_infos),
@@ -1096,24 +1107,26 @@ def _get_stuck_jobs_as_all_jobs(limit: int) -> AllJobsResponse:
             if job.started_at:
                 runtime = int((datetime.now() - job.started_at).total_seconds())
 
-            job_infos.append(AllJobInfo(
-                job_id=job.id,
-                episode_id=job.episode_id,
-                episode_title=episode.title,
-                podcast_title=feed.display_title if feed else "Unknown",
-                job_type=job.job_type.value,
-                status=job.status.value,
-                is_stuck=True,
-                priority=job.priority,
-                attempts=job.attempts,
-                max_attempts=job.max_attempts,
-                created_at=job.created_at.isoformat(),
-                scheduled_at=job.scheduled_at.isoformat(),
-                started_at=job.started_at.isoformat() if job.started_at else None,
-                completed_at=job.completed_at.isoformat() if job.completed_at else None,
-                runtime_seconds=runtime,
-                error_message=job.error_message,
-            ))
+            job_infos.append(
+                AllJobInfo(
+                    job_id=job.id,
+                    episode_id=job.episode_id,
+                    episode_title=episode.title,
+                    podcast_title=feed.display_title if feed else "Unknown",
+                    job_type=job.job_type.value,
+                    status=job.status.value,
+                    is_stuck=True,
+                    priority=job.priority,
+                    attempts=job.attempts,
+                    max_attempts=job.max_attempts,
+                    created_at=job.created_at.isoformat(),
+                    scheduled_at=job.scheduled_at.isoformat(),
+                    started_at=job.started_at.isoformat() if job.started_at else None,
+                    completed_at=job.completed_at.isoformat() if job.completed_at else None,
+                    runtime_seconds=runtime,
+                    error_message=job.error_message,
+                )
+            )
 
     return AllJobsResponse(
         total=len(job_infos),
@@ -1167,8 +1180,7 @@ def batch_backfill_embeddings():
 
     if not is_embeddings_available():
         raise HTTPException(
-            status_code=503,
-            detail="Embeddings not available (sentence-transformers not installed)"
+            status_code=503, detail="Embeddings not available (sentence-transformers not installed)"
         )
 
     with get_db() as conn:
@@ -1287,7 +1299,7 @@ def queue_retranscribe(episode_id: int, request: QueueEpisodeRequest | None = No
         if episode.status != EpisodeStatus.COMPLETED:
             raise HTTPException(
                 status_code=400,
-                detail=f"Episode must be completed to re-transcribe (current: {episode.status.value})"
+                detail=f"Episode must be completed to re-transcribe (current: {episode.status.value})",
             )
 
         # Must have audio
@@ -1297,8 +1309,7 @@ def queue_retranscribe(episode_id: int, request: QueueEpisodeRequest | None = No
         # Check if model differs
         if episode.transcript_model == current_model:
             raise HTTPException(
-                status_code=409,
-                detail=f"Episode already transcribed with {current_model}"
+                status_code=409, detail=f"Episode already transcribed with {current_model}"
             )
 
         # Check if already queued
@@ -1316,8 +1327,7 @@ def queue_retranscribe(episode_id: int, request: QueueEpisodeRequest | None = No
         )
 
     return MessageResponse(
-        message=f"Re-transcription queued with model {current_model}",
-        job_id=job.id
+        message=f"Re-transcription queued with model {current_model}", job_id=job.id
     )
 
 
@@ -1393,7 +1403,7 @@ def force_transcript_retry(episode_id: int, request: QueueEpisodeRequest | None 
         if episode.status not in (EpisodeStatus.AWAITING_TRANSCRIPT, EpisodeStatus.NEEDS_AUDIO):
             raise HTTPException(
                 status_code=400,
-                detail=f"Can only force retry for awaiting_transcript or needs_audio episodes (current: {episode.status.value})"
+                detail=f"Can only force retry for awaiting_transcript or needs_audio episodes (current: {episode.status.value})",
             )
 
         # Check if already has pending job

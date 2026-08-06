@@ -2,15 +2,20 @@
 
 import logging
 import os
-import sys
 import tempfile
 import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
 
 import httpx
+
+from cast2md.config.settings import get_settings
+from cast2md.node.config import NodeConfig, load_config
+from cast2md.storage.filesystem import cleanup_orphaned_temp_files
+from cast2md.transcription.service import get_current_model_name, transcribe_audio
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -20,13 +25,6 @@ class PrefetchedJob:
     job: dict
     audio_path: Path
     temp_dir: tempfile.TemporaryDirectory
-
-from cast2md.config.settings import get_settings
-from cast2md.node.config import NodeConfig, load_config
-from cast2md.storage.filesystem import cleanup_orphaned_temp_files
-from cast2md.transcription.service import get_current_model_name, transcribe_audio
-
-logger = logging.getLogger(__name__)
 
 
 def _is_permanent_download_error(error: str) -> bool:
@@ -41,6 +39,7 @@ def is_embeddings_available() -> bool:
     """Check if sentence-transformers is available for embedding generation."""
     try:
         from cast2md.search.embeddings import is_embeddings_available as check_embeddings
+
         return check_embeddings()
     except ImportError:
         return False
@@ -56,7 +55,7 @@ class TranscriberNodeWorker:
     - Handle retries on network failure
     """
 
-    def __init__(self, config: Optional[NodeConfig] = None):
+    def __init__(self, config: NodeConfig | None = None):
         """Initialize the worker.
 
         Args:
@@ -68,8 +67,8 @@ class TranscriberNodeWorker:
 
         self._running = False
         self._stop_event = threading.Event()
-        self._poll_thread: Optional[threading.Thread] = None
-        self._heartbeat_thread: Optional[threading.Thread] = None
+        self._poll_thread: threading.Thread | None = None
+        self._heartbeat_thread: threading.Thread | None = None
 
         # Configurable intervals
         self._poll_interval = 5  # seconds
@@ -83,16 +82,16 @@ class TranscriberNodeWorker:
         )
 
         # Current job tracking
-        self._current_job_id: Optional[int] = None
-        self._current_episode_title: Optional[str] = None
-        self._job_start_time: Optional[float] = None
+        self._current_job_id: int | None = None
+        self._current_episode_title: str | None = None
+        self._job_start_time: float | None = None
 
         # Prefetch queue - keeps jobs ready for instant processing
         # With fast transcription (Parakeet), we need multiple jobs prefetched
         self._prefetch_queue: list[PrefetchedJob] = []
         self._prefetch_max_size = 3  # Maximum prefetched jobs
         self._prefetch_lock = threading.Lock()
-        self._prefetch_thread: Optional[threading.Thread] = None
+        self._prefetch_thread: threading.Thread | None = None
         self._prefetch_stop = threading.Event()  # Signal to stop prefetch thread
         self._prefetch_claimed_ids: set[int] = set()  # Job IDs claimed but still downloading
 
@@ -102,19 +101,23 @@ class TranscriberNodeWorker:
 
         # Empty queue termination - matches CLI afterburner behavior
         # Terminate after N consecutive empty queue checks
-        self._empty_queue_wait = int(os.environ.get("NODE_EMPTY_QUEUE_WAIT", "60"))  # seconds between checks
+        self._empty_queue_wait = int(
+            os.environ.get("NODE_EMPTY_QUEUE_WAIT", "60")
+        )  # seconds between checks
         self._required_empty_checks = int(os.environ.get("NODE_REQUIRED_EMPTY_CHECKS", "2"))
         self._consecutive_empty = 0
 
         # Idle timeout - safety net if jobs exist but can't be claimed
         # Default: 10 minutes
         self._idle_timeout_minutes = int(os.environ.get("NODE_IDLE_TIMEOUT_MINUTES", "10"))
-        self._last_job_time: Optional[float] = None
+        self._last_job_time: float | None = None
         self._worker_start_time: float = time.time()
 
         # Server unreachable detection - terminate if server is down
         # Default: 5 minutes of failed heartbeats/claims
-        self._server_unreachable_minutes = int(os.environ.get("NODE_SERVER_UNREACHABLE_MINUTES", "5"))
+        self._server_unreachable_minutes = int(
+            os.environ.get("NODE_SERVER_UNREACHABLE_MINUTES", "5")
+        )
         self._last_server_contact: float = time.time()
         self._consecutive_server_failures = 0
 
@@ -134,7 +137,7 @@ class TranscriberNodeWorker:
         return self._running
 
     @property
-    def current_job(self) -> Optional[dict]:
+    def current_job(self) -> dict | None:
         """Get current job info if any."""
         if self._current_job_id:
             elapsed_seconds = None
@@ -358,9 +361,7 @@ class TranscriberNodeWorker:
         # Check 4: Consecutive transcription failures (broken GPU protection)
         if self._max_consecutive_failures > 0:
             if self._consecutive_failures >= self._max_consecutive_failures:
-                return True, (
-                    f"{self._consecutive_failures} consecutive transcription failures"
-                )
+                return True, (f"{self._consecutive_failures} consecutive transcription failures")
 
         return False, ""
 
@@ -461,7 +462,11 @@ class TranscriberNodeWorker:
                             break
 
                         # Wait before next poll (use empty_queue_wait when checking for empty)
-                        wait_time = self._empty_queue_wait if self._consecutive_empty > 0 else self._poll_interval
+                        wait_time = (
+                            self._empty_queue_wait
+                            if self._consecutive_empty > 0
+                            else self._poll_interval
+                        )
                         self._stop_event.wait(timeout=wait_time)
 
             except Exception as e:
@@ -492,7 +497,7 @@ class TranscriberNodeWorker:
                     self._prefetch_stop.wait(timeout=self._poll_interval)
                     continue
 
-                job_id = job['job_id']
+                job_id = job["job_id"]
                 logger.info(
                     f"Prefetching job {job_id}: {job.get('episode_title', 'Unknown')}"
                     f" (queue: {queue_size}/{self._prefetch_max_size})"
@@ -533,7 +538,7 @@ class TranscriberNodeWorker:
                 logger.warning(f"Prefetch error: {e}")
                 self._prefetch_stop.wait(timeout=self._poll_interval)
 
-    def _claim_job(self) -> Optional[dict]:
+    def _claim_job(self) -> dict | None:
         """Try to claim a job from the server.
 
         Returns:
@@ -656,7 +661,7 @@ class TranscriberNodeWorker:
             self._job_start_time = None
             temp_dir.cleanup()
 
-    def _download_audio(self, audio_url: str, temp_dir: Path) -> tuple[Optional[Path], Optional[str]]:
+    def _download_audio(self, audio_url: str, temp_dir: Path) -> tuple[Path | None, str | None]:
         """Download audio file from server.
 
         Args:
@@ -697,7 +702,7 @@ class TranscriberNodeWorker:
             logger.error(f"Download error: {error}")
             return None, error
 
-    def _transcribe(self, audio_path: Path, job_id: int) -> tuple[Optional[str], Optional[str]]:
+    def _transcribe(self, audio_path: Path, job_id: int) -> tuple[str | None, str | None]:
         """Transcribe audio file.
 
         Args:
@@ -733,6 +738,7 @@ class TranscriberNodeWorker:
 
         except Exception as e:
             import traceback
+
             error_detail = f"{type(e).__name__}: {e}"
             logger.error(f"Transcription error: {error_detail}")
             logger.debug(f"Traceback:\n{traceback.format_exc()}")
@@ -833,7 +839,7 @@ class TranscriberNodeWorker:
 
     # === Embedding Job Support ===
 
-    def _claim_embed_job(self) -> Optional[dict]:
+    def _claim_embed_job(self) -> dict | None:
         """Try to claim an embed job from the server.
 
         Returns:
@@ -853,7 +859,9 @@ class TranscriberNodeWorker:
             if not data.get("has_job"):
                 return None
 
-            logger.info(f"Claimed embed job {data['job_id']}: {data.get('episode_title', 'Unknown')}")
+            logger.info(
+                f"Claimed embed job {data['job_id']}: {data.get('episode_title', 'Unknown')}"
+            )
             return data
 
         except httpx.RequestError as e:
@@ -892,7 +900,7 @@ class TranscriberNodeWorker:
             logger.error(f"Embed job {job_id} failed with exception: {e}")
             self._fail_job(job_id, str(e))
 
-    def _download_transcript(self, transcript_url: str) -> Optional[str]:
+    def _download_transcript(self, transcript_url: str) -> str | None:
         """Download transcript content from server.
 
         Args:
@@ -914,7 +922,7 @@ class TranscriberNodeWorker:
             logger.error(f"Transcript download error: {e}")
             return None
 
-    def _generate_embeddings(self, transcript_content: str) -> Optional[list[dict]]:
+    def _generate_embeddings(self, transcript_content: str) -> list[dict] | None:
         """Generate embeddings for transcript segments.
 
         Args:
@@ -952,13 +960,15 @@ class TranscriberNodeWorker:
             # Build result list
             result = []
             for i, (segment, embedding) in enumerate(zip(segments, embeddings)):
-                result.append({
-                    "segment_index": i,
-                    "text": segment.text,
-                    "start": segment.start,
-                    "end": segment.end,
-                    "embedding": embedding.tolist(),
-                })
+                result.append(
+                    {
+                        "segment_index": i,
+                        "text": segment.text,
+                        "start": segment.start,
+                        "end": segment.end,
+                        "embedding": embedding.tolist(),
+                    }
+                )
 
             logger.info(f"Generated {len(result)} embeddings")
             return result
@@ -966,6 +976,7 @@ class TranscriberNodeWorker:
         except Exception as e:
             logger.error(f"Embedding generation error: {e}")
             import traceback
+
             logger.debug(f"Traceback:\n{traceback.format_exc()}")
             return None
 
@@ -990,7 +1001,9 @@ class TranscriberNodeWorker:
                 # Reset idle timer on successful completion
                 self._last_job_time = time.time()
             else:
-                logger.error(f"Complete embed request failed: {response.status_code} - {response.text}")
+                logger.error(
+                    f"Complete embed request failed: {response.status_code} - {response.text}"
+                )
 
         except httpx.RequestError as e:
             logger.error(f"Complete embed error: {e}")

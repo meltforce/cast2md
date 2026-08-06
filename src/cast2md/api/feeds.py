@@ -157,7 +157,7 @@ def create_feed(feed_data: FeedCreate):
     try:
         # Discover episodes and auto-queue ALL for transcript download
         # External transcripts are fast to check, so queue everything
-        result = discover_new_episodes(feed, auto_queue=True, queue_only_latest=False)
+        discover_new_episodes(feed, auto_queue=True, queue_only_latest=False)
     finally:
         manager.resume_transcript_downloads()
 
@@ -220,9 +220,7 @@ def update_feed(feed_id: int, feed_data: FeedUpdate):
                     raise HTTPException(status_code=409, detail=str(e))
 
                 # Update episode paths in database to match new directory names
-                episode_repo.update_paths_for_feed_rename(
-                    feed_id, old_dir_name, new_dir_name
-                )
+                episode_repo.update_paths_for_feed_rename(feed_id, old_dir_name, new_dir_name)
 
         # Update database
         feed = repo.update(feed_id, custom_title=new_custom_title)
@@ -310,8 +308,7 @@ def export_feed_transcripts(feed_id: int, format: str = "md"):
 
     # Filter episodes with transcripts
     episodes_with_transcripts = [
-        ep for ep in episodes
-        if ep.transcript_path and Path(ep.transcript_path).exists()
+        ep for ep in episodes if ep.transcript_path and Path(ep.transcript_path).exists()
     ]
 
     if not episodes_with_transcripts:
@@ -341,7 +338,5 @@ def export_feed_transcripts(feed_id: int, format: str = "md"):
     return StreamingResponse(
         zip_buffer,
         media_type="application/zip",
-        headers={
-            "Content-Disposition": f'attachment; filename="{safe_title}_transcripts.zip"'
-        },
+        headers={"Content-Disposition": f'attachment; filename="{safe_title}_transcripts.zip"'},
     )

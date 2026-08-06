@@ -4,7 +4,6 @@ import logging
 import threading
 import time
 from dataclasses import dataclass
-from typing import Optional
 
 import httpx
 
@@ -33,18 +32,18 @@ class PocketCastsEpisode:
 
     uuid: str
     title: str
-    published: Optional[str]  # ISO format date string
-    transcript_url: Optional[str]  # From pocket_casts_transcripts[]
+    published: str | None  # ISO format date string
+    transcript_url: str | None  # From pocket_casts_transcripts[]
 
 
 @dataclass
 class TranscriptDownloadResult:
     """Result from transcript download attempt."""
 
-    content: Optional[str] = None
+    content: str | None = None
     success: bool = False
-    status_code: Optional[int] = None
-    error: Optional[str] = None
+    status_code: int | None = None
+    error: str | None = None
 
 
 class PocketCastsClient:
@@ -57,7 +56,7 @@ class PocketCastsClient:
 
     BASE_URL = "https://podcast-api.pocketcasts.com"
 
-    def __init__(self, timeout: Optional[float] = None):
+    def __init__(self, timeout: float | None = None):
         """Initialize client.
 
         Args:
@@ -225,7 +224,9 @@ class PocketCastsClient:
             )
 
         except httpx.HTTPStatusError as e:
-            logger.warning(f"HTTP error downloading transcript from {url}: {e.response.status_code}")
+            logger.warning(
+                f"HTTP error downloading transcript from {url}: {e.response.status_code}"
+            )
             return TranscriptDownloadResult(
                 success=False,
                 status_code=e.response.status_code,

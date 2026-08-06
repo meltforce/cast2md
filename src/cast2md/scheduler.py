@@ -31,7 +31,9 @@ def poll_all_feeds():
         try:
             result = discover_new_episodes(feed, auto_queue=True, queue_only_latest=False)
             if result.total_new > 0:
-                logger.info(f"Feed '{feed.title}': {result.total_new} new episodes, {len(result.new_episode_ids)} queued")
+                logger.info(
+                    f"Feed '{feed.title}': {result.total_new} new episodes, {len(result.new_episode_ids)} queued"
+                )
                 total_new += result.total_new
                 total_queued += len(result.new_episode_ids)
         except Exception as e:
@@ -181,7 +183,9 @@ def start_scheduler(interval_minutes: int = 60):
     )
 
     scheduler.start()
-    logger.info(f"Scheduler started. Feed polling interval: {interval_minutes} minutes, transcript retry: hourly")
+    logger.info(
+        f"Scheduler started. Feed polling interval: {interval_minutes} minutes, transcript retry: hourly"
+    )
 
 
 def stop_scheduler():
@@ -201,11 +205,13 @@ def get_scheduler_status() -> dict:
 
     jobs = []
     for job in scheduler.get_jobs():
-        jobs.append({
-            "id": job.id,
-            "name": job.name,
-            "next_run": job.next_run_time.isoformat() if job.next_run_time else None,
-        })
+        jobs.append(
+            {
+                "id": job.id,
+                "name": job.name,
+                "next_run": job.next_run_time.isoformat() if job.next_run_time else None,
+            }
+        )
 
     return {
         "running": scheduler.running,

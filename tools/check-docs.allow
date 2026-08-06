@@ -35,7 +35,7 @@ src/cast2md/search/repository.py%%"jetzt", "hier", "dort", "dann", "denn", "doch
 # German example queries in the MCP tool description, and the connecting-word
 # regex that strips them. Both are user-facing input handling for German
 # podcasts, not documentation.
-src/cast2md/mcp/tools.py%%re.sub(r"\b(im|in|vom|von|des|der|the|from|about|über)\b"
+src/cast2md/mcp/tools.py%%r"\b(im|in|vom|von|des|der|the|from|about|über)\b"
 src/cast2md/mcp/tools.py%%"Was ist der Inhalt der letzten Folge des KI Podcasts?"
 src/cast2md/mcp/tools.py%%"Was wurde im KI Podcast über MCP gesagt?"
 src/cast2md/mcp/tools.py%%"Was wird über Protein gesagt?"

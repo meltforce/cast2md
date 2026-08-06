@@ -5,7 +5,6 @@ Converts Apple Podcasts URLs to RSS feed URLs via the iTunes Lookup API.
 
 import logging
 import re
-from typing import Optional
 
 from cast2md.clients.itunes import ItunesClient
 
@@ -19,7 +18,7 @@ logger = logging.getLogger(__name__)
 ITUNES_URL_PATTERN = re.compile(r"podcasts\.apple\.com/.*/id(\d+)")
 
 
-def extract_itunes_id(url: str) -> Optional[str]:
+def extract_itunes_id(url: str) -> str | None:
     """Extract iTunes ID from an Apple Podcasts URL.
 
     Args:
@@ -44,7 +43,7 @@ def is_itunes_url(url: str) -> bool:
     return extract_itunes_id(url) is not None
 
 
-def resolve_feed_url(input_url: str) -> tuple[str, Optional[str]]:
+def resolve_feed_url(input_url: str) -> tuple[str, str | None]:
     """Resolve input URL to RSS feed URL.
 
     If the input is an Apple Podcasts URL, calls the iTunes API to get the RSS

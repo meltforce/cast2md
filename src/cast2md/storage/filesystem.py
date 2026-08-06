@@ -97,8 +97,9 @@ def episode_filename(title: str, published_at: datetime | None, audio_url: str) 
     return f"{date_str}_{safe_title}.{ext}"
 
 
-def get_audio_path(podcast_name: str, episode_title: str,
-                   published_at: datetime | None, audio_url: str) -> Path:
+def get_audio_path(
+    podcast_name: str, episode_title: str, published_at: datetime | None, audio_url: str
+) -> Path:
     """Get the full path for storing an episode's audio file.
 
     Structure: {storage_path}/audio/{podcast_name}/{filename}
@@ -119,8 +120,9 @@ def get_audio_path(podcast_name: str, episode_title: str,
     return settings.storage_path / "audio" / safe_podcast / filename
 
 
-def get_transcript_path(podcast_name: str, episode_title: str,
-                        published_at: datetime | None) -> Path:
+def get_transcript_path(
+    podcast_name: str, episode_title: str, published_at: datetime | None
+) -> Path:
     """Get the full path for storing an episode's transcript.
 
     Structure: {storage_path}/transcripts/{podcast_name}/{filename}

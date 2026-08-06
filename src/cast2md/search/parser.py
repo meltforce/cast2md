@@ -64,7 +64,7 @@ def parse_transcript_segments(content: str) -> list[TranscriptSegment]:
 
     # Pattern to match timestamp lines: **[MM:SS]** or **[HH:MM:SS]**
     # Captures timestamp and following text
-    pattern = r'\*\*\[(\d{1,2}:\d{2}(?::\d{2})?)\]\*\*\s*(.+?)(?=\*\*\[|\Z)'
+    pattern = r"\*\*\[(\d{1,2}:\d{2}(?::\d{2})?)\]\*\*\s*(.+?)(?=\*\*\[|\Z)"
 
     matches = re.findall(pattern, content, re.DOTALL)
 
@@ -81,11 +81,13 @@ def parse_transcript_segments(content: str) -> list[TranscriptSegment]:
         cleaned_text = " ".join(text.split())
 
         if cleaned_text:  # Only add non-empty segments
-            segments.append(TranscriptSegment(
-                text=cleaned_text,
-                start=start,
-                end=end,
-            ))
+            segments.append(
+                TranscriptSegment(
+                    text=cleaned_text,
+                    start=start,
+                    end=end,
+                )
+            )
 
     return segments
 
@@ -161,11 +163,13 @@ def merge_word_level_segments(
 
         if start_new and current_texts:
             # Save the current phrase
-            merged.append(TranscriptSegment(
-                text=" ".join(current_texts),
-                start=current_start,
-                end=current_end,
-            ))
+            merged.append(
+                TranscriptSegment(
+                    text=" ".join(current_texts),
+                    start=current_start,
+                    end=current_end,
+                )
+            )
             current_texts = []
             current_start = seg.start
 
@@ -174,11 +178,13 @@ def merge_word_level_segments(
 
     # Don't forget the last phrase
     if current_texts:
-        merged.append(TranscriptSegment(
-            text=" ".join(current_texts),
-            start=current_start,
-            end=current_end,
-        ))
+        merged.append(
+            TranscriptSegment(
+                text=" ".join(current_texts),
+                start=current_start,
+                end=current_end,
+            )
+        )
 
     return merged
 

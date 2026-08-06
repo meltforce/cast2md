@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Any, Optional
+from typing import Any
 
 from cast2md.db.models import (
     Episode,
@@ -14,7 +14,7 @@ from cast2md.db.models import (
     NodeStatus,
     TranscriberNode,
 )
-from cast2md.db.sql import execute, now_sql, ph, phs
+from cast2md.db.sql import execute
 
 # Type alias for database connection (psycopg2)
 Connection = Any
@@ -60,7 +60,7 @@ class FeedRepository:
                       categories, custom_title, last_polled, itunes_id, pocketcasts_uuid,
                       created_at, updated_at"""
 
-    def get_by_id(self, feed_id: int) -> Optional[Feed]:
+    def get_by_id(self, feed_id: int) -> Feed | None:
         """Get feed by ID."""
         cursor = execute(
             self.conn,
@@ -70,7 +70,7 @@ class FeedRepository:
         row = cursor.fetchone()
         return Feed.from_row(row) if row else None
 
-    def get_by_url(self, url: str) -> Optional[Feed]:
+    def get_by_url(self, url: str) -> Feed | None:
         """Get feed by URL."""
         cursor = execute(
             self.conn,
@@ -217,9 +217,20 @@ class EpisodeRepository:
             RETURNING id
             """,
             (
-                feed_id, guid, title, description, audio_url,
-                duration_seconds, published_str, EpisodeStatus.NEW.value,
-                transcript_url, transcript_type, link, author, now, now,
+                feed_id,
+                guid,
+                title,
+                description,
+                audio_url,
+                duration_seconds,
+                published_str,
+                EpisodeStatus.NEW.value,
+                transcript_url,
+                transcript_type,
+                link,
+                author,
+                now,
+                now,
             ),
         )
         episode_id = cursor.fetchone()[0]
@@ -236,7 +247,7 @@ class EpisodeRepository:
         self.conn.commit()
         return self.get_by_id(episode_id)
 
-    def get_by_id(self, episode_id: int) -> Optional[Episode]:
+    def get_by_id(self, episode_id: int) -> Episode | None:
         """Get episode by ID."""
         cursor = execute(
             self.conn,
@@ -246,7 +257,7 @@ class EpisodeRepository:
         row = cursor.fetchone()
         return Episode.from_row(row) if row else None
 
-    def get_by_guid(self, feed_id: int, guid: str) -> Optional[Episode]:
+    def get_by_guid(self, feed_id: int, guid: str) -> Episode | None:
         """Get episode by feed ID and GUID."""
         cursor = execute(
             self.conn,
@@ -291,17 +302,57 @@ class EpisodeRepository:
         )
         return [Episode.from_row(row) for row in cursor.fetchall()]
 
-    def get_by_status(self, status: EpisodeStatus, limit: int = 100) -> list[Episode]:
-        """Get episodes by status."""
+    # Sort orders accepted by get_by_status. Keys are the public API values,
+    # values the SQL fragment — the mapping is what keeps the ORDER BY clause
+    # free of caller-supplied text.
+    STATUS_ORDERS = {
+        "created_asc": "created_at ASC",
+        "updated_asc": "updated_at ASC",
+        "updated_desc": "updated_at DESC",
+    }
+
+    def get_by_status(
+        self,
+        status: EpisodeStatus,
+        limit: int = 100,
+        since: str | None = None,
+        feed_id: int | None = None,
+        order: str = "created_asc",
+    ) -> list[Episode]:
+        """Get episodes by status.
+
+        Args:
+            status: Episode status to filter on.
+            limit: Maximum number of episodes to return.
+            since: Return only episodes with updated_at strictly greater than
+                this timestamp. The value is compared as a naive local
+                timestamp, matching what update_status writes.
+            feed_id: Restrict the result to a single feed.
+            order: One of STATUS_ORDERS. Unknown values raise ValueError.
+        """
+        if order not in self.STATUS_ORDERS:
+            raise ValueError(f"Invalid order: {order}. Valid options: {sorted(self.STATUS_ORDERS)}")
+
+        clauses = ["status = %s"]
+        params: list[Any] = [status.value]
+
+        if since:
+            clauses.append("updated_at > %s::timestamp")
+            params.append(since)
+        if feed_id is not None:
+            clauses.append("feed_id = %s")
+            params.append(feed_id)
+
+        params.append(limit)
         cursor = execute(
             self.conn,
             f"""
             SELECT {self.EPISODE_COLUMNS} FROM episode
-            WHERE status = %s
-            ORDER BY created_at ASC
+            WHERE {" AND ".join(clauses)}
+            ORDER BY {self.STATUS_ORDERS[order]}
             LIMIT %s
             """,
-            (status.value, limit),
+            tuple(params),
         )
         return [Episode.from_row(row) for row in cursor.fetchall()]
 
@@ -540,9 +591,7 @@ class EpisodeRepository:
         )
         return dict(cursor.fetchall())
 
-    def get_retranscribable_episodes(
-        self, feed_id: int, current_model: str
-    ) -> list[Episode]:
+    def get_retranscribable_episodes(self, feed_id: int, current_model: str) -> list[Episode]:
         """Get completed episodes where transcript_model differs from current model.
 
         Args:
@@ -654,9 +703,7 @@ class EpisodeRepository:
         )
         return cursor.fetchone() is not None
 
-    def count_by_feed(
-        self, feed_id: int, exclude_permanent_failures: bool = False
-    ) -> int:
+    def count_by_feed(self, feed_id: int, exclude_permanent_failures: bool = False) -> int:
         """Count total episodes for a feed."""
         pf_clause = " AND permanent_failure = FALSE" if exclude_permanent_failures else ""
         cursor = execute(
@@ -1120,8 +1167,14 @@ class JobRepository:
             RETURNING id
             """,
             (
-                episode_id, job_type.value, priority, JobStatus.QUEUED.value,
-                0, max_attempts, now, now,
+                episode_id,
+                job_type.value,
+                priority,
+                JobStatus.QUEUED.value,
+                0,
+                max_attempts,
+                now,
+                now,
             ),
         )
         job_id = cursor.fetchone()[0]
@@ -1129,7 +1182,7 @@ class JobRepository:
         self.conn.commit()
         return self.get_by_id(job_id)
 
-    def get_by_id(self, job_id: int) -> Optional[Job]:
+    def get_by_id(self, job_id: int) -> Job | None:
         """Get job by ID."""
         cursor = execute(
             self.conn,
@@ -1139,7 +1192,7 @@ class JobRepository:
         row = cursor.fetchone()
         return Job.from_row(row) if row else None
 
-    def get_next_job(self, job_type: JobType, local_only: bool = False) -> Optional[Job]:
+    def get_next_job(self, job_type: JobType, local_only: bool = False) -> Job | None:
         """Get the next queued job of given type, ordered by priority.
 
         Also respects next_retry_at for failed jobs being retried.
@@ -1181,7 +1234,7 @@ class JobRepository:
 
     def claim_next_job(
         self, job_type: JobType, node_id: str = "local", local_only: bool = False
-    ) -> Optional[Job]:
+    ) -> Job | None:
         """Atomically claim the next queued job using UPDATE...RETURNING.
 
         This prevents race conditions where multiple workers claim the same job.
@@ -1234,14 +1287,22 @@ class JobRepository:
             WHERE id = ({subquery})
             RETURNING *
             """,
-            (JobStatus.RUNNING.value, now, node_id, now, job_type.value, JobStatus.QUEUED.value, now),
+            (
+                JobStatus.RUNNING.value,
+                now,
+                node_id,
+                now,
+                job_type.value,
+                JobStatus.QUEUED.value,
+                now,
+            ),
         )
 
         row = cursor.fetchone()
         self.conn.commit()
         return Job.from_row(row) if row else None
 
-    def get_next_unclaimed_job(self, job_type: JobType) -> Optional[Job]:
+    def get_next_unclaimed_job(self, job_type: JobType) -> Job | None:
         """Get the next queued job that hasn't been claimed by any node.
 
         Used by distributed transcription nodes to claim work.
@@ -1654,7 +1715,7 @@ class JobRepository:
 
         if retry and job.attempts < job.max_attempts:
             # Schedule retry with exponential backoff (5min, 25min, 125min)
-            backoff_minutes = min(5 ** job.attempts, 720)
+            backoff_minutes = min(5**job.attempts, 720)
             next_retry = now + timedelta(minutes=backoff_minutes)
 
             execute(
@@ -2107,7 +2168,7 @@ class SettingsRepository:
     def __init__(self, conn: Connection):
         self.conn = conn
 
-    def get(self, key: str) -> Optional[str]:
+    def get(self, key: str) -> str | None:
         """Get a setting value by key."""
         cursor = execute(
             self.conn,
@@ -2164,9 +2225,9 @@ class WhisperModel:
 
     id: str
     backend: str
-    hf_repo: Optional[str]
-    description: Optional[str]
-    size_mb: Optional[int]
+    hf_repo: str | None
+    description: str | None
+    size_mb: int | None
     is_enabled: bool
 
     @classmethod
@@ -2193,16 +2254,16 @@ class WhisperModelRepository:
         if enabled_only:
             cursor = execute(
                 self.conn,
-                "SELECT id, backend, hf_repo, description, size_mb, is_enabled FROM whisper_models WHERE is_enabled = TRUE ORDER BY id"
+                "SELECT id, backend, hf_repo, description, size_mb, is_enabled FROM whisper_models WHERE is_enabled = TRUE ORDER BY id",
             )
         else:
             cursor = execute(
                 self.conn,
-                "SELECT id, backend, hf_repo, description, size_mb, is_enabled FROM whisper_models ORDER BY id"
+                "SELECT id, backend, hf_repo, description, size_mb, is_enabled FROM whisper_models ORDER BY id",
             )
         return [WhisperModel.from_row(row) for row in cursor.fetchall()]
 
-    def get_by_id(self, model_id: str) -> Optional[WhisperModel]:
+    def get_by_id(self, model_id: str) -> WhisperModel | None:
         """Get a model by ID."""
         cursor = execute(
             self.conn,
@@ -2216,9 +2277,9 @@ class WhisperModelRepository:
         self,
         model_id: str,
         backend: str,
-        hf_repo: Optional[str] = None,
-        description: Optional[str] = None,
-        size_mb: Optional[int] = None,
+        hf_repo: str | None = None,
+        description: str | None = None,
+        size_mb: int | None = None,
         is_enabled: bool = True,
     ) -> None:
         """Insert or update a model."""
@@ -2257,10 +2318,28 @@ class WhisperModelRepository:
             ("small", "both", "mlx-community/whisper-small-mlx", "Balanced speed/accuracy", 466),
             ("small.en", "both", "mlx-community/whisper-small.en-mlx", "English-only small", 466),
             ("medium", "both", "mlx-community/whisper-medium-mlx", "High accuracy", 1500),
-            ("medium.en", "both", "mlx-community/whisper-medium.en-mlx", "English-only medium", 1500),
-            ("large-v2", "both", "mlx-community/whisper-large-v2-mlx", "Previous best accuracy", 3000),
+            (
+                "medium.en",
+                "both",
+                "mlx-community/whisper-medium.en-mlx",
+                "English-only medium",
+                1500,
+            ),
+            (
+                "large-v2",
+                "both",
+                "mlx-community/whisper-large-v2-mlx",
+                "Previous best accuracy",
+                3000,
+            ),
             ("large-v3", "both", "mlx-community/whisper-large-v3-mlx", "Best accuracy", 3000),
-            ("large-v3-turbo", "both", "mlx-community/whisper-large-v3-turbo", "Fast large model", 1600),
+            (
+                "large-v3-turbo",
+                "both",
+                "mlx-community/whisper-large-v3-turbo",
+                "Fast large model",
+                1600,
+            ),
         ]
 
         now = datetime.now().isoformat()
@@ -2310,16 +2389,16 @@ class RunPodModelRepository:
         if enabled_only:
             cursor = execute(
                 self.conn,
-                "SELECT id, display_name, backend, is_enabled, sort_order FROM runpod_models WHERE is_enabled = TRUE ORDER BY sort_order, id"
+                "SELECT id, display_name, backend, is_enabled, sort_order FROM runpod_models WHERE is_enabled = TRUE ORDER BY sort_order, id",
             )
         else:
             cursor = execute(
                 self.conn,
-                "SELECT id, display_name, backend, is_enabled, sort_order FROM runpod_models ORDER BY sort_order, id"
+                "SELECT id, display_name, backend, is_enabled, sort_order FROM runpod_models ORDER BY sort_order, id",
             )
         return [RunPodModel.from_row(row) for row in cursor.fetchall()]
 
-    def get_by_id(self, model_id: str) -> Optional[RunPodModel]:
+    def get_by_id(self, model_id: str) -> RunPodModel | None:
         """Get a model by ID."""
         cursor = execute(
             self.conn,
@@ -2414,13 +2493,23 @@ class TranscriberNodeRepository:
             )
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """,
-            (node_id, name, url, api_key, whisper_model, whisper_backend,
-             NodeStatus.OFFLINE.value, priority, now, now),
+            (
+                node_id,
+                name,
+                url,
+                api_key,
+                whisper_model,
+                whisper_backend,
+                NodeStatus.OFFLINE.value,
+                priority,
+                now,
+                now,
+            ),
         )
         self.conn.commit()
         return self.get_by_id(node_id)
 
-    def get_by_id(self, node_id: str) -> Optional[TranscriberNode]:
+    def get_by_id(self, node_id: str) -> TranscriberNode | None:
         """Get node by ID."""
         cursor = execute(
             self.conn,
@@ -2430,7 +2519,7 @@ class TranscriberNodeRepository:
         row = cursor.fetchone()
         return TranscriberNode.from_row(row) if row else None
 
-    def get_by_api_key(self, api_key: str) -> Optional[TranscriberNode]:
+    def get_by_api_key(self, api_key: str) -> TranscriberNode | None:
         """Get node by API key."""
         cursor = execute(
             self.conn,
@@ -2443,8 +2532,7 @@ class TranscriberNodeRepository:
     def get_all(self) -> list[TranscriberNode]:
         """Get all nodes."""
         cursor = execute(
-            self.conn,
-            f"SELECT {self.NODE_COLUMNS} FROM transcriber_node ORDER BY priority, name"
+            self.conn, f"SELECT {self.NODE_COLUMNS} FROM transcriber_node ORDER BY priority, name"
         )
         return [TranscriberNode.from_row(row) for row in cursor.fetchall()]
 
@@ -2572,11 +2660,11 @@ class TranscriberNodeRepository:
             """
             SELECT status, COUNT(*) FROM transcriber_node
             GROUP BY status
-            """
+            """,
         )
         return dict(cursor.fetchall())
 
-    def get_by_name(self, name: str) -> Optional[TranscriberNode]:
+    def get_by_name(self, name: str) -> TranscriberNode | None:
         """Get node by name."""
         cursor = execute(
             self.conn,

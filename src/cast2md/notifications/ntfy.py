@@ -85,19 +85,17 @@ def notify_transcription_complete(episode_title: str, podcast_title: str) -> boo
     """Send notification for completed transcription."""
     return send_notification(
         NotificationType.TRANSCRIPTION_COMPLETE,
-        title=f"Transcription Complete",
+        title="Transcription Complete",
         message=f"{episode_title}\n{podcast_title}",
         priority=3,
     )
 
 
-def notify_transcription_failed(
-    episode_title: str, podcast_title: str, error: str
-) -> bool:
+def notify_transcription_failed(episode_title: str, podcast_title: str, error: str) -> bool:
     """Send notification for failed transcription."""
     return send_notification(
         NotificationType.TRANSCRIPTION_FAILED,
-        title=f"Transcription Failed",
+        title="Transcription Failed",
         message=f"{episode_title}\n{podcast_title}\n\nError: {error}",
         priority=4,
     )
@@ -107,19 +105,17 @@ def notify_download_complete(episode_title: str, podcast_title: str) -> bool:
     """Send notification for completed download."""
     return send_notification(
         NotificationType.DOWNLOAD_COMPLETE,
-        title=f"Download Complete",
+        title="Download Complete",
         message=f"{episode_title}\n{podcast_title}",
         priority=2,
     )
 
 
-def notify_download_failed(
-    episode_title: str, podcast_title: str, error: str
-) -> bool:
+def notify_download_failed(episode_title: str, podcast_title: str, error: str) -> bool:
     """Send notification for failed download."""
     return send_notification(
         NotificationType.DOWNLOAD_FAILED,
-        title=f"Download Failed",
+        title="Download Failed",
         message=f"{episode_title}\n{podcast_title}\n\nError: {error}",
         priority=4,
     )

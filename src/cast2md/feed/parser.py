@@ -1,10 +1,8 @@
 """RSS feed parsing utilities."""
 
-import re
 from dataclasses import dataclass
 from datetime import datetime
 from email.utils import parsedate_to_datetime
-from typing import Optional
 
 import feedparser
 
@@ -15,14 +13,14 @@ class ParsedEpisode:
 
     guid: str
     title: str
-    description: Optional[str]
+    description: str | None
     audio_url: str
-    duration_seconds: Optional[int]
-    published_at: Optional[datetime]
-    transcript_url: Optional[str]
-    transcript_type: Optional[str] = None  # MIME type from podcast:transcript
-    link: Optional[str] = None
-    author: Optional[str] = None
+    duration_seconds: int | None
+    published_at: datetime | None
+    transcript_url: str | None
+    transcript_type: str | None = None  # MIME type from podcast:transcript
+    link: str | None = None
+    author: str | None = None
 
 
 @dataclass
@@ -30,11 +28,11 @@ class ParsedFeed:
     """Parsed feed data from RSS."""
 
     title: str
-    description: Optional[str]
-    image_url: Optional[str]
+    description: str | None
+    image_url: str | None
     episodes: list[ParsedEpisode]
-    author: Optional[str] = None
-    link: Optional[str] = None
+    author: str | None = None
+    link: str | None = None
     categories: list[str] = None
 
 
@@ -139,7 +137,14 @@ def extract_transcript_url(entry: dict) -> tuple[str | None, str | None]:
 
     # Preference order for transcript formats
     # VTT and SRT have timestamps which we can use
-    preferred_types = ["text/vtt", "application/x-subrip", "text/srt", "application/json", "text/plain", "text/html"]
+    preferred_types = [
+        "text/vtt",
+        "application/x-subrip",
+        "text/srt",
+        "application/json",
+        "text/plain",
+        "text/html",
+    ]
 
     # First pass: look for preferred formats
     for preferred in preferred_types:
@@ -281,9 +286,7 @@ def parse_feed(feed_content: str) -> ParsedFeed:
         guid = entry.get("id") or entry.get("guid") or audio_url
 
         # Get duration from iTunes
-        duration = parse_duration(
-            entry.get("itunes_duration") or entry.get("duration")
-        )
+        duration = parse_duration(entry.get("itunes_duration") or entry.get("duration"))
 
         # Get episode-specific metadata
         episode_link = entry.get("link")

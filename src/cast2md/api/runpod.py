@@ -1,7 +1,6 @@
 """RunPod management API endpoints."""
 
 import logging
-from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
@@ -181,7 +180,9 @@ def get_setup_status(instance_id: str):
 
     state = service.get_setup_state(instance_id)
     if not state:
-        raise HTTPException(status_code=404, detail=f"No setup state found for instance {instance_id}")
+        raise HTTPException(
+            status_code=404, detail=f"No setup state found for instance {instance_id}"
+        )
 
     return _state_to_response(state)
 
@@ -210,7 +211,9 @@ def report_setup_progress(instance_id: str, request: SetupProgressRequest, http_
 
     state = service.get_setup_state(instance_id)
     if not state:
-        raise HTTPException(status_code=404, detail=f"No setup state found for instance {instance_id}")
+        raise HTTPException(
+            status_code=404, detail=f"No setup state found for instance {instance_id}"
+        )
 
     if not state.setup_token or state.setup_token != token:
         raise HTTPException(status_code=403, detail="Invalid setup token")
@@ -218,7 +221,9 @@ def report_setup_progress(instance_id: str, request: SetupProgressRequest, http_
     # Validate phase
     valid_phases = {"connecting", "installing", "ready", "failed"}
     if request.phase not in valid_phases:
-        raise HTTPException(status_code=400, detail=f"Invalid phase: {request.phase}. Must be one of {valid_phases}")
+        raise HTTPException(
+            status_code=400, detail=f"Invalid phase: {request.phase}. Must be one of {valid_phases}"
+        )
 
     # Update state
     update_kwargs: dict = {
@@ -292,7 +297,9 @@ def dismiss_setup_state(instance_id: str):
 
     success = service.dismiss_setup_state(instance_id)
     if not success:
-        raise HTTPException(status_code=404, detail=f"No setup state found for instance {instance_id}")
+        raise HTTPException(
+            status_code=404, detail=f"No setup state found for instance {instance_id}"
+        )
 
     return {"message": f"Dismissed setup state {instance_id}"}
 
@@ -400,6 +407,7 @@ def refresh_gpu_types():
 
 
 # RunPod Transcription Models API
+
 
 class RunPodModelInfo(BaseModel):
     """RunPod transcription model info."""

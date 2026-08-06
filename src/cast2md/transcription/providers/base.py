@@ -2,7 +2,6 @@
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Optional
 
 from cast2md.db.models import Episode, Feed
 
@@ -38,8 +37,8 @@ class TranscriptError:
 
     error_type: str
     source: str
-    source_url: Optional[str] = None
-    status_code: Optional[int] = None
+    source_url: str | None = None
+    status_code: int | None = None
 
 
 class TranscriptProvider(ABC):

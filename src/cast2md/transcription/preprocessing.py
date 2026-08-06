@@ -47,11 +47,15 @@ def preprocess_audio(audio_path: Path) -> Path:
         # Use ffmpeg to convert to mono 16kHz WAV
         cmd = [
             "ffmpeg",
-            "-i", str(audio_path),
-            "-ac", "1",           # mono
-            "-ar", "16000",       # 16kHz sample rate
-            "-acodec", "pcm_s16le",  # 16-bit PCM
-            "-y",                 # overwrite if exists
+            "-i",
+            str(audio_path),
+            "-ac",
+            "1",  # mono
+            "-ar",
+            "16000",  # 16kHz sample rate
+            "-acodec",
+            "pcm_s16le",  # 16-bit PCM
+            "-y",  # overwrite if exists
             str(temp_path),
         ]
 
@@ -125,9 +129,12 @@ def get_audio_duration(audio_path: Path) -> float:
     try:
         cmd = [
             "ffprobe",
-            "-v", "quiet",
-            "-show_entries", "format=duration",
-            "-of", "csv=p=0",
+            "-v",
+            "quiet",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "csv=p=0",
             str(audio_path),
         ]
         result = subprocess.run(
@@ -138,9 +145,7 @@ def get_audio_duration(audio_path: Path) -> float:
         )
 
         if result.returncode != 0 or not result.stdout.strip():
-            raise PreprocessingError(
-                f"ffprobe failed to get duration: {result.stderr}"
-            )
+            raise PreprocessingError(f"ffprobe failed to get duration: {result.stderr}")
 
         return float(result.stdout.strip())
 
@@ -180,13 +185,19 @@ def extract_audio_chunk(
     try:
         cmd = [
             "ffmpeg",
-            "-ss", str(start_sec),  # Input seeking (before -i for efficiency)
-            "-i", str(audio_path),
-            "-t", str(duration_sec),
-            "-ac", "1",           # mono
-            "-ar", "16000",       # 16kHz sample rate
-            "-acodec", "pcm_s16le",  # 16-bit PCM
-            "-y",                 # overwrite if exists
+            "-ss",
+            str(start_sec),  # Input seeking (before -i for efficiency)
+            "-i",
+            str(audio_path),
+            "-t",
+            str(duration_sec),
+            "-ac",
+            "1",  # mono
+            "-ar",
+            "16000",  # 16kHz sample rate
+            "-acodec",
+            "pcm_s16le",  # 16-bit PCM
+            "-y",  # overwrite if exists
             str(output_path),
         ]
 
@@ -201,9 +212,7 @@ def extract_audio_chunk(
             # Clean up partial output on failure
             if output_path.exists():
                 output_path.unlink()
-            raise PreprocessingError(
-                f"ffmpeg chunk extraction failed: {result.stderr}"
-            )
+            raise PreprocessingError(f"ffmpeg chunk extraction failed: {result.stderr}")
 
         return output_path
 

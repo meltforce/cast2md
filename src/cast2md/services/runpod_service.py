@@ -80,7 +80,7 @@ class RunPodService:
     _db_loaded: bool = False
 
     # Self-setup startup script: pod handles all setup and reports progress to server
-    STARTUP_SCRIPT = '''#!/bin/bash
+    STARTUP_SCRIPT = """#!/bin/bash
 set -e
 
 echo "=== Afterburner Self-Setup $(date) ==="
@@ -224,7 +224,7 @@ fi
 report_progress "ready" "Worker is running"
 
 tail -f /dev/null
-'''
+"""
 
     def __init__(self, settings: Settings | None = None):
         self._initial_settings = settings
@@ -460,16 +460,22 @@ tail -f /dev/null
         running_pod_ids = {p.id for p in running_pods}
 
         # Count setup states that aren't yet in the running list (avoid double-counting)
-        creating = len([
-            s for s in self._setup_states.values()
-            if s.phase not in (PodSetupPhase.READY, PodSetupPhase.FAILED)
-            and (s.pod_id is None or s.pod_id not in running_pod_ids)
-        ])
+        creating = len(
+            [
+                s
+                for s in self._setup_states.values()
+                if s.phase not in (PodSetupPhase.READY, PodSetupPhase.FAILED)
+                and (s.pod_id is None or s.pod_id not in running_pod_ids)
+            ]
+        )
 
         total = len(running_pods) + creating
 
         if total >= self.settings.runpod_max_pods:
-            return False, f"Max pods ({self.settings.runpod_max_pods}) reached ({len(running_pods)} running, {creating} creating)"
+            return (
+                False,
+                f"Max pods ({self.settings.runpod_max_pods}) reached ({len(running_pods)} running, {creating} creating)",
+            )
 
         return True, ""
 
@@ -623,12 +629,14 @@ tail -f /dev/null
                 if price_hr is None or price_hr > self.MAX_GPU_PRICE:
                     continue
 
-                result.append({
-                    "id": gpu_id,
-                    "display_name": display_name,
-                    "memory_gb": memory_gb if memory_gb else None,
-                    "price_hr": price_hr,
-                })
+                result.append(
+                    {
+                        "id": gpu_id,
+                        "display_name": display_name,
+                        "memory_gb": memory_gb if memory_gb else None,
+                        "price_hr": price_hr,
+                    }
+                )
 
             # Sort by price ascending (cheapest first for fallback)
             result.sort(key=lambda x: (x.get("price_hr") or 999, x["display_name"]))
@@ -660,7 +668,9 @@ tail -f /dev/null
                     if state.pod_id and state.phase in (PodSetupPhase.READY, PodSetupPhase.FAILED):
                         if state.pod_id not in actual_pod_ids:
                             stale_instance_ids.append(instance_id)
-                            logger.info(f"Reconcile: pod {state.pod_id} ({instance_id}) no longer exists in RunPod")
+                            logger.info(
+                                f"Reconcile: pod {state.pod_id} ({instance_id}) no longer exists in RunPod"
+                            )
 
             # Remove stale states
             for instance_id in stale_instance_ids:
@@ -764,23 +774,32 @@ tail -f /dev/null
             # Ensure template exists
             template_id = self._ensure_template()
             if not template_id:
-                self._update_state(instance_id, phase=PodSetupPhase.FAILED, error="Failed to create template")
+                self._update_state(
+                    instance_id, phase=PodSetupPhase.FAILED, error="Failed to create template"
+                )
                 return
 
             # Create pod (with env vars for self-setup)
             self._update_state(instance_id, message="Creating RunPod pod...")
             pod_id, gpu_type = self._create_pod(
-                template_id, state.pod_name, state.ts_hostname, instance_id,
+                template_id,
+                state.pod_name,
+                state.ts_hostname,
+                instance_id,
             )
             self._update_state(
-                instance_id, pod_id=pod_id, gpu_type=gpu_type,
-                phase=PodSetupPhase.STARTING, message="Waiting for pod to start...",
+                instance_id,
+                pod_id=pod_id,
+                gpu_type=gpu_type,
+                phase=PodSetupPhase.STARTING,
+                message="Waiting for pod to start...",
             )
 
             # Wait for pod to reach RUNNING status (via RunPod API)
             self._wait_for_pod_running(pod_id)
             self._update_state(
-                instance_id, phase=PodSetupPhase.CONNECTING,
+                instance_id,
+                phase=PodSetupPhase.CONNECTING,
                 message="Pod running, waiting for self-setup...",
             )
 
@@ -808,7 +827,8 @@ tail -f /dev/null
 
             # Timeout - mark as failed and terminate
             self._update_state(
-                instance_id, phase=PodSetupPhase.FAILED,
+                instance_id,
+                phase=PodSetupPhase.FAILED,
                 error="Setup timed out (15 min) - pod did not report ready",
             )
             logger.error(f"Pod {instance_id} setup timed out, terminating")
@@ -877,16 +897,18 @@ tail -f /dev/null
             client.close()
 
     def _create_pod(
-        self, template_id: str, pod_name: str, ts_hostname: str, instance_id: str,
+        self,
+        template_id: str,
+        pod_name: str,
+        ts_hostname: str,
+        instance_id: str,
     ) -> tuple[str, str]:
         """Create a RunPod pod with self-setup env vars. Returns (pod_id, gpu_type)."""
         runpod.api_key = self.settings.runpod_api_key
 
         # Parse blocked GPUs (comma-separated list)
         blocked_gpus = set(
-            gpu.strip()
-            for gpu in self.settings.runpod_blocked_gpus.split(",")
-            if gpu.strip()
+            gpu.strip() for gpu in self.settings.runpod_blocked_gpus.split(",") if gpu.strip()
         )
 
         def is_blocked(gpu_id: str) -> bool:
@@ -912,7 +934,12 @@ tail -f /dev/null
 
         # Hardcoded fallback if list is empty (excluding blocked GPUs)
         if len(gpu_types) == 0:
-            for fb in ["NVIDIA RTX A5000", "NVIDIA RTX A6000", "NVIDIA GeForce RTX 3090", "NVIDIA RTX A4000"]:
+            for fb in [
+                "NVIDIA RTX A5000",
+                "NVIDIA RTX A6000",
+                "NVIDIA GeForce RTX 3090",
+                "NVIDIA RTX A4000",
+            ]:
                 if fb not in gpu_types and not is_blocked(fb):
                     gpu_types.append(fb)
 
@@ -967,7 +994,9 @@ tail -f /dev/null
 
                 # If RunPod gave us a blocked GPU, terminate immediately and try next
                 if is_blocked(actual_gpu):
-                    logger.error(f"RunPod allocated blocked GPU {actual_gpu}! Terminating pod {pod_id}")
+                    logger.error(
+                        f"RunPod allocated blocked GPU {actual_gpu}! Terminating pod {pod_id}"
+                    )
                     try:
                         runpod.terminate_pod(pod_id)
                     except Exception:
@@ -975,7 +1004,9 @@ tail -f /dev/null
                     last_error = RuntimeError(f"RunPod allocated blocked GPU: {actual_gpu}")
                     continue
 
-                logger.info(f"Created pod {pod_id} ({pod_name}) with {actual_gpu} (requested: {gpu_type})")
+                logger.info(
+                    f"Created pod {pod_id} ({pod_name}) with {actual_gpu} (requested: {gpu_type})"
+                )
                 return pod_id, actual_gpu
             except Exception as e:
                 error_msg = str(e).lower()
@@ -1231,11 +1262,19 @@ tail -f /dev/null
 
         self._ensure_db_loaded()
         current_pods = len(self.list_pods())
-        creating_pods = len([s for s in self._setup_states.values() if s.phase not in (PodSetupPhase.READY, PodSetupPhase.FAILED)])
+        creating_pods = len(
+            [
+                s
+                for s in self._setup_states.values()
+                if s.phase not in (PodSetupPhase.READY, PodSetupPhase.FAILED)
+            ]
+        )
         max_pods = self.settings.runpod_max_pods
 
         # Calculate desired pods based on queue depth
-        desired = min((queue_depth // threshold) * self.settings.runpod_pods_per_threshold, max_pods)
+        desired = min(
+            (queue_depth // threshold) * self.settings.runpod_pods_per_threshold, max_pods
+        )
         new_pods_needed = max(0, desired - current_pods - creating_pods)
 
         return new_pods_needed

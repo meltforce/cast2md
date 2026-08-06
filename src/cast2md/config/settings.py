@@ -40,7 +40,7 @@ class Settings(BaseSettings):
     # Whisper chunking for memory efficiency (faster-whisper only)
     # Episodes longer than threshold are processed in chunks to avoid OOM
     whisper_chunk_threshold_minutes: int = 30  # Chunk episodes longer than this
-    whisper_chunk_size_minutes: int = 30       # Size of each chunk
+    whisper_chunk_size_minutes: int = 30  # Size of each chunk
 
     # Download settings
     max_concurrent_downloads: int = 2
@@ -52,8 +52,12 @@ class Settings(BaseSettings):
     stuck_threshold_minutes: int = 30  # Jobs running longer than this are considered stuck
 
     # Transcript discovery
-    transcript_unavailable_age_days: int = 14  # Episodes older than this without external URLs marked unavailable
-    transcript_retry_days: int = 14  # How long to retry external transcript downloads before giving up
+    transcript_unavailable_age_days: int = (
+        14  # Episodes older than this without external URLs marked unavailable
+    )
+    transcript_retry_days: int = (
+        14  # How long to retry external transcript downloads before giving up
+    )
 
     # HTTP client settings
     user_agent: str = f"cast2md/{__version__} (Podcast Transcription Service)"
@@ -90,7 +94,9 @@ class Settings(BaseSettings):
     runpod_image_name: str = "meltforce/cast2md-afterburner:cuda124"
     runpod_ts_hostname: str = "runpod-afterburner"  # Base hostname (instance ID appended)
     runpod_github_repo: str = "meltforce/cast2md"
-    runpod_idle_timeout_minutes: int = 10  # Auto-terminate pods after idle for this many minutes (0 to disable)
+    runpod_idle_timeout_minutes: int = (
+        10  # Auto-terminate pods after idle for this many minutes (0 to disable)
+    )
 
     # Server connection (for pods to register)
     runpod_server_url: str = ""  # e.g., https://cast2md.example.ts.net
@@ -120,10 +126,12 @@ RUNPOD_TRANSCRIPTION_MODELS = [
 
 # Node-specific settings - these come from env file only (not stored in DB).
 # This includes sensitive credentials that shouldn't be in the database.
-NODE_SPECIFIC_SETTINGS = frozenset({
-    "runpod_api_key",
-    "runpod_ts_auth_key",
-})
+NODE_SPECIFIC_SETTINGS = frozenset(
+    {
+        "runpod_api_key",
+        "runpod_ts_auth_key",
+    }
+)
 
 # Default values for comparison (to detect env file overrides)
 _DEFAULTS = {
@@ -210,9 +218,12 @@ def _apply_db_overrides() -> None:
                 current_value = getattr(_settings, key)
                 field_type = type(current_value)
                 try:
-                    if field_type == int:
+                    # `is`, not isinstance: bool is a subclass of int, so an
+                    # isinstance check would route every bool setting through
+                    # int() and turn "false" into a ValueError.
+                    if field_type is int:
                         setattr(_settings, key, int(value))
-                    elif field_type == bool:
+                    elif field_type is bool:
                         setattr(_settings, key, value.lower() in ("true", "1", "yes"))
                     elif isinstance(current_value, Path):
                         setattr(_settings, key, Path(value))

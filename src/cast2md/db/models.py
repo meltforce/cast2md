@@ -4,10 +4,9 @@ import json
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-from typing import Optional
 
 
-def parse_datetime(value) -> Optional[datetime]:
+def parse_datetime(value) -> datetime | None:
     """Parse a datetime value from database.
 
     Handles both ISO format strings and native datetime objects.
@@ -70,18 +69,18 @@ class NodeStatus(str, Enum):
 class Feed:
     """Podcast feed model."""
 
-    id: Optional[int]
+    id: int | None
     url: str
     title: str
-    description: Optional[str]
-    image_url: Optional[str]
-    author: Optional[str]
-    link: Optional[str]
-    categories: Optional[str]  # JSON string
-    custom_title: Optional[str]
-    last_polled: Optional[datetime]
-    itunes_id: Optional[str]
-    pocketcasts_uuid: Optional[str]
+    description: str | None
+    image_url: str | None
+    author: str | None
+    link: str | None
+    categories: str | None  # JSON string
+    custom_title: str | None
+    last_polled: datetime | None
+    itunes_id: str | None
+    pocketcasts_uuid: str | None
     created_at: datetime
     updated_at: datetime
 
@@ -125,28 +124,28 @@ class Feed:
 class Episode:
     """Podcast episode model."""
 
-    id: Optional[int]
+    id: int | None
     feed_id: int
     guid: str
     title: str
-    description: Optional[str]
+    description: str | None
     audio_url: str
-    duration_seconds: Optional[int]
-    published_at: Optional[datetime]
+    duration_seconds: int | None
+    published_at: datetime | None
     status: EpisodeStatus
-    audio_path: Optional[str]
-    transcript_path: Optional[str]
-    transcript_url: Optional[str]  # Podcast 2.0 transcript URL from RSS
-    transcript_model: Optional[str]  # Whisper model used for transcription
-    transcript_source: Optional[str]  # e.g., 'whisper', 'podcast2.0:vtt', 'pocketcasts'
-    transcript_type: Optional[str]  # MIME type of original transcript
-    pocketcasts_transcript_url: Optional[str]  # Pocket Casts transcript URL (discovered upfront)
-    transcript_checked_at: Optional[datetime]  # When transcript was last checked
-    next_transcript_retry_at: Optional[datetime]  # When to retry transcript download
-    transcript_failure_reason: Optional[str]  # Error type (e.g., 'forbidden', 'not_found')
-    link: Optional[str]
-    author: Optional[str]
-    error_message: Optional[str]
+    audio_path: str | None
+    transcript_path: str | None
+    transcript_url: str | None  # Podcast 2.0 transcript URL from RSS
+    transcript_model: str | None  # Whisper model used for transcription
+    transcript_source: str | None  # e.g., 'whisper', 'podcast2.0:vtt', 'pocketcasts'
+    transcript_type: str | None  # MIME type of original transcript
+    pocketcasts_transcript_url: str | None  # Pocket Casts transcript URL (discovered upfront)
+    transcript_checked_at: datetime | None  # When transcript was last checked
+    next_transcript_retry_at: datetime | None  # When to retry transcript download
+    transcript_failure_reason: str | None  # Error type (e.g., 'forbidden', 'not_found')
+    link: str | None
+    author: str | None
+    error_message: str | None
     permanent_failure: bool
     created_at: datetime
     updated_at: datetime
@@ -187,7 +186,7 @@ class Episode:
 class Job:
     """Job queue entry."""
 
-    id: Optional[int]
+    id: int | None
     episode_id: int
     job_type: JobType
     priority: int
@@ -195,14 +194,14 @@ class Job:
     attempts: int
     max_attempts: int
     scheduled_at: datetime
-    started_at: Optional[datetime]
-    completed_at: Optional[datetime]
-    next_retry_at: Optional[datetime]
-    error_message: Optional[str]
+    started_at: datetime | None
+    completed_at: datetime | None
+    next_retry_at: datetime | None
+    error_message: str | None
     created_at: datetime
-    assigned_node_id: Optional[str] = None
-    claimed_at: Optional[datetime] = None
-    progress_percent: Optional[int] = None
+    assigned_node_id: str | None = None
+    claimed_at: datetime | None = None
+    progress_percent: int | None = None
 
     @classmethod
     def from_row(cls, row: tuple) -> "Job":
@@ -235,11 +234,11 @@ class TranscriberNode:
     name: str
     url: str
     api_key: str
-    whisper_model: Optional[str]
-    whisper_backend: Optional[str]
+    whisper_model: str | None
+    whisper_backend: str | None
     status: NodeStatus
-    last_heartbeat: Optional[datetime]
-    current_job_id: Optional[int]
+    last_heartbeat: datetime | None
+    current_job_id: int | None
     priority: int
     created_at: datetime
     updated_at: datetime

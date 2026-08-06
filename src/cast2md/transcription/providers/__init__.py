@@ -7,7 +7,11 @@ before falling back to Whisper transcription.
 import logging
 
 from cast2md.db.models import Episode, Feed
-from cast2md.transcription.providers.base import TranscriptError, TranscriptProvider, TranscriptResult
+from cast2md.transcription.providers.base import (
+    TranscriptError,
+    TranscriptProvider,
+    TranscriptResult,
+)
 from cast2md.transcription.providers.pocketcasts import PocketCastsProvider
 from cast2md.transcription.providers.podcast20 import Podcast20Provider
 
@@ -49,9 +53,7 @@ def try_fetch_transcript(episode: Episode, feed: Feed) -> TranscriptResult | Tra
             result = provider.fetch(episode, feed)
 
             if isinstance(result, TranscriptResult):
-                logger.info(
-                    f"Provider {provider.source_id} succeeded for episode: {episode.title}"
-                )
+                logger.info(f"Provider {provider.source_id} succeeded for episode: {episode.title}")
                 return result
             elif isinstance(result, TranscriptError):
                 # Track error but continue to try other providers
@@ -64,9 +66,7 @@ def try_fetch_transcript(episode: Episode, feed: Feed) -> TranscriptResult | Tra
             # result is None - continue to next provider
 
         except Exception as e:
-            logger.warning(
-                f"Provider {provider.source_id} failed for episode {episode.title}: {e}"
-            )
+            logger.warning(f"Provider {provider.source_id} failed for episode {episode.title}: {e}")
             continue
 
     # If we got an error from any provider, return it (useful for 403 handling)

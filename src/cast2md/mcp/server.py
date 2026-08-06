@@ -41,14 +41,18 @@ IMPORTANT: When an episode was mentioned earlier in the conversation, use its ID
     # Only initialize database in local mode (not when using remote API)
     if not skip_db_init:
         from cast2md.mcp.client import is_remote_mode
+
         if not is_remote_mode():
             from cast2md.db.connection import init_db
+
             init_db()
 
     # Import tools and resources to register them
     # These modules use @mcp.tool() and @mcp.resource() decorators
-    from cast2md.mcp import tools  # noqa: F401
-    from cast2md.mcp import resources  # noqa: F401
+    from cast2md.mcp import (
+        resources,  # noqa: F401
+        tools,  # noqa: F401
+    )
 
     return mcp
 

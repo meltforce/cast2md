@@ -1,7 +1,6 @@
 """Command-line interface for cast2md."""
 
 import os
-import shutil
 import subprocess
 import time
 import webbrowser
@@ -219,7 +218,10 @@ def cmd_transcribe(episode_id: int, timestamps: bool):
             raise SystemExit(1)
 
         if not episode.audio_path:
-            click.echo(f"Error: Episode not downloaded. Run 'cast2md download {episode_id}' first", err=True)
+            click.echo(
+                f"Error: Episode not downloaded. Run 'cast2md download {episode_id}' first",
+                err=True,
+            )
             raise SystemExit(1)
 
         feed_repo = FeedRepository(conn)
@@ -371,11 +373,16 @@ def cmd_backup(output: str | None):
 
         cmd = [
             "pg_dump",
-            "-h", config.host,
-            "-p", str(config.port),
-            "-U", config.user,
-            "-d", config.database,
-            "-f", str(backup_path),
+            "-h",
+            config.host,
+            "-p",
+            str(config.port),
+            "-U",
+            config.user,
+            "-d",
+            config.database,
+            "-f",
+            str(backup_path),
             "--no-owner",
             "--no-privileges",
         ]
@@ -438,11 +445,16 @@ def cmd_restore(backup_file: str, force: bool):
         click.echo(f"Creating pre-restore backup: {pre_restore_path}")
         dump_cmd = [
             "pg_dump",
-            "-h", config.host,
-            "-p", str(config.port),
-            "-U", config.user,
-            "-d", config.database,
-            "-f", str(pre_restore_path),
+            "-h",
+            config.host,
+            "-p",
+            str(config.port),
+            "-U",
+            config.user,
+            "-d",
+            config.database,
+            "-f",
+            str(pre_restore_path),
             "--no-owner",
             "--no-privileges",
         ]
@@ -452,11 +464,16 @@ def cmd_restore(backup_file: str, force: bool):
         click.echo("Restoring database...")
         restore_cmd = [
             "psql",
-            "-h", config.host,
-            "-p", str(config.port),
-            "-U", config.user,
-            "-d", config.database,
-            "-f", str(backup_path),
+            "-h",
+            config.host,
+            "-p",
+            str(config.port),
+            "-U",
+            config.user,
+            "-d",
+            config.database,
+            "-f",
+            str(backup_path),
             "-q",  # Quiet mode
         ]
 
@@ -500,12 +517,16 @@ def cmd_list_backups():
     for backup in backups:
         size_mb = backup.stat().st_size / (1024 * 1024)
         mtime = datetime.fromtimestamp(backup.stat().st_mtime)
-        click.echo(f"{backup.name:<45} {size_mb:>8.2f} MB {mtime.strftime('%Y-%m-%d %H:%M:%S'):<20}")
+        click.echo(
+            f"{backup.name:<45} {size_mb:>8.2f} MB {mtime.strftime('%Y-%m-%d %H:%M:%S'):<20}"
+        )
 
 
 @cli.command("reindex-transcripts")
 @click.option("--feed-id", "-f", type=int, help="Only reindex transcripts for this feed")
-@click.option("--embeddings", "-e", is_flag=True, help="Also regenerate embeddings for semantic search")
+@click.option(
+    "--embeddings", "-e", is_flag=True, help="Also regenerate embeddings for semantic search"
+)
 def cmd_reindex_transcripts(feed_id: int | None, embeddings: bool):
     """Reindex all transcripts for full-text search.
 
@@ -516,13 +537,11 @@ def cmd_reindex_transcripts(feed_id: int | None, embeddings: bool):
     Use --embeddings to also regenerate embeddings for semantic search.
     """
     from cast2md.db.connection import get_db, init_db
-    from cast2md.db.repository import EpisodeRepository
     from cast2md.search.repository import TranscriptSearchRepository
 
     init_db()
 
     with get_db() as conn:
-        episode_repo = EpisodeRepository(conn)
         search_repo = TranscriptSearchRepository(conn)
 
         # Build dict of episode_id -> transcript_path
@@ -605,7 +624,7 @@ def cmd_reindex_episodes():
 
     Run this after upgrading if search isn't working correctly.
     """
-    from cast2md.db.connection import init_db, get_db
+    from cast2md.db.connection import get_db, init_db
     from cast2md.db.repository import EpisodeRepository
 
     init_db()
@@ -637,7 +656,9 @@ def cmd_backfill_embeddings(feed_id: int | None, limit: int | None):
     from cast2md.search.repository import TranscriptSearchRepository
 
     if not is_embeddings_available():
-        click.echo("Error: Embeddings not available (sentence-transformers not installed)", err=True)
+        click.echo(
+            "Error: Embeddings not available (sentence-transformers not installed)", err=True
+        )
         raise SystemExit(1)
 
     init_db()
@@ -683,7 +704,9 @@ def cmd_backfill_embeddings(feed_id: int | None, limit: int | None):
             click.echo(f"All {len(episode_transcripts)} episodes already have embeddings")
             return
 
-        click.echo(f"Found {len(missing)} episodes missing embeddings (out of {len(episode_transcripts)} total)")
+        click.echo(
+            f"Found {len(missing)} episodes missing embeddings (out of {len(episode_transcripts)} total)"
+        )
 
         # Apply limit if specified
         if limit:
@@ -720,6 +743,7 @@ def cmd_serve(host: str, port: int, reload: bool):
     click.echo("Press Ctrl+C to stop")
 
     from cast2md.main import run_server
+
     run_server(host=host, port=port, reload=reload)
 
 
@@ -771,7 +795,7 @@ def cmd_node_register(server: str, name: str):
     import httpx
 
     from cast2md.config.settings import get_settings
-    from cast2md.node.config import get_config_path, load_config, save_config, NodeConfig
+    from cast2md.node.config import NodeConfig, get_config_path, load_config, save_config
 
     # Check if already registered
     existing = load_config()
@@ -795,7 +819,7 @@ def cmd_node_register(server: str, name: str):
             f"{server}/api/nodes/register",
             json={
                 "name": name,
-                "url": f"http://localhost:8001",  # Node's local server
+                "url": "http://localhost:8001",  # Node's local server
                 "whisper_model": settings.whisper_model,
                 "whisper_backend": settings.whisper_backend,
             },
@@ -803,7 +827,9 @@ def cmd_node_register(server: str, name: str):
         )
 
         if response.status_code != 200:
-            click.echo(f"Error: Registration failed: {response.status_code} - {response.text}", err=True)
+            click.echo(
+                f"Error: Registration failed: {response.status_code} - {response.text}", err=True
+            )
             raise SystemExit(1)
 
         data = response.json()
@@ -819,7 +845,7 @@ def cmd_node_register(server: str, name: str):
         )
         save_config(config)
 
-        click.echo(f"Registered successfully!")
+        click.echo("Registered successfully!")
         click.echo(f"  Node ID: {node_id[:8]}...")
         click.echo(f"  Config saved to: {get_config_path()}")
         click.echo()
@@ -909,7 +935,7 @@ def cmd_node_status():
         click.echo("Node not registered.")
         click.echo(f"Config path: {get_config_path()}")
         click.echo()
-        click.echo("Register with: cast2md node register --server <url> --name \"Name\"")
+        click.echo('Register with: cast2md node register --server <url> --name "Name"')
         return
 
     click.echo("Node Configuration")
@@ -925,6 +951,7 @@ def cmd_node_status():
     click.echo("-" * 40)
 
     import httpx
+
     try:
         response = httpx.post(
             f"{config.server_url}/api/nodes/{config.node_id}/heartbeat",

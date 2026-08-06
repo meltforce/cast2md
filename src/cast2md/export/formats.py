@@ -89,11 +89,13 @@ class ParsedTranscript:
                 if segments:
                     segments[-1].end = float(start)
 
-                segments.append(TranscriptSegment(
-                    start=float(start),
-                    end=float(start + 5),  # Default 5 second duration, will be updated
-                    text=text,
-                ))
+                segments.append(
+                    TranscriptSegment(
+                        start=float(start),
+                        end=float(start + 5),  # Default 5 second duration, will be updated
+                        text=text,
+                    )
+                )
             elif line.strip():
                 # Collect non-timestamp lines as raw text
                 body_lines.append(line.strip())

@@ -63,16 +63,18 @@ def get_status():
         completed=status_counts.get(EpisodeStatus.COMPLETED.value, 0),
         failed=status_counts.get(EpisodeStatus.FAILED.value, 0),
     )
-    counts.total = sum([
-        counts.new,
-        counts.awaiting_transcript,
-        counts.needs_audio,
-        counts.downloading,
-        counts.audio_ready,
-        counts.transcribing,
-        counts.completed,
-        counts.failed,
-    ])
+    counts.total = sum(
+        [
+            counts.new,
+            counts.awaiting_transcript,
+            counts.needs_audio,
+            counts.downloading,
+            counts.audio_ready,
+            counts.transcribing,
+            counts.completed,
+            counts.failed,
+        ]
+    )
 
     return SystemStatus(
         feed_count=len(feeds),

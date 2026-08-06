@@ -136,9 +136,7 @@ async def download_file(url: str, dest_path: Path, temp_path: Path) -> None:
                 write=30.0,
                 pool=30.0,
             ),
-            headers={
-                "User-Agent": settings.user_agent
-            },
+            headers={"User-Agent": settings.user_agent},
         ) as response:
             response.raise_for_status()
 
@@ -187,9 +185,7 @@ def download_file_sync(url: str, dest_path: Path, temp_path: Path) -> None:
                 write=30.0,
                 pool=30.0,
             ),
-            headers={
-                "User-Agent": settings.user_agent
-            },
+            headers={"User-Agent": settings.user_agent},
         ) as response:
             response.raise_for_status()
 
@@ -264,7 +260,7 @@ def download_episode(episode: Episode, feed: Feed) -> Path:
 
             return dest_path
 
-        except Exception as e:
+        except Exception:
             # Clean up temp file if it exists
             if temp_path.exists():
                 temp_path.unlink()
@@ -272,6 +268,6 @@ def download_episode(episode: Episode, feed: Feed) -> Path:
             repo.update_status(
                 episode.id,
                 EpisodeStatus.FAILED,
-                error_message=f"Failed to download audio",
+                error_message="Failed to download audio",
             )
             raise

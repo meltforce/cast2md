@@ -1,7 +1,6 @@
 """Integration tests for TranscriptSearchRepository."""
 
 import tempfile
-from datetime import datetime
 from pathlib import Path
 
 import pytest
@@ -138,8 +137,10 @@ class TestSearchPhrase:
         response = search_repo.search('"deep learning"')
 
         assert response.total > 0
-        assert any("deep" in r.snippet.lower() and "learning" in r.snippet.lower()
-                   for r in response.results)
+        assert any(
+            "deep" in r.snippet.lower() and "learning" in r.snippet.lower()
+            for r in response.results
+        )
 
     def test_search_phrase_words_match_regardless_of_order(self, search_repo, indexed_episode):
         """Test that PostgreSQL matches terms regardless of word order.

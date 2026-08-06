@@ -45,9 +45,7 @@ def list_feeds() -> str:
             for feed in feeds:
                 episode_count = episode_repo.count_by_feed(feed.id)
                 last_polled = (
-                    feed.last_polled.strftime("%Y-%m-%d %H:%M")
-                    if feed.last_polled
-                    else "Never"
+                    feed.last_polled.strftime("%Y-%m-%d %H:%M") if feed.last_polled else "Never"
                 )
                 lines.append(f"## {feed.display_title}")
                 lines.append(f"- **ID:** {feed.id}")
@@ -89,10 +87,19 @@ def get_feed(feed_id: int) -> str:
             lines.append("## Recent Episodes\n")
             for ep in feed["episodes"][:25]:
                 status = ep.get("status", "new")
-                status_icon = {"new": "[ ]", "awaiting_transcript": "[A]", "needs_audio": "[N]",
-                              "downloading": "[D]", "audio_ready": "[d]",
-                              "transcribing": "[T]", "completed": "[x]", "failed": "[!]"}.get(status, "[ ]")
-                pub_date = ep.get("published_at", "Unknown")[:10] if ep.get("published_at") else "Unknown"
+                status_icon = {
+                    "new": "[ ]",
+                    "awaiting_transcript": "[A]",
+                    "needs_audio": "[N]",
+                    "downloading": "[D]",
+                    "audio_ready": "[d]",
+                    "transcribing": "[T]",
+                    "completed": "[x]",
+                    "failed": "[!]",
+                }.get(status, "[ ]")
+                pub_date = (
+                    ep.get("published_at", "Unknown")[:10] if ep.get("published_at") else "Unknown"
+                )
                 lines.append(f"- {status_icon} **{ep['title']}** (ID: {ep['id']})")
                 lines.append(f"  - Published: {pub_date} | Status: {status}")
         return "\n".join(lines)
@@ -143,9 +150,7 @@ def get_feed(feed_id: int) -> str:
                     EpisodeStatus.FAILED: "[!]",
                 }.get(ep.status, "[ ]")
 
-                pub_date = (
-                    ep.published_at.strftime("%Y-%m-%d") if ep.published_at else "Unknown"
-                )
+                pub_date = ep.published_at.strftime("%Y-%m-%d") if ep.published_at else "Unknown"
                 lines.append(f"- {status_icon} **{ep.title}** (ID: {ep.id})")
                 lines.append(f"  - Published: {pub_date} | Status: {ep.status.value}")
 

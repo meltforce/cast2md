@@ -55,6 +55,8 @@ SCHEMA_STATEMENTS = [
     # Episode indexes
     "CREATE INDEX IF NOT EXISTS idx_episode_feed_id ON episode(feed_id)",
     "CREATE INDEX IF NOT EXISTS idx_episode_status ON episode(status)",
+    # Serves the watermark query of /api/episodes/status/{status}?since=…
+    "CREATE INDEX IF NOT EXISTS idx_episode_status_updated ON episode(status, updated_at)",
     "CREATE INDEX IF NOT EXISTS idx_episode_published_at ON episode(published_at)",
     "CREATE INDEX IF NOT EXISTS idx_feed_url ON feed(url)",
     # Job queue table

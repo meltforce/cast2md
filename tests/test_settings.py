@@ -1,10 +1,9 @@
 """Tests for settings configuration and source detection."""
 
-import pytest
 from cast2md.config.settings import (
-    get_setting_source,
-    NODE_SPECIFIC_SETTINGS,
     _DEFAULTS,
+    NODE_SPECIFIC_SETTINGS,
+    get_setting_source,
 )
 
 

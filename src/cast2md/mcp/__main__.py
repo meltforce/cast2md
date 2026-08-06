@@ -11,9 +11,7 @@ import sys
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="cast2md MCP server for Claude integration"
-    )
+    parser = argparse.ArgumentParser(description="cast2md MCP server for Claude integration")
     parser.add_argument(
         "--sse",
         action="store_true",

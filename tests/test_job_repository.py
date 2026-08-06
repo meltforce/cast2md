@@ -651,9 +651,7 @@ class TestAtomicJobClaim:
         )
 
         # With local_only=True, should skip the remote job
-        claimed = job_repo.claim_next_job(
-            JobType.TRANSCRIBE, node_id="local", local_only=True
-        )
+        claimed = job_repo.claim_next_job(JobType.TRANSCRIBE, node_id="local", local_only=True)
         assert claimed.id == local_job.id
 
     def test_claim_next_job_increments_attempts(self, job_repo, sample_job):

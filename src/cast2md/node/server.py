@@ -2,14 +2,13 @@
 
 import logging
 from pathlib import Path
-from typing import Optional
 
 import httpx
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from cast2md.node.config import load_config, save_config, NodeConfig
+from cast2md.node.config import NodeConfig, load_config, save_config
 from cast2md.node.worker import TranscriberNodeWorker
 
 logger = logging.getLogger(__name__)
@@ -35,7 +34,7 @@ WHISPER_BACKENDS = [
 templates_path = Path(__file__).parent / "templates"
 
 
-def create_app(worker: Optional[TranscriberNodeWorker] = None) -> FastAPI:
+def create_app(worker: TranscriberNodeWorker | None = None) -> FastAPI:
     """Create the FastAPI app for the node UI.
 
     Args:
@@ -137,8 +136,8 @@ def create_app(worker: Optional[TranscriberNodeWorker] = None) -> FastAPI:
         settings = get_settings()
 
         # Get system info
-        import platform
         import os
+        import platform
 
         system_info = {
             "platform": platform.system(),
@@ -150,6 +149,7 @@ def create_app(worker: Optional[TranscriberNodeWorker] = None) -> FastAPI:
         # Try to get memory info
         try:
             import subprocess
+
             result = subprocess.run(
                 ["sysctl", "-n", "hw.memsize"],
                 capture_output=True,
@@ -229,7 +229,9 @@ def create_app(worker: Optional[TranscriberNodeWorker] = None) -> FastAPI:
     return app
 
 
-def run_server(host: str = "0.0.0.0", port: int = 8001, worker: Optional[TranscriberNodeWorker] = None):
+def run_server(
+    host: str = "0.0.0.0", port: int = 8001, worker: TranscriberNodeWorker | None = None
+):
     """Run the node status server.
 
     Args:

@@ -3,7 +3,6 @@
 import json
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Optional
 
 
 @dataclass
@@ -36,7 +35,7 @@ def get_config_path() -> Path:
     return config_dir / "node.json"
 
 
-def load_config() -> Optional[NodeConfig]:
+def load_config() -> NodeConfig | None:
     """Load node configuration from disk.
 
     Returns:

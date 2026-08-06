@@ -284,8 +284,23 @@ def trigger_transcribe(episode_id: int, timestamps: bool = False):
 
 
 @router.get("/episodes/status/{status}", response_model=EpisodeListResponse)
-def list_episodes_by_status(status: str, limit: int = 100):
-    """List episodes by status."""
+def list_episodes_by_status(
+    status: str,
+    limit: int = 100,
+    since: str | None = None,
+    feed_id: int | None = None,
+    order: str = "created_asc",
+):
+    """List episodes by status.
+
+    Query parameters:
+    - limit: maximum number of episodes.
+    - since: only episodes whose updated_at is strictly greater than this
+      timestamp. Timestamps are naive local time, so pass back a value taken
+      from a previous response rather than one from your own clock.
+    - feed_id: restrict the result to a single feed.
+    - order: created_asc (default), updated_asc or updated_desc.
+    """
     try:
         episode_status = EpisodeStatus(status)
     except ValueError:
@@ -295,9 +310,21 @@ def list_episodes_by_status(status: str, limit: int = 100):
             detail=f"Invalid status. Valid options: {valid_statuses}",
         )
 
+    if order not in EpisodeRepository.STATUS_ORDERS:
+        raise HTTPException(
+            status_code=400,
+            detail=(f"Invalid order. Valid options: {sorted(EpisodeRepository.STATUS_ORDERS)}"),
+        )
+
     with get_db() as conn:
         repo = EpisodeRepository(conn)
-        episodes = repo.get_by_status(episode_status, limit=limit)
+        episodes = repo.get_by_status(
+            episode_status,
+            limit=limit,
+            since=since,
+            feed_id=feed_id,
+            order=order,
+        )
 
     return EpisodeListResponse(
         episodes=[EpisodeResponse.from_episode(ep) for ep in episodes],
@@ -319,10 +346,7 @@ def delete_episode_audio(episode_id: int):
         raise HTTPException(status_code=404, detail="Episode not found")
 
     if not episode.transcript_path:
-        raise HTTPException(
-            status_code=400,
-            detail="Cannot delete audio - no transcript available"
-        )
+        raise HTTPException(status_code=400, detail="Cannot delete audio - no transcript available")
 
     if not episode.audio_path:
         return MessageResponse(message="No audio file to delete")

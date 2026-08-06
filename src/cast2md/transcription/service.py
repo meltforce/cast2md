@@ -6,9 +6,10 @@ import logging
 import platform
 import threading
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Callable, Optional
+from typing import TYPE_CHECKING
 
 from cast2md.config.settings import get_settings
 from cast2md.transcription.preprocessing import (
@@ -119,9 +120,11 @@ def _get_whisper_backend() -> str:
 
     if backend == "auto":
         if _is_apple_silicon():
-            # Check if mlx-whisper is available
+            # Probe for mlx-whisper. The import is the check -- find_spec would
+            # report the package as present even when its own imports fail.
             try:
-                import mlx_whisper
+                import mlx_whisper  # noqa: F401
+
                 return "mlx"
             except ImportError:
                 logger.info("mlx-whisper not installed, falling back to faster-whisper")
@@ -134,10 +137,10 @@ def _get_whisper_backend() -> str:
 class TranscriptionService:
     """Thread-safe singleton transcription service with lazy model loading."""
 
-    _instance: Optional["TranscriptionService"] = None
+    _instance: TranscriptionService | None = None
     _lock = threading.Lock()
 
-    def __new__(cls) -> "TranscriptionService":
+    def __new__(cls) -> TranscriptionService:
         if cls._instance is None:
             with cls._lock:
                 if cls._instance is None:
@@ -189,6 +192,7 @@ class TranscriptionService:
             self._model = {"backend": "mlx", "model": settings.whisper_model}
         else:
             from faster_whisper import WhisperModel
+
             logger.info(f"Using faster-whisper backend with model: {settings.whisper_model}")
             self._model = WhisperModel(
                 settings.whisper_model,
@@ -239,7 +243,7 @@ class TranscriptionService:
     def transcribe(
         self,
         audio_path: Path,
-        progress_callback: Optional[Callable[[int], None]] = None,
+        progress_callback: Callable[[int], None] | None = None,
     ) -> TranscriptResult:
         """Transcribe an audio file.
 
@@ -268,7 +272,7 @@ class TranscriptionService:
     def _transcribe_faster_whisper(
         self,
         audio_path: Path,
-        progress_callback: Optional[Callable[[int], None]] = None,
+        progress_callback: Callable[[int], None] | None = None,
     ) -> TranscriptResult:
         """Transcribe using faster-whisper backend.
 
@@ -291,9 +295,7 @@ class TranscriptionService:
                 f"Audio duration {duration / 60:.1f} min exceeds threshold "
                 f"({settings.whisper_chunk_threshold_minutes} min), using chunked processing"
             )
-            return self._transcribe_faster_whisper_chunked(
-                audio_path, duration, progress_callback
-            )
+            return self._transcribe_faster_whisper_chunked(audio_path, duration, progress_callback)
 
         # Short audio - process whole file
         return self._transcribe_faster_whisper_single(audio_path, progress_callback)
@@ -301,7 +303,7 @@ class TranscriptionService:
     def _transcribe_faster_whisper_single(
         self,
         audio_path: Path,
-        progress_callback: Optional[Callable[[int], None]] = None,
+        progress_callback: Callable[[int], None] | None = None,
     ) -> TranscriptResult:
         """Transcribe a single audio file using faster-whisper (non-chunked)."""
         segments_iter, info = self.model.transcribe(
@@ -339,7 +341,7 @@ class TranscriptionService:
         self,
         audio_path: Path,
         total_duration: float,
-        progress_callback: Optional[Callable[[int], None]] = None,
+        progress_callback: Callable[[int], None] | None = None,
     ) -> TranscriptResult:
         """Transcribe long audio in chunks for memory efficiency.
 
@@ -627,7 +629,7 @@ class TranscriptionService:
 
         # Check audio duration and chunk if needed
         # 10 minutes per chunk is safe for 24GB VRAM
-        CHUNK_DURATION_MS = 10 * 60 * 1000  # 10 minutes in milliseconds
+        chunk_duration_ms = 10 * 60 * 1000  # 10 minutes in milliseconds
 
         audio = AudioSegment.from_file(str(audio_path))
         duration_ms = len(audio)
@@ -637,14 +639,14 @@ class TranscriptionService:
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
 
-        if duration_ms <= CHUNK_DURATION_MS:
+        if duration_ms <= chunk_duration_ms:
             # Short audio - process whole file directly
             all_segments = self._transcribe_parakeet_file(asr_model, audio_path)
         else:
             # Long audio - process chunks sequentially with cached model
             # Model caching (Phase 1) saves ~30-40s per episode
             # Sequential processing avoids OOM (batch loading uses too much VRAM)
-            num_chunks = (duration_ms + CHUNK_DURATION_MS - 1) // CHUNK_DURATION_MS
+            num_chunks = (duration_ms + chunk_duration_ms - 1) // chunk_duration_ms
             logger.info(f"Splitting into {num_chunks} chunks for sequential transcription")
 
             all_segments = []
@@ -652,8 +654,8 @@ class TranscriptionService:
                 tmpdir_path = Path(tmpdir)
 
                 for i in range(num_chunks):
-                    start_ms = i * CHUNK_DURATION_MS
-                    end_ms = min((i + 1) * CHUNK_DURATION_MS, duration_ms)
+                    start_ms = i * chunk_duration_ms
+                    end_ms = min((i + 1) * chunk_duration_ms, duration_ms)
                     chunk = audio[start_ms:end_ms]
                     offset_sec = start_ms / 1000
 
@@ -764,6 +766,7 @@ class TranscriptionService:
 
         return segments
 
+
 def get_transcription_service() -> TranscriptionService:
     """Get the singleton transcription service instance."""
     return TranscriptionService()
@@ -786,7 +789,7 @@ def transcribe_audio(
     audio_path: str,
     include_timestamps: bool = True,
     title: str = "",
-    progress_callback: Optional[Callable[[int], None]] = None,
+    progress_callback: Callable[[int], None] | None = None,
 ) -> str:
     """Transcribe an audio file and return the transcript as markdown.
 
@@ -810,7 +813,7 @@ def transcribe_episode(
     episode: Episode,
     feed: Feed,
     include_timestamps: bool = True,
-    progress_callback: Optional[Callable[[int], None]] = None,
+    progress_callback: Callable[[int], None] | None = None,
 ) -> Path:
     """Transcribe an episode and save the result.
 
@@ -870,20 +873,20 @@ def transcribe_episode(
 
             # Update episode with transcript path and model name
             model_name = get_current_model_name()
-            repo.update_transcript_path_and_model(
-                episode.id, str(transcript_path), model_name
-            )
+            repo.update_transcript_path_and_model(episode.id, str(transcript_path), model_name)
             repo.update_status(episode.id, EpisodeStatus.COMPLETED)
 
             # Index transcript for full-text search (only if timestamps included)
             if include_timestamps:
                 try:
                     from cast2md.search.repository import TranscriptSearchRepository
+
                     search_repo = TranscriptSearchRepository(conn)
                     search_repo.index_episode(episode.id, str(transcript_path))
                 except Exception as index_error:
                     # Don't fail transcription if indexing fails
                     import logging
+
                     logging.getLogger(__name__).warning(
                         f"Failed to index transcript for episode {episode.id}: {index_error}"
                     )

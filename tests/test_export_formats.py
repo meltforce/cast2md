@@ -1,7 +1,14 @@
-
-from cast2md.export.formats import ParsedTranscript, TranscriptSegment, to_srt, to_vtt, to_json, to_plain_text, export_transcript
-from pathlib import Path
 import json
+
+from cast2md.export.formats import (
+    ParsedTranscript,
+    TranscriptSegment,
+    export_transcript,
+    to_json,
+    to_srt,
+    to_vtt,
+)
+
 
 def test_parsed_transcript_from_markdown():
     markdown = """# Test Title
@@ -21,17 +28,18 @@ def test_parsed_transcript_from_markdown():
     assert transcript.segments[0].end == 5.0  # Inferred from next segment
     assert transcript.segments[0].text == "Hello world."
     assert transcript.segments[1].start == 5.0
-    assert transcript.segments[1].end == 10.0 # Default +5s
+    assert transcript.segments[1].end == 10.0  # Default +5s
     assert transcript.segments[1].text == "This is a test."
+
 
 def test_to_srt():
     segments = [
         TranscriptSegment(start=0.0, end=5.5, text="Hello"),
-        TranscriptSegment(start=5.5, end=10.0, text="World")
+        TranscriptSegment(start=5.5, end=10.0, text="World"),
     ]
     transcript = ParsedTranscript(title="Test", language="en", segments=segments)
     srt = to_srt(transcript)
-    
+
     expected = """1
 00:00:00,000 --> 00:00:05,500
 Hello
@@ -42,16 +50,18 @@ World
 """
     assert srt.strip() == expected.strip()
 
+
 def test_to_vtt():
     segments = [
         TranscriptSegment(start=0.0, end=5.5, text="Hello"),
     ]
     transcript = ParsedTranscript(title="Test", language="en", segments=segments)
     vtt = to_vtt(transcript)
-    
+
     assert "WEBVTT" in vtt
     assert "00:00:00.000 --> 00:00:05.500" in vtt
     assert "Hello" in vtt
+
 
 def test_to_json():
     segments = [
@@ -60,11 +70,12 @@ def test_to_json():
     transcript = ParsedTranscript(title="Test", language="en", segments=segments)
     json_str = to_json(transcript)
     data = json.loads(json_str)
-    
+
     assert data["title"] == "Test"
     assert data["language"] == "en"
     assert len(data["segments"]) == 1
     assert data["segments"][0]["text"] == "Hi"
+
 
 def test_export_transcript_integration(tmp_path):
     md_file = tmp_path / "test.md"
@@ -72,7 +83,7 @@ def test_export_transcript_integration(tmp_path):
 **[00:00]** Content
 """
     md_file.write_text(md_content)
-    
+
     content, filename, mime = export_transcript(md_file, "srt")
     assert filename == "test.srt"
     assert mime == "application/x-subrip"

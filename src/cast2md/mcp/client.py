@@ -123,7 +123,9 @@ def queue_episode(episode_id: int) -> dict:
             data = resp.json()
             return {
                 "success": True,
-                "message": data.get("message", f"Queued transcription job for episode {episode_id}"),
+                "message": data.get(
+                    "message", f"Queued transcription job for episode {episode_id}"
+                ),
                 "job_id": data.get("job_id"),
                 "job_type": "transcribe",
             }

@@ -6,15 +6,18 @@ This is a fallback provider used when RSS feeds don't include transcripts.
 
 import logging
 import re
-from datetime import datetime, timedelta
-from typing import Optional
+from datetime import datetime
 
 from cast2md.clients.pocketcasts import PocketCastsClient, PocketCastsEpisode
 from cast2md.db.connection import get_db
 from cast2md.db.models import Episode, Feed
 from cast2md.db.repository import FeedRepository
 from cast2md.transcription.formats import convert_to_markdown
-from cast2md.transcription.providers.base import TranscriptError, TranscriptProvider, TranscriptResult
+from cast2md.transcription.providers.base import (
+    TranscriptError,
+    TranscriptProvider,
+    TranscriptResult,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +29,12 @@ def _normalize_title(title: str) -> str:
     and normalizes whitespace for fuzzy matching.
     """
     # Remove episode number prefixes (e.g., "#123:", "Ep. 45 -", "Episode 123:")
-    title = re.sub(r"^(#\d+[:\s\-]+|Ep\.?\s*\d+\s*[:\-]+|Episode\s+\d+[:\s\-]+)", "", title, flags=re.IGNORECASE)
+    title = re.sub(
+        r"^(#\d+[:\s\-]+|Ep\.?\s*\d+\s*[:\-]+|Episode\s+\d+[:\s\-]+)",
+        "",
+        title,
+        flags=re.IGNORECASE,
+    )
     # Remove special characters
     title = re.sub(r"[^\w\s]", "", title)
     # Normalize whitespace and lowercase
@@ -74,7 +82,7 @@ def _authors_match(author1: str, author2: str) -> bool:
     return False
 
 
-def _parse_published_date(date_str: Optional[str]) -> Optional[datetime]:
+def _parse_published_date(date_str: str | None) -> datetime | None:
     """Parse a date string to datetime, handling various formats."""
     if not date_str:
         return None
@@ -88,14 +96,14 @@ def _parse_published_date(date_str: Optional[str]) -> Optional[datetime]:
 
     for fmt in formats:
         try:
-            return datetime.strptime(date_str[:len("2024-01-01T00:00:00")], fmt[:len(fmt)])
+            return datetime.strptime(date_str[: len("2024-01-01T00:00:00")], fmt[: len(fmt)])
         except (ValueError, TypeError):
             continue
 
     return None
 
 
-def _dates_within_24h(date1: Optional[datetime], date2_str: Optional[str]) -> bool:
+def _dates_within_24h(date1: datetime | None, date2_str: str | None) -> bool:
     """Check if two dates are within 24 hours of each other."""
     if not date1:
         return True  # If we don't have our date, don't filter by date
@@ -176,10 +184,14 @@ class PocketCastsProvider(TranscriptProvider):
         result = client.download_transcript(pc_episode.transcript_url)
         if not result.success:
             # Return TranscriptError for known failures (especially 403)
-            error_type = "forbidden" if result.status_code == 403 else (
-                "not_found" if result.status_code == 404 else "request_error"
+            error_type = (
+                "forbidden"
+                if result.status_code == 403
+                else ("not_found" if result.status_code == 404 else "request_error")
             )
-            logger.debug(f"Pocket Casts transcript download failed for {episode.title}: {result.error}")
+            logger.debug(
+                f"Pocket Casts transcript download failed for {episode.title}: {result.error}"
+            )
             return TranscriptError(
                 error_type=error_type,
                 source=self.source_id,
@@ -196,7 +208,9 @@ class PocketCastsProvider(TranscriptProvider):
                 url=pc_episode.transcript_url,
             )
 
-            logger.info(f"Successfully fetched Pocket Casts transcript for episode: {episode.title}")
+            logger.info(
+                f"Successfully fetched Pocket Casts transcript for episode: {episode.title}"
+            )
 
             return TranscriptResult(
                 content=markdown,
@@ -208,7 +222,7 @@ class PocketCastsProvider(TranscriptProvider):
             logger.warning(f"Error converting Pocket Casts transcript: {e}")
             return None
 
-    def _get_show_uuid(self, feed: Feed, client: PocketCastsClient) -> Optional[str]:
+    def _get_show_uuid(self, feed: Feed, client: PocketCastsClient) -> str | None:
         """Get Pocket Casts show UUID, searching if not cached.
 
         If the feed already has a pocketcasts_uuid, returns it.
@@ -236,7 +250,9 @@ class PocketCastsProvider(TranscriptProvider):
         for show in results:
             if show.title.lower().strip() == feed.title.lower().strip():
                 self._cache_uuid(feed.id, show.uuid)
-                logger.info(f"Found Pocket Casts show UUID for '{feed.title}' (title match): {show.uuid}")
+                logger.info(
+                    f"Found Pocket Casts show UUID for '{feed.title}' (title match): {show.uuid}"
+                )
                 return show.uuid
 
         return None
@@ -252,7 +268,7 @@ class PocketCastsProvider(TranscriptProvider):
 
     def _match_episode(
         self, episode: Episode, pc_episodes: list[PocketCastsEpisode]
-    ) -> Optional[PocketCastsEpisode]:
+    ) -> PocketCastsEpisode | None:
         """Match our episode against Pocket Casts episodes.
 
         Matches by title similarity and published date within 24 hours.

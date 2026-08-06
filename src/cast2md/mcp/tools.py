@@ -5,7 +5,6 @@ import re
 from cast2md.mcp import client as remote
 from cast2md.mcp.server import mcp
 
-
 # Patterns for detecting "latest episode" type queries (German + English)
 LATEST_PATTERNS = [
     r"\b(letzte|neueste|aktuelle|neue)\s*(folge|episode|ausgabe)n?\b",
@@ -47,7 +46,7 @@ def _find_matching_feed(query: str, feeds: list) -> tuple[dict | None, str]:
         words = title_norm.split()
         for length in range(len(words), 0, -1):
             for start in range(len(words) - length + 1):
-                partial = " ".join(words[start:start + length])
+                partial = " ".join(words[start : start + length])
                 if len(partial) >= 4 and partial in query_norm:
                     if len(partial) > best_match_len:
                         best_match = feed
@@ -64,7 +63,7 @@ def _find_matching_feed(query: str, feeds: list) -> tuple[dict | None, str]:
             author_words = author_norm.split()
             for length in range(len(author_words), 0, -1):
                 for start in range(len(author_words) - length + 1):
-                    partial = " ".join(author_words[start:start + length])
+                    partial = " ".join(author_words[start : start + length])
                     if len(partial) >= 4 and partial in query_norm:
                         if len(partial) > best_match_len:
                             best_match = feed
@@ -79,7 +78,9 @@ def _find_matching_feed(query: str, feeds: list) -> tuple[dict | None, str]:
         pattern = re.escape(match_pattern).replace(r"\ ", r"[\s\-]+")
         remaining = re.sub(pattern, " ", remaining, flags=re.IGNORECASE)
         # Clean up common connecting words
-        remaining = re.sub(r"\b(im|in|vom|von|des|der|the|from|about|über)\b", " ", remaining, flags=re.IGNORECASE)
+        remaining = re.sub(
+            r"\b(im|in|vom|von|des|der|the|from|about|über)\b", " ", remaining, flags=re.IGNORECASE
+        )
         remaining = re.sub(r"\s+", " ", remaining).strip()
         return best_match, remaining
 
@@ -208,7 +209,9 @@ def search(query: str) -> dict:
                 else:
                     transcript = "Transcript segments not indexed yet"
             else:
-                transcript = f"No transcript available. Use queue_episode({latest.id}) to transcribe."
+                transcript = (
+                    f"No transcript available. Use queue_episode({latest.id}) to transcribe."
+                )
 
             return {
                 "query": query,
@@ -432,7 +435,9 @@ def get_episode(episode_id: int) -> dict:
             "has_transcript": episode.transcript_path is not None,
             "description": episode.description,
             "audio_url": episode.audio_url,
-            "hint": "Use cast2md://episodes/{id}/transcript to read the transcript" if episode.transcript_path else "Use queue_episode(id) to transcribe this episode",
+            "hint": "Use cast2md://episodes/{id}/transcript to read the transcript"
+            if episode.transcript_path
+            else "Use queue_episode(id) to transcribe this episode",
         }
 
 
@@ -689,7 +694,10 @@ def get_transcript(
             content = transcript_path.read_text(encoding="utf-8")
             # Truncate if too long
             if len(content) > 10000:
-                content = content[:10000] + "\n\n[... truncated, use start_time to read specific sections ...]"
+                content = (
+                    content[:10000]
+                    + "\n\n[... truncated, use start_time to read specific sections ...]"
+                )
             return {
                 "episode_id": episode_id,
                 "episode_title": episode.title,
@@ -819,25 +827,29 @@ def get_queue_status() -> dict:
         running = []
         for job in running_download + running_transcribe:
             episode = episode_repo.get_by_id(job.episode_id)
-            running.append({
-                "job_id": job.id,
-                "episode_id": job.episode_id,
-                "episode_title": episode.title if episode else "Unknown",
-                "job_type": job.job_type.value,
-                "started_at": job.started_at.isoformat() if job.started_at else None,
-            })
+            running.append(
+                {
+                    "job_id": job.id,
+                    "episode_id": job.episode_id,
+                    "episode_title": episode.title if episode else "Unknown",
+                    "job_type": job.job_type.value,
+                    "started_at": job.started_at.isoformat() if job.started_at else None,
+                }
+            )
 
         # Build queued jobs info
         queued = []
         for job in queued_jobs:
             episode = episode_repo.get_by_id(job.episode_id)
-            queued.append({
-                "job_id": job.id,
-                "episode_id": job.episode_id,
-                "episode_title": episode.title if episode else "Unknown",
-                "job_type": job.job_type.value,
-                "priority": job.priority,
-            })
+            queued.append(
+                {
+                    "job_id": job.id,
+                    "episode_id": job.episode_id,
+                    "episode_title": episode.title if episode else "Unknown",
+                    "job_type": job.job_type.value,
+                    "priority": job.priority,
+                }
+            )
 
     return {
         "counts": {

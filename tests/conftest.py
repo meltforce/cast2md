@@ -4,7 +4,7 @@ from datetime import datetime
 
 import pytest
 
-from cast2md.db.connection import get_connection, _return_pg_connection, init_db
+from cast2md.db.connection import _return_pg_connection, get_connection, init_db
 from cast2md.db.models import JobType
 from cast2md.db.repository import (
     EpisodeRepository,

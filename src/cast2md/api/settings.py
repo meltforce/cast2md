@@ -1,19 +1,19 @@
 """Settings API endpoints."""
 
+import os
+
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-import os
-
 from cast2md.config.settings import (
-    get_settings,
-    get_setting_source,
-    reload_settings,
     NODE_SPECIFIC_SETTINGS,
+    get_setting_source,
+    get_settings,
+    reload_settings,
 )
 from cast2md.db.connection import get_db
 from cast2md.db.repository import RunPodModelRepository, SettingsRepository, WhisperModelRepository
-from cast2md.notifications.ntfy import send_notification, NotificationType
+from cast2md.notifications.ntfy import NotificationType, send_notification
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
 
@@ -297,6 +297,7 @@ def reset_all_settings():
 
 # Whisper Models API
 
+
 class WhisperModelResponse(BaseModel):
     """Response for a whisper model."""
 
@@ -414,4 +415,6 @@ def test_notification():
     if success:
         return MessageResponse(message="Test notification sent successfully!")
     else:
-        return MessageResponse(message="Failed to send notification. Check server logs for details.")
+        return MessageResponse(
+            message="Failed to send notification. Check server logs for details."
+        )

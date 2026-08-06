@@ -5,7 +5,6 @@ import logging
 import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from typing import Optional
 
 import httpx
 
@@ -42,7 +41,7 @@ def _titles_similar(title1: str, title2: str) -> bool:
     return False
 
 
-def _authors_match(author1: Optional[str], author2: Optional[str]) -> bool:
+def _authors_match(author1: str | None, author2: str | None) -> bool:
     """Check if two author strings match."""
     if not author1 or not author2:
         return False
@@ -55,7 +54,7 @@ def _authors_match(author1: Optional[str], author2: Optional[str]) -> bool:
     return False
 
 
-def _parse_published_date(date_str: Optional[str]) -> Optional[datetime]:
+def _parse_published_date(date_str: str | None) -> datetime | None:
     """Parse a date string to datetime."""
     if not date_str:
         return None
@@ -68,7 +67,7 @@ def _parse_published_date(date_str: Optional[str]) -> Optional[datetime]:
     return None
 
 
-def _dates_within_24h(date1: Optional[datetime], date2_str: Optional[str]) -> bool:
+def _dates_within_24h(date1: datetime | None, date2_str: str | None) -> bool:
     """Check if two dates are within 24 hours of each other."""
     if not date1:
         return True
@@ -102,7 +101,7 @@ def _discover_pocketcasts_transcripts(
     episodes_needing_check = [ep for ep in episodes if not ep.transcript_url]
 
     if not episodes_needing_check:
-        logger.debug(f"All episodes have Podcast 2.0 transcripts, skipping Pocket Casts check")
+        logger.debug("All episodes have Podcast 2.0 transcripts, skipping Pocket Casts check")
         return 0
 
     # Lazy import to avoid circular dependencies
@@ -133,7 +132,9 @@ def _discover_pocketcasts_transcripts(
                 if show.title.lower().strip() == feed.title.lower().strip():
                     show_uuid = show.uuid
                     feed_repo.update_pocketcasts_uuid(feed.id, show_uuid)
-                    logger.info(f"Found Pocket Casts show UUID for '{feed.title}' (title match): {show_uuid}")
+                    logger.info(
+                        f"Found Pocket Casts show UUID for '{feed.title}' (title match): {show_uuid}"
+                    )
                     break
 
         if not show_uuid:
@@ -192,9 +193,7 @@ async def fetch_feed(url: str) -> str:
         response = await client.get(
             url,
             follow_redirects=True,
-            headers={
-                "User-Agent": settings.user_agent
-            },
+            headers={"User-Agent": settings.user_agent},
         )
         response.raise_for_status()
         return response.text
@@ -218,9 +217,7 @@ def fetch_feed_sync(url: str) -> str:
         response = client.get(
             url,
             follow_redirects=True,
-            headers={
-                "User-Agent": settings.user_agent
-            },
+            headers={"User-Agent": settings.user_agent},
         )
         response.raise_for_status()
         return response.text

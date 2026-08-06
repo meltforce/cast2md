@@ -3,8 +3,6 @@
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 
 class TestCoordinatorHeartbeat:
     """Tests for in-memory heartbeat tracking."""
@@ -64,9 +62,7 @@ class TestCoordinatorHeartbeat:
         # Calculate stale nodes like the coordinator does
         stale_threshold = now - timedelta(seconds=coordinator._heartbeat_timeout_seconds)
         stale_node_ids = [
-            nid
-            for nid, hb in coordinator._node_heartbeats.items()
-            if hb < stale_threshold
+            nid for nid, hb in coordinator._node_heartbeats.items() if hb < stale_threshold
         ]
 
         assert "stale-node" in stale_node_ids
