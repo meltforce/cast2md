@@ -364,9 +364,10 @@ A → B → C → D are independent of each other and of any design decision. E 
 a `DECISIONS.md` entry. F depends on A1. G starts with a measurement, not an
 edit.
 
-None of these are on `ROADMAP.md`. Whether they become `[open]` rows there is a
-separate call — this file is a snapshot at `3bfb208`, and `ROADMAP.md` is the
-document that carries open work over time.
+A to G are carried as `[open]` rows under *Code structure* in
+[`ROADMAP.md`](../ROADMAP.md), which is where their state lives from here on.
+This file stays a snapshot at `3bfb208` and is not updated when a row closes —
+the numbers in it describe that commit and no other.
 
 ---
 
