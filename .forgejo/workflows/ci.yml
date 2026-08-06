@@ -96,6 +96,13 @@ jobs:
     with:
       app_name: cast2md
       target_host: cast2md.coydog-fence.ts.net
+      # Without this the reusable workflow's own health step is skipped
+      # (`if: inputs.health_url != ''`), and `deploy` reports success on the
+      # strength of `docker compose up -d` returning. deploy-gate below still
+      # catches it, but a job later and only after its own polling — this
+      # fails the deploy itself. vimmary had the same gap and it cost an
+      # outage on 2026-08-06.
+      health_url: https://cast2md.coydog-fence.ts.net/api/health
     secrets:
       REGISTRY_USER: ${{ secrets.REGISTRY_USER }}
       REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
