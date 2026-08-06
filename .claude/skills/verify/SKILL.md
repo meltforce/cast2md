@@ -31,6 +31,8 @@ and the German example query in `src/cast2md/mcp/tools.py`.
 ## When the change touched `src/`, `tests/`, or `pyproject.toml`
 
 ```bash
+uv sync --extra dev              # no .venv in a fresh checkout
+docker compose up -d postgres    # 68 of 102 tests need a database
 .venv/bin/python -m pytest
 .venv/bin/ruff check src tests
 uv build
@@ -39,10 +41,19 @@ uv build
 `pytest` reads `testpaths = ["tests"]` from `pyproject.toml`. `ruff` is
 configured for line length 100 and rule sets `E,F,I,N,W,UP`.
 
-**Only the dev machine (`jesus`) carries a `.venv` in the checkout.** On any
-other machine these commands fail with "no such file or directory" and that is
-not a test result. Either run them on `jesus`, or state in the report that the
-suite was not exercised — never let a missing interpreter read as a pass.
+**Without Postgres, 68 tests error at fixture setup** with
+`ValueError: DATABASE_URL environment variable is required` and 34 pass. That is
+not a passing run. If you cannot start Postgres, report the numbers rather than
+the word "passed".
+
+**`ruff check` currently reports 366 pre-existing findings** (196 auto-fixable).
+Compare against that baseline: what matters is whether your change adds to it,
+not that the command exits non-zero. Clearing the baseline is an open roadmap
+item, not part of an unrelated change.
+
+**A missing interpreter is not a test result.** If `.venv/bin/python` does not
+exist, run `uv sync --extra dev` first; if that also fails, say the suite was
+not exercised.
 
 **None of these run in CI.** The `build` job runs `uv build` only, so `pytest`
 and `ruff` are local-only controls until the open roadmap item lands. Say so

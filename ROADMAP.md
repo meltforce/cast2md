@@ -17,7 +17,8 @@ each becomes its own `[open]` row before the entry is moved out.
 
 | Status | Item | Where | Trigger | Notes |
 |---|---|---|---|---|
-| `[open]` | Run `pytest` and `ruff` in CI | `.forgejo/workflows/ci.yml` | | The `build` job runs `uv build` only. Eight test files and both tools are configured in `pyproject.toml`, so nothing but the wiring is missing. Until then the test suite is a local-only control. |
+| `[open]` | Run `pytest` and `ruff` in CI | `.forgejo/workflows/ci.yml` | | The `build` job runs `uv build` only. The job needs a Postgres service container: without `DATABASE_URL`, 68 of 102 tests error at fixture setup and 34 pass. `ruff` needs the baseline below cleared first, or it fails every run. |
+| `[open]` | Clear the 366 `ruff` findings | `src/`, `tests/` | | 196 are auto-fixable with `ruff check --fix`. This is pre-existing debt, not a regression — `ruff` has never run in CI. Until it is cleared, `ruff` cannot gate anything. |
 | `[open]` | Decide whether the deploy gate needs a positive signal | `.forgejo/workflows/ci.yml` | After the CI test job lands | A skipped `build-deploy` still reports success. The 2026-08-01 incident was found by inspection, not by an alert; nothing currently distinguishes "deployed" from "silently skipped". |
 
 ## Documentation

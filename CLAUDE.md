@@ -24,8 +24,8 @@ in the checkout starts the dev stack — never treat its output as a production
 rehearsal.
 
 **Never test against the production server.** Repeated restarts disrupt workers,
-nodes and job state. The dev machine (`jesus`) runs a test instance from the
-checkout for exactly this.
+nodes and job state. The dev machines (`blackbook`, `snackbook`) run a test
+instance from the checkout for exactly this.
 
 **Test the API through its URL, not over SSH.** `curl https://<host>/api/health`,
 not `ssh root@<host> "curl localhost:8000/api/health"` — the second exercises a
@@ -111,20 +111,24 @@ Releasing: bump `version` in `pyproject.toml` to the new tag, commit, then
 
 ## Development
 
-The dev machine runs Postgres from `docker-compose.yml` and the app from the
-checkout:
+Dev runs on `blackbook` and `snackbook`: Postgres from `docker-compose.yml`, the
+app from the checkout.
 
 ```bash
+uv sync --extra dev              # creates .venv from uv.lock; also after a dependency change
 docker compose up -d postgres
 .venv/bin/python -m cast2md serve --host 0.0.0.0 --port 8000
 ```
+
+`uv sync` is the way in — there is no `.venv` in a fresh checkout, and
+`uv.lock` is the pinned state. Docker Desktop provides `docker`; on a Mac where
+it has not been launched since install, the binary is not on `PATH` even though
+the app is present.
 
 Dev `.env` differs from production in one thing that matters: `DATABASE_URL`
 points at `localhost:5432`, because the dev Postgres publishes its port to the
 host, while in production the app reaches `postgres:5432` over Docker's internal
 DNS. The remaining keys are in `.env.example`.
-
-After a dependency change: `.venv/bin/python -m pip install -e .`
 
 ## Transcription
 
