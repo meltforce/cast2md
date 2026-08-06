@@ -12,6 +12,13 @@
 # is copied between projects unchanged. Project-specific exceptions go in
 # tools/check-docs.allow, not in here.
 #
+# Exit codes are three-valued on purpose, because "found nothing" and "could not
+# look" are different answers and a caller must be able to tell them apart:
+#
+#   0   the checks ran and found nothing
+#   1   the checks ran and found something
+#   2   the checks could not run — bad usage, or the stamp cannot be read
+#
 # This detects. It does not prevent — for prevention, call it from
 # .githooks/pre-commit.
 set -euo pipefail
@@ -27,17 +34,43 @@ esac
 
 STAMP=".claude/project-standards.json"
 
+# The module selection is read once, and three outcomes are kept apart:
+#
+#   no stamp          this project was never aligned. Checks that need a module
+#                     are skipped; project-audit is what reports the absence.
+#   readable stamp    its "modules" list decides which checks apply.
+#   unreadable stamp  an error. Not an empty selection.
+#
+# The last distinction is why this is not inline in has_module. Reading an
+# unreadable stamp as "no modules selected" makes every module-gated check skip
+# itself while the script still exits 0 — a green check that verified nothing,
+# and nothing else in the pipeline would report it.
+MODULES=""
+if [ -f "$STAMP" ]; then
+  if ! command -v python3 >/dev/null 2>&1; then
+    echo "check-docs: $STAMP exists but python3 is missing — cannot determine which checks apply" >&2
+    exit 2
+  fi
+  if ! MODULES=$(python3 - "$STAMP" <<'PY'
+import json, sys
+with open(sys.argv[1]) as fh:
+    data = json.load(fh)
+mods = data.get("modules", [])
+if not isinstance(mods, list):
+    raise TypeError('"modules" is not a list')
+print("\n".join(str(m) for m in mods))
+PY
+  ); then
+    echo "check-docs: $STAMP cannot be parsed — repair the stamp or remove it" >&2
+    exit 2
+  fi
+else
+  echo "check-docs: no $STAMP — running only the checks that need no module selection" >&2
+fi
+
 # has_module <id> — true when the module is selected for this project.
 has_module() {
-  [ -f "$STAMP" ] || return 1
-  python3 - "$STAMP" "$1" <<'PY'
-import json, sys
-try:
-    data = json.load(open(sys.argv[1]))
-except Exception:
-    sys.exit(1)
-sys.exit(0 if sys.argv[2] in data.get("modules", []) else 1)
-PY
+  printf '%s\n' "$MODULES" | grep -qxF -- "$1"
 }
 
 # The documents that exist depend on the selection. A missing file is not a
@@ -168,6 +201,14 @@ sweep() {
 
 check_language() {
   if ! has_module language-en; then
+    # Under --all the sweep is one of two checks and skipping it is a correct
+    # outcome for a project without the module. Under --language it is the only
+    # thing asked for, so reporting success would say the repo passed a sweep
+    # that never ran.
+    if [ "$mode" = language ]; then
+      echo "check-docs: --language was requested, but the language-en module is not selected for this project" >&2
+      exit 2
+    fi
     echo "language sweep skipped — the language-en module is not selected for this project"
     return 0
   fi
