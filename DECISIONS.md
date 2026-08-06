@@ -14,6 +14,55 @@ place with the old form recorded under revisions — the entry is not duplicated
 
 ---
 
+## 2026-08-06 — the dependency virtualenv is a layer of its own, independent of the source
+
+**Decided:** 2026-08-06
+
+**Decision.** The Dockerfile has three stages. `deps` installs torch and the
+rest of the dependencies into `/build/.venv` from `pyproject.toml` and `uv.lock`
+alone; `project` adds the editable install and keeps only the resulting
+`cast2md-*.dist-info`; the runtime stage copies the venv and that metadata as
+two separate layers. `src/` is copied last and reaches the application through
+`PYTHONPATH`, not through the venv.
+
+**Reasoning.** The venv is ~1.45 GB of a 1.86 GB image, and it is one layer. If
+its contents differ between builds, the deploy target re-pulls that gigabyte —
+which is why a cast2md deploy took several times as long as a vimmary deploy on
+the same day, for a change of about a kilobyte of Python.
+
+Two separate causes made it differ, and both had to go.
+
+`COPY src/ ./src/` sat above the installs, so any commit touching a Python file
+invalidated the torch layer and it was rebuilt from scratch. Measured across
+three consecutive builds: the venv layer digest was byte-identical between
+`3657260` and `3322ac9` — the latter touched only CI config and documentation —
+and changed at `ef45dc9`, which touched two files under `src/`.
+
+Moving the copy down was necessary but not sufficient. `uv pip install -e .`
+writes `uv_cache.json` into the dist-info, and that file carries a fingerprint
+of the source tree, so the copied venv still changed on every source change even
+with every install step cached. Verified by building twice with one appended
+comment in between: the venv layer digest still differed, and a diff of the
+metadata showed `uv_cache.json` and the `RECORD` entry covering it as the only
+differences.
+
+Splitting the metadata into its own `COPY` puts those bytes in a layer of their
+own. Verified the same way afterwards: with only a comment changed, the venv
+layer digest is identical and exactly two layers differ — the metadata and
+`src/`, together about a megabyte.
+
+The editable install's path hook is not carried into the runtime image. It
+points at `/build/src`, which does not exist there; the modules have always been
+found through `PYTHONPATH=/app/src` instead. Only the `dist-info` travels,
+because `cast2md/__init__.py` resolves its version through
+`importlib.metadata.version("cast2md")` and raises without it.
+
+**Trigger to re-open.** uv stops fingerprinting the source into the dist-info,
+or the project stops reading its own version from package metadata — either
+would make the split unnecessary.
+
+---
+
 ## 2026-08-06 — `ruff format` owns line length; E501 is not enforced separately
 
 **Decided:** 2026-08-06

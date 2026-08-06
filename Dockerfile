@@ -1,13 +1,27 @@
-# Stage 1: Build
-FROM python:3.11-slim AS builder
+# Stage 1: Dependencies, deliberately without the project itself.
+#
+# The virtualenv this produces is ~1.45 GB, almost all of it torch, and it is
+# copied into the runtime image as a single layer. Anything that makes its
+# contents differ between builds makes the target host re-pull that gigabyte.
+# Two things did, and both are avoided here:
+#
+#   - Copying src/ before the installs. Any commit touching a Python file
+#     invalidated the torch layer, so it was rebuilt from scratch.
+#   - `uv pip install -e .` writes uv_cache.json into the venv, and that file
+#     carries a fingerprint of the source tree. Even with the installs cached,
+#     the copied venv therefore changed on every source change.
+#
+# So: dependencies here, the project in stage 2, and only its ~10 kB of
+# metadata joins the venv in the runtime image.
+FROM python:3.11-slim AS deps
 WORKDIR /build
 
 # Install uv for fast dependency resolution
 RUN pip install --no-cache-dir uv
 
-# Copy dependency files and source
+# Dependency manifests only — no source. `uv export --no-emit-project` reads
+# pyproject.toml and uv.lock and does not need the modules.
 COPY pyproject.toml uv.lock ./
-COPY src/ ./src/
 
 # Create virtual environment
 RUN uv venv
@@ -27,10 +41,24 @@ RUN uv export --frozen --no-dev --no-hashes --no-emit-project \
     --prune nvidia-nvjitlink-cu12 --prune nvidia-nvshmem-cu12 \
     --prune nvidia-nvtx-cu12 --prune cuda-bindings --prune cuda-pathfinder \
     > requirements.txt && \
-    uv pip install -r requirements.txt && \
-    uv pip install --no-deps -e .
+    uv pip install -r requirements.txt
 
-# Stage 2: Runtime
+# Stage 2: The project's distribution metadata.
+#
+# Nothing of the project's code is needed in the venv — the modules are copied
+# to /app/src and found through PYTHONPATH. What is needed is the dist-info,
+# because cast2md/__init__.py resolves its version through
+# importlib.metadata.version("cast2md"), which fails without it.
+#
+# The editable install's path hook is deliberately left behind: it points at
+# this build directory, which does not exist in the runtime image.
+FROM deps AS project
+COPY src/ ./src/
+RUN uv pip install --no-deps -e . && \
+    mkdir /metadata && \
+    cp -a /build/.venv/lib/python3.11/site-packages/cast2md-*.dist-info /metadata/
+
+# Stage 3: Runtime
 FROM python:3.11-slim
 WORKDIR /app
 
@@ -47,8 +75,12 @@ RUN useradd -m -u 1000 cast2md && \
     mkdir -p /app/data && \
     chown -R cast2md:cast2md /app
 
-# Copy virtual environment from builder
-COPY --from=builder /build/.venv /app/.venv
+# The dependencies: one large layer whose contents depend only on
+# pyproject.toml and uv.lock, so an ordinary commit does not move it.
+COPY --from=deps /build/.venv /app/.venv
+
+# The project's metadata: ~10 kB, changes freely.
+COPY --from=project /metadata/ /app/.venv/lib/python3.11/site-packages/
 
 # Copy application source
 COPY src/ ./src/
