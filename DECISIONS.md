@@ -65,6 +65,12 @@ in the job: it proves the deploy left a serving instance, not that this commit
 is the one serving. No image label or endpoint carries the revision — that is an
 open roadmap item spanning this repo and `ci-workflows`.
 
+**Verified on the first run** (`fc094bd`, 2026-08-06): all seven jobs green,
+`deploy-gate` among them. An ordinary `runs-on: docker` job does reach
+`cast2md.coydog-fence.ts.net` over the tailnet, so the health step needs no
+Tailscale action of its own. That was the one assumption in the job that no
+prior run had tested.
+
 **Alternative considered.** Removing the `if:` from `build-deploy` so it can
 never be skipped. Rejected: it would then also run on pull requests, deploying
 unreviewed code to production.
