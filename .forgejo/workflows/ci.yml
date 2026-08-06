@@ -92,7 +92,7 @@ jobs:
     # (The conditions on the ordinary jobs below are unaffected — those run in
     # their own workflow context.)
     if: github.ref == 'refs/heads/main'
-    uses: meltforce.net/ci-workflows/.forgejo/workflows/build-push-deploy.yml@v1
+    uses: meltforce.net/ci-workflows/.forgejo/workflows/build-push-deploy.yml@v4
     with:
       app_name: cast2md
       target_host: cast2md.coydog-fence.ts.net
@@ -103,6 +103,13 @@ jobs:
       # fails the deploy itself. vimmary had the same gap and it cost an
       # outage on 2026-08-06.
       health_url: https://cast2md.coydog-fence.ts.net/api/health
+      # homelab/Ansible owns the deployed compose
+      # (homelab/docker/stacks/cast2md/compose.yaml), and Compose resolves
+      # compose.yaml ahead of docker-compose.yml, so a synced file would sit
+      # unused beside the real one as a second source of truth.
+      # v1 carried no compose-sync step at all; this keeps the behaviour
+      # the version bump would otherwise have changed silently.
+      sync_compose: false
     secrets:
       REGISTRY_USER: ${{ secrets.REGISTRY_USER }}
       REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
