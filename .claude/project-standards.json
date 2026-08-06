@@ -1,5 +1,5 @@
 {
-  "standard": "2026-08-05",
+  "standard": "2026-08-06",
   "type": "code, ops",
   "modules": [
     "doc-contract",
@@ -16,7 +16,7 @@
     "specs": "Three open roadmap items, none longer than one row. A tasks/ directory would hold nothing today, and an empty one invites entries that are really change notes. Re-open when a roadmap row grows past three paragraphs."
   },
   "notes": {
-    "skills": "The skill-placement block names skills/<name>/ as the source and .claude/skills/ as a generated runtime view. No such generation step exists for project-owned skills in any repo here, so the block was composed with .claude/skills/<name>/ as the home. See DECISIONS.md, 2026-08-06.",
+    "skills": "Project skills are in .claude/skills/, committed via the !.claude/skills/ negation in .gitignore. This was a deviation when it was written, because the skill-placement block still named a repo-root skills/ source and a generation step that exists nowhere; the block was corrected on 2026-08-06 and this is now the standard reading. See the standards repo's DECISIONS.md under that date.",
     "check-docs": "tools/check-docs.sh is copied unchanged from the standards repo and reads this file for the module selection. Project exceptions live in tools/check-docs.allow. It runs from the verify skill; no pre-commit hook and no CI job yet."
   }
 }

@@ -135,8 +135,13 @@ skill, in the languages they are spoken in, plus the cases that should *not*
 invoke it. *Why:* the description is the only part loaded into every session, so
 it does the whole job of routing.
 
-This repo places project skills directly in `.claude/skills/`, not in a `skills/`
-source directory — see [`DECISIONS.md`](DECISIONS.md), 2026-08-06.
+`.claude/skills/` is where Claude Code looks for project skills, together with
+`~/.claude/skills/` and a plugin's own `skills/` directory. A `skills/` directory
+at the repo root is not a discovery location, so a skill placed there is
+invisible until something links it in — and an uncommitted link exists on one
+machine only. The standard's `skill-placement` block said otherwise until
+2026-08-06; the correction and its reasoning are in that repo's `DECISIONS.md`
+under that date.
 
 ## Claude settings
 
