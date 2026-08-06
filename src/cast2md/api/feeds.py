@@ -47,11 +47,20 @@ class FeedResponse(BaseModel):
     categories: list[str]
     last_polled: str | None
     episode_count: int = 0
+    # Episode count per status, e.g. {"completed": 68, "new": 780}. Statuses
+    # with no episodes are absent. Empty on the single-feed endpoint, which
+    # does not compute it.
+    status_counts: dict[str, int] = {}
     created_at: str
     updated_at: str
 
     @classmethod
-    def from_feed(cls, feed: Feed, episode_count: int = 0) -> "FeedResponse":
+    def from_feed(
+        cls,
+        feed: Feed,
+        episode_count: int = 0,
+        status_counts: dict[str, int] | None = None,
+    ) -> "FeedResponse":
         return cls(
             id=feed.id,
             url=feed.url,
@@ -65,6 +74,7 @@ class FeedResponse(BaseModel):
             categories=feed.category_list,
             last_polled=feed.last_polled.isoformat() if feed.last_polled else None,
             episode_count=episode_count,
+            status_counts=status_counts or {},
             created_at=feed.created_at.isoformat(),
             updated_at=feed.updated_at.isoformat(),
         )
@@ -97,11 +107,14 @@ def list_feeds():
         feed_repo = FeedRepository(conn)
         episode_repo = EpisodeRepository(conn)
         feeds = feed_repo.get_all()
+        # One grouped query for every feed, rather than one per feed and status.
+        status_counts = episode_repo.count_by_status_per_feed()
 
         response_feeds = []
         for feed in feeds:
-            episode_count = episode_repo.count_by_feed(feed.id)
-            response_feeds.append(FeedResponse.from_feed(feed, episode_count))
+            per_feed = status_counts.get(feed.id, {})
+            episode_count = sum(per_feed.values())
+            response_feeds.append(FeedResponse.from_feed(feed, episode_count, per_feed))
 
     return FeedListResponse(feeds=response_feeds)
 

@@ -722,6 +722,25 @@ class EpisodeRepository:
         )
         return cursor.fetchone()[0]
 
+    def count_by_status_per_feed(self) -> dict[int, dict[str, int]]:
+        """Count episodes by status for every feed, in one query.
+
+        Used by the feed list, which needs the breakdown for all feeds at once.
+        Calling count_by_feed_and_status per feed and status would be dozens of
+        round trips for the same information.
+
+        Returns:
+            {feed_id: {status: count}}. Statuses with no episodes are absent.
+        """
+        cursor = execute(
+            self.conn,
+            "SELECT feed_id, status, COUNT(*) FROM episode GROUP BY feed_id, status",
+        )
+        counts: dict[int, dict[str, int]] = {}
+        for feed_id, status, count in cursor.fetchall():
+            counts.setdefault(feed_id, {})[status] = count
+        return counts
+
     def get_transcript_source_stats(self, feed_id: int) -> dict:
         """Get statistics about transcript sources for a feed.
 
