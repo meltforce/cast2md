@@ -14,6 +14,45 @@ place with the old form recorded under revisions — the entry is not duplicated
 
 ---
 
+## 2026-08-07 — the German stopword list lives under `db/`, with the tsquery builder
+
+**Decided:** 2026-08-07
+
+**Decision.** `build_flexible_tsquery`, its helper `_split_word` and the
+`STOP_WORDS` set they read live in `src/cast2md/db/tsquery.py`. The 16 per-line
+suppressions in `tools/check-docs.allow` that mark the list as German language
+data point at that path. `search/repository.py` imports the builder from there.
+
+**Reasoning.** The function was the sole `db → search` import edge: it sat in
+`search/repository.py` and `db/repository.py:search_episodes_fts` pulled it
+through a function-level import, which is the standard way to work around an
+import cycle. Removing that edge required moving the function below both
+packages.
+
+It could not move alone. `build_flexible_tsquery` calls `_split_word`, which
+reads `STOP_WORDS` — 51 lines of German and English stopwords. So the choice was
+where the stopword list ends up, not where a small helper ends up.
+
+`db/` is the right home because the function emits PostgreSQL `tsquery` syntax:
+`'a' | ('b' & 'c')`. That is database dialect, and it is unusable against any
+other backend. The alternative considered was a root-level `cast2md/tsquery.py`,
+which is cleaner against the layer assumption but puts a module directly under
+`src/cast2md/` next to `main.py`, `cli.py` and `scheduler.py` — a location
+reserved for application entry points. `search/repository.py` already imported
+from `db/sql.py`, so the direction was established either way.
+
+The consequence worth stating plainly: a reader looking for German language data
+will not expect it under `db/`. The comment above the list and this entry are
+what make it findable. `tools/check-docs.allow` carries the second pointer,
+because the language sweep would otherwise fire on all 51 lines.
+
+**Trigger to re-open.** A second database backend appears, which would make
+`tsquery` syntax one dialect among several rather than the only one; or the
+stopword list grows into something the search layer tunes per language, at which
+point it is search configuration rather than query syntax.
+
+---
+
 ## 2026-08-06 — the dependency virtualenv is a layer of its own, independent of the source
 
 **Decided:** 2026-08-06
