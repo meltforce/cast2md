@@ -958,6 +958,77 @@ class EpisodeRepository:
             results.append((episode, feed_title))
         return results
 
+    def get_library_page(
+        self,
+        query: str | None = None,
+        status_group: str | None = None,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> tuple[list[tuple[Episode, str, str | None]], int]:
+        """Return the cross-feed episode library with feed display data."""
+        conditions = ["e.permanent_failure = FALSE"]
+        params: list[Any] = []
+        joins = "JOIN feed f ON e.feed_id = f.id"
+
+        if query:
+            tsquery = build_flexible_tsquery(query)
+            if not tsquery:
+                return [], 0
+            joins += " JOIN episode_search es ON es.episode_id = e.id"
+            conditions.append(
+                "(es.title_search @@ to_tsquery('english', %s) "
+                "OR es.description_search @@ to_tsquery('english', %s))"
+            )
+            params.extend([tsquery, tsquery])
+
+        if status_group == "completed":
+            conditions.append("e.status = %s")
+            params.append(EpisodeStatus.COMPLETED.value)
+        elif status_group == "queued":
+            queued = (
+                EpisodeStatus.NEW,
+                EpisodeStatus.AWAITING_TRANSCRIPT,
+                EpisodeStatus.NEEDS_AUDIO,
+                EpisodeStatus.AUDIO_READY,
+            )
+            conditions.append("e.status IN (%s, %s, %s, %s)")
+            params.extend(status.value for status in queued)
+        elif status_group == "failed":
+            conditions.append("e.status = %s")
+            params.append(EpisodeStatus.FAILED.value)
+
+        where = " AND ".join(conditions)
+        count_cursor = execute(
+            self.conn,
+            f"SELECT COUNT(*) FROM episode e {joins} WHERE {where}",
+            tuple(params),
+        )
+        total = count_cursor.fetchone()[0]
+
+        ep_cols = ", ".join(f"e.{column.strip()}" for column in self.EPISODE_COLUMNS.split(","))
+        page_params = [*params, limit, offset]
+        cursor = execute(
+            self.conn,
+            f"""
+            SELECT {ep_cols}, COALESCE(f.custom_title, f.title), f.image_url
+            FROM episode e
+            {joins}
+            WHERE {where}
+            ORDER BY e.published_at DESC NULLS LAST, e.created_at DESC
+            LIMIT %s OFFSET %s
+            """,
+            tuple(page_params),
+        )
+        return [(Episode.from_row(row[:-2]), row[-2], row[-1]) for row in cursor.fetchall()], total
+
+    def get_latest_published_at_per_feed(self) -> dict[int, datetime | None]:
+        """Return the latest episode publication timestamp for every feed."""
+        cursor = execute(
+            self.conn,
+            "SELECT feed_id, MAX(published_at) FROM episode GROUP BY feed_id",
+        )
+        return dict(cursor.fetchall())
+
     def get_recent_transcribed_episodes(
         self, limit: int = 12
     ) -> list[tuple[Episode, str, str | None]]:

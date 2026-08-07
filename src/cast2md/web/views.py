@@ -242,6 +242,54 @@ def timeago(dt) -> str:
         return dt.strftime("%b %d")
 
 
+def format_duration(seconds: int | None) -> str:
+    """Format an episode duration compactly for media rows."""
+    if not seconds:
+        return ""
+    hours, remainder = divmod(int(seconds), 3600)
+    minutes = remainder // 60
+    if hours:
+        return f"{hours}h {minutes:02d}m"
+    return f"{minutes}m"
+
+
+def episode_excerpt(text: str | None, length: int = 240) -> str:
+    """Create a clean, compact description excerpt for episode lists."""
+    plain = strip_html(text)
+    boilerplate = r"^(show notes|episode notes|in this episode|on this episode)\s*[:—-]\s*"
+    plain = re.sub(boilerplate, "", plain, flags=re.IGNORECASE)
+    if len(plain) <= length:
+        return plain
+    shortened = plain[:length].rsplit(" ", 1)[0]
+    return f"{shortened}…"
+
+
+def episode_day_group(dt) -> str:
+    """Return the stream group label for an episode publication date."""
+    from datetime import datetime, timedelta
+
+    if not dt:
+        return "Undated"
+    today = datetime.now(dt.tzinfo).date() if dt.tzinfo else datetime.now().date()
+    if dt.date() == today:
+        return "Today"
+    if dt.date() == today - timedelta(days=1):
+        return "Yesterday"
+    return f"{dt.day} {dt.strftime('%B')}"
+
+
+def highlight_query(text: str | None, query: str) -> str:
+    """Escape a search excerpt and emphasize matching query terms."""
+    from html import escape
+
+    clean = escape(strip_html(text))
+    terms = sorted(set(re.findall(r"[\w'-]+", query)), key=len, reverse=True)
+    if not terms:
+        return clean
+    pattern = re.compile("(" + "|".join(re.escape(term) for term in terms) + ")", re.I)
+    return pattern.sub(r"<strong>\1</strong>", clean)
+
+
 def configure_templates(t: Jinja2Templates):
     """Configure templates instance."""
     global templates
@@ -253,6 +301,9 @@ def configure_templates(t: Jinja2Templates):
     templates.env.filters["render_transcript"] = render_transcript_html
     templates.env.filters["search_snippet"] = sanitize_search_snippet
     templates.env.filters["timeago"] = timeago
+    templates.env.filters["duration"] = format_duration
+    templates.env.filters["episode_excerpt"] = episode_excerpt
+    templates.env.filters["highlight_query"] = highlight_query
     # Add global template variables - read version from pyproject.toml
     # to preserve the original format (e.g., "2026.01" not Python-normalized "2026.1")
     templates.env.globals["app_version"] = _get_raw_version()
@@ -260,14 +311,94 @@ def configure_templates(t: Jinja2Templates):
 
 @router.get("/", response_class=HTMLResponse)
 def home(request: Request):
-    """Home page - redirect to search."""
+    """Home page - redirect to the episode library."""
     from fastapi.responses import RedirectResponse
 
-    return RedirectResponse(url="/search", status_code=302)
+    return RedirectResponse(url="/episodes", status_code=302)
+
+
+@router.get("/episodes", response_class=HTMLResponse)
+def episodes_index(
+    request: Request,
+    q: str | None = None,
+    status: str | None = None,
+    page: int = 1,
+    per_page: int = 20,
+):
+    """Cross-feed episode library, newest first."""
+    valid_statuses = {"completed", "queued", "failed"}
+    status_group = status if status in valid_statuses else None
+    page = max(1, page)
+    per_page = per_page if per_page in (20, 40, 80) else 20
+
+    with get_db() as conn:
+        feed_repo = FeedRepository(conn)
+        episode_repo = EpisodeRepository(conn)
+        job_repo = JobRepository(conn)
+        feeds = feed_repo.get_all()
+        status_counts = episode_repo.count_by_status()
+        raw_items, total = episode_repo.get_library_page(
+            query=q,
+            status_group=status_group,
+            limit=per_page,
+            offset=(page - 1) * per_page,
+        )
+        total_pages = max(1, (total + per_page - 1) // per_page)
+        if page > total_pages:
+            page = total_pages
+            raw_items, total = episode_repo.get_library_page(
+                query=q,
+                status_group=status_group,
+                limit=per_page,
+                offset=(page - 1) * per_page,
+            )
+
+        items = []
+        for episode, feed_title, feed_image_url in raw_items:
+            progress = None
+            worker = None
+            if episode.status == EpisodeStatus.TRANSCRIBING:
+                running_jobs = [
+                    job for job in job_repo.get_by_episode(episode.id) if job.started_at
+                ]
+                if running_jobs:
+                    progress = running_jobs[-1].progress_percent
+                    worker = running_jobs[-1].assigned_node_id or "local worker"
+            items.append(
+                {
+                    "episode": episode,
+                    "feed_title": feed_title,
+                    "feed_image_url": feed_image_url,
+                    "summary": episode_excerpt(episode.description),
+                    "progress": progress,
+                    "worker": worker,
+                    "group_label": episode_day_group(episode.published_at),
+                }
+            )
+
+    last_polled = max((feed.last_polled for feed in feeds if feed.last_polled), default=None)
+    return templates.TemplateResponse(
+        "episodes.html",
+        {
+            "request": request,
+            "items": items,
+            "query": q or "",
+            "status_filter": status_group or "all",
+            "page": page,
+            "per_page": per_page,
+            "total": total,
+            "total_pages": total_pages,
+            "feed_count": len(feeds),
+            "episode_count": sum(status_counts.values()),
+            "transcribed_count": status_counts.get(EpisodeStatus.COMPLETED.value, 0),
+            "transcribing_count": status_counts.get(EpisodeStatus.TRANSCRIBING.value, 0),
+            "last_polled": last_polled,
+        },
+    )
 
 
 @router.get("/feeds", response_class=HTMLResponse)
-def feeds_index(request: Request):
+def feeds_index(request: Request, sort: str = "recent"):
     """Feeds page - list all feeds."""
     with get_db() as conn:
         feed_repo = FeedRepository(conn)
@@ -275,6 +406,8 @@ def feeds_index(request: Request):
 
         feeds = feed_repo.get_all()
         status_counts = episode_repo.count_by_status()
+        per_feed_counts = episode_repo.count_by_status_per_feed()
+        latest_published = episode_repo.get_latest_published_at_per_feed()
 
         # Add episode counts to feeds
         feeds_with_counts = []
@@ -282,8 +415,24 @@ def feeds_index(request: Request):
             feeds_with_counts.append(
                 {
                     "feed": feed,
-                    "episode_count": episode_repo.count_by_feed(feed.id),
+                    "episode_count": sum(per_feed_counts.get(feed.id, {}).values()),
+                    "status_counts": per_feed_counts.get(feed.id, {}),
+                    "latest_published": latest_published.get(feed.id),
                 }
+            )
+
+        if sort == "name":
+            feeds_with_counts.sort(key=lambda item: item["feed"].display_title.casefold())
+        elif sort == "episodes":
+            feeds_with_counts.sort(
+                key=lambda item: (item["episode_count"], item["feed"].display_title.casefold()),
+                reverse=True,
+            )
+        else:
+            sort = "recent"
+            feeds_with_counts.sort(
+                key=lambda item: item["latest_published"] or item["feed"].created_at,
+                reverse=True,
             )
 
     total_episodes = sum(status_counts.values())
@@ -295,6 +444,7 @@ def feeds_index(request: Request):
             "feeds": feeds_with_counts,
             "status_counts": status_counts,
             "total_episodes": total_episodes,
+            "sort": sort,
         },
     )
 
@@ -374,6 +524,7 @@ def feed_detail(
 
         # Get transcript source stats for this feed
         transcript_stats = episode_repo.get_transcript_source_stats(feed_id)
+        feed_status_counts = episode_repo.get_status_counts_for_feed(feed_id)
 
         # Count episodes needing transcription (new or needs_audio)
         pending_count = episode_repo.count_by_feed_and_status(feed_id, EpisodeStatus.NEW)
@@ -396,12 +547,49 @@ def feed_detail(
             elif job_repo.has_pending_job(ep_id, JobType.DOWNLOAD):
                 queued_episode_ids.add(ep_id)
 
+        feed_items = []
+        action_map = {
+            EpisodeStatus.NEW: ("download", "Download Audio"),
+            EpisodeStatus.AWAITING_TRANSCRIPT: ("download", "Download Audio"),
+            EpisodeStatus.NEEDS_AUDIO: ("download", "Download Audio"),
+            EpisodeStatus.AUDIO_READY: ("transcribe", "Queue Transcription"),
+            EpisodeStatus.FAILED: ("retry", "Retry"),
+        }
+        for episode in episodes:
+            display_status = (
+                "queued"
+                if episode.id in queued_episode_ids and episode.status == EpisodeStatus.NEW
+                else episode.status.value
+            )
+            action, action_label = action_map.get(episode.status, (None, None))
+            if episode.id in queued_episode_ids or episode.permanent_failure:
+                action, action_label = None, None
+            feed_items.append(
+                {
+                    "episode": episode,
+                    "feed_title": feed.display_title,
+                    "feed_image_url": feed.image_url,
+                    "summary": episode_excerpt(episode.description),
+                    "display_status": display_status,
+                    "is_queued": episode.id in queued_episode_ids,
+                    "has_external_transcript": bool(
+                        episode.transcript_url or episode.pocketcasts_transcript_url
+                    ),
+                    "checkbox_disabled": (
+                        episode.status != EpisodeStatus.NEW or episode.id in queued_episode_ids
+                    ),
+                    "action": action,
+                    "action_label": action_label,
+                }
+            )
+
     return templates.TemplateResponse(
         "feed_detail.html",
         {
             "request": request,
             "feed": feed,
             "episodes": episodes,
+            "feed_items": feed_items,
             "page": page,
             "per_page": per_page,
             "valid_per_page": valid_per_page,
@@ -412,6 +600,7 @@ def feed_detail(
             "status_filter": status or "",
             "statuses": [s.value for s in EpisodeStatus],
             "transcript_stats": transcript_stats,
+            "feed_status_counts": feed_status_counts,
             "queued_episode_ids": queued_episode_ids,
             "needs_transcription_count": needs_transcription_count,
             "audio_ready_count": audio_ready_count,
@@ -425,7 +614,7 @@ def episode_detail(
     request: Request,
     episode_id: int,
     # Back navigation params
-    back: str | None = None,  # "search", "feed", or None
+    back: str | None = None,  # "episodes", "search", "feed", or None
     back_url: str | None = None,  # Full URL to return to (for search with query)
     # Legacy feed back params (for backwards compatibility)
     q: str | None = None,
@@ -468,7 +657,10 @@ def episode_detail(
     back_label = f"Back to {feed.display_title}"
     back_href = f"/feeds/{feed.id}"
 
-    if back == "search":
+    if back == "episodes":
+        back_label = "Back to Episodes"
+        back_href = back_url if back_url else "/episodes"
+    elif back == "search":
         back_label = "Back to Search"
         back_href = back_url if back_url else "/search"
     elif back == "feed" or q or status or page != 1:
@@ -529,11 +721,14 @@ def settings_page_redirect(request: Request):
 
 
 @router.get("/admin/settings", response_class=HTMLResponse)
-def admin_settings_page(request: Request):
+def admin_settings_page(request: Request, tab: str = "general"):
     """Admin settings page."""
+    valid_tabs = {"general", "transcription", "models", "nodes", "feeds", "storage"}
+    if tab not in valid_tabs:
+        tab = "general"
     return templates.TemplateResponse(
         "settings.html",
-        {"request": request},
+        {"request": request, "settings_tab": tab},
     )
 
 
@@ -797,6 +992,7 @@ def transcript_search_page(
     feeds = []
     actual_mode = mode
     recent_transcripts = []
+    search_items = []
 
     with get_db() as conn:
         feed_repo = FeedRepository(conn)
@@ -828,6 +1024,38 @@ def transcript_search_page(
             total = response.total
             actual_mode = response.mode
             total_pages = max(1, (total + per_page - 1) // per_page)
+
+            episodes_by_id = episode_repo.get_by_ids([result.episode_id for result in results])
+            feed_images = {feed.id: feed.image_url for feed in feeds}
+            grouped: dict[int, dict] = {}
+            for result in results:
+                episode = episodes_by_id.get(result.episode_id)
+                if not episode:
+                    continue
+                timestamp = None if result.segment_start < 0 else int(result.segment_start)
+                excerpt = result.text or episode.description or ""
+                if result.episode_id not in grouped:
+                    grouped[result.episode_id] = {
+                        "episode": episode,
+                        "feed_title": result.feed_title,
+                        "feed_image_url": feed_images.get(result.feed_id),
+                        "summary": highlight_query(excerpt, q),
+                        "summary_safe": True,
+                        "source_label": (
+                            "title" if result.result_type == "episode" else result.match_type
+                        ),
+                        "first_timestamp": timestamp,
+                        "more_matches": [],
+                    }
+                elif len(grouped[result.episode_id]["more_matches"]) < 2:
+                    minutes, seconds = divmod(timestamp or 0, 60)
+                    grouped[result.episode_id]["more_matches"].append(
+                        {
+                            "timestamp": f"{minutes:02d}:{seconds:02d}",
+                            "text": strip_html(excerpt)[:180],
+                        }
+                    )
+            search_items = list(grouped.values())
         else:
             # No query - show recent transcripts for empty state
             # Fetch enough cards for horizontal scroll on large screens
@@ -849,5 +1077,6 @@ def transcript_search_page(
             "mode": mode,
             "actual_mode": actual_mode,
             "recent_transcripts": recent_transcripts,
+            "search_items": search_items,
         },
     )

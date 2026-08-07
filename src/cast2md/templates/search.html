@@ -1,23 +1,20 @@
 {% extends "base.html" %}
 
 {% block title %}Search - cast2md{% endblock %}
+{% block nav_active %}search{% endblock %}
+{% from "_macros.html" import episode_row %}
 
 {% block content %}
-<header class="page-head">
-    <div>
-        <div class="kick">Episodes and transcripts</div>
-        <h1>Search</h1>
-    </div>
-</header>
-
-<section class="section">
-    <form id="search-form" method="get" class="stack">
+<div class="reading-col">
+    <header class="stream-head"><div><div class="kick">Episodes and transcripts</div><h1>Search</h1></div></header>
+    <section class="search-panel">
+    <form id="search-form" method="get" class="search-form">
         <div class="cmdline">
             <label class="visually-hidden" for="searchQuery">Search query</label>
             <input class="input" type="search" id="searchQuery" name="q" value="{{ query }}" placeholder="Enter search terms…" autofocus>
             <button class="btn btn-primary" type="submit">Search</button>
         </div>
-        <div class="cluster compact">
+        <div class="search-scope compact">
             <div class="seg" role="radiogroup" aria-label="Search mode">
                 {% for value in ['hybrid', 'keyword', 'semantic'] %}
                 <label class="seg-opt">
@@ -33,94 +30,59 @@
                 <option value="{{ feed.id }}" {% if feed_id == feed.id %}selected{% endif %}>{{ feed.display_title }}</option>
                 {% endfor %}
             </select>
+            <input type="hidden" name="per_page" value="{{ per_page }}">
         </div>
         {% if actual_mode != mode %}
         <div class="meta">{{ mode }} unavailable — showing {{ actual_mode }} results</div>
         {% endif %}
-        {% if query %}
-        {% set episode_matches = results|selectattr('result_type', 'equalto', 'episode')|list|length %}
-        <div class="meta num">{{ total }} result{{ '' if total == 1 else 's' }} · {{ episode_matches }} episode{{ '' if episode_matches == 1 else 's' }} · {{ results|length - episode_matches }} transcript matches</div>
-        {% endif %}
+        {% if query %}<div class="meta num">{{ total }} result{{ '' if total == 1 else 's' }} · {{ search_items|length }} episode{{ '' if search_items|length == 1 else 's' }} · {{ results|length }} matches on this page</div>{% endif %}
     </form>
 </section>
 
-{% if query and results %}
-<div class="desktop-only table-wrap">
-    <table class="table">
-        <thead><tr><th>Episode</th><th>Podcast</th><th>Match</th><th class="right">Published</th></tr></thead>
-        <tbody>
-        {% for result in results %}
-            {% set timestamp = ('?t=' ~ result.segment_start|int) if result.result_type != 'episode' else '' %}
-            {% set back_url = ('/search?q=' ~ query|urlencode ~ ('&feed_id=' ~ feed_id if feed_id else '') ~ '&mode=' ~ mode ~ '&page=' ~ page)|urlencode %}
-            <tr>
-                <td>
-                    <a href="/episodes/{{ result.episode_id }}{{ timestamp }}{% if timestamp %}&{% else %}?{% endif %}back=search&amp;back_url={{ back_url }}">{{ result.episode_title }}</a>
-                    {% if result.text %}<div class="meta">{{ result.text|search_snippet|safe }}</div>{% endif %}
-                </td>
-                <td>{{ result.feed_title }}</td>
-                <td><span class="tag {% if result.result_type == actual_mode %}tag-accent{% else %}tag-neutral{% endif %}">{{ 'title' if result.result_type == 'episode' else 'transcript' }}</span></td>
-                <td class="right num">{{ result.published_at.strftime('%Y-%m-%d') if result.published_at else '' }}</td>
-            </tr>
-        {% endfor %}
-        </tbody>
-    </table>
-</div>
-<div class="mobile-only">
-    {% for result in results %}
-    {% set timestamp = ('?t=' ~ result.segment_start|int) if result.result_type != 'episode' else '' %}
-    <a class="row" href="/episodes/{{ result.episode_id }}{{ timestamp }}">
-        <span class="truncate">
-            <span class="row-title">{{ result.episode_title }}</span>
-            {% if result.text %}<span class="row-meta">{{ result.text|strip_html|truncate(120, True, '…') }}</span>{% endif %}
-            <span class="row-meta">{{ result.feed_title }} · {{ 'title' if result.result_type == 'episode' else 'transcript' }}</span>
-        </span>
-    </a>
+{% if query and search_items %}
+<div class="media-stream search-results">
+    {% for item in search_items %}
+    {% set timestamp = '?t=' ~ item.first_timestamp if item.first_timestamp is not none else '' %}
+    {% set separator = '&' if timestamp else '?' %}
+    {% set back_url = ('/search?q=' ~ query|urlencode ~ ('&feed_id=' ~ feed_id if feed_id else '') ~ '&mode=' ~ mode ~ '&per_page=' ~ per_page ~ '&page=' ~ page)|urlencode %}
+    {{ episode_row(item, href='/episodes/' ~ item.episode.id ~ timestamp ~ separator ~ 'back=search&back_url=' ~ back_url) }}
     {% endfor %}
 </div>
 
 {% if total_pages > 1 %}
-<nav class="pagination" aria-label="Search result pages">
-    {% if page > 1 %}<a class="btn btn-ghost compact" href="?q={{ query|urlencode }}{% if feed_id %}&amp;feed_id={{ feed_id }}{% endif %}&amp;mode={{ mode }}&amp;page={{ page - 1 }}">← Previous</a>{% endif %}
+<nav class="reading-pagination" aria-label="Search result pages">
+    {% if page > 1 %}<a class="btn btn-ghost compact" href="?q={{ query|urlencode }}{% if feed_id %}&amp;feed_id={{ feed_id }}{% endif %}&amp;mode={{ mode }}&amp;per_page={{ per_page }}&amp;page={{ page - 1 }}">← Previous</a>{% endif %}
     <span class="meta num">Page {{ page }} of {{ total_pages }}</span>
-    {% if page < total_pages %}<a class="btn btn-ghost compact" href="?q={{ query|urlencode }}{% if feed_id %}&amp;feed_id={{ feed_id }}{% endif %}&amp;mode={{ mode }}&amp;page={{ page + 1 }}">Next →</a>{% endif %}
+    {% if page < total_pages %}<a class="btn btn-ghost compact" href="?q={{ query|urlencode }}{% if feed_id %}&amp;feed_id={{ feed_id }}{% endif %}&amp;mode={{ mode }}&amp;per_page={{ per_page }}&amp;page={{ page + 1 }}">Next →</a>{% endif %}
 </nav>
 {% endif %}
 
 {% elif query %}
-<section class="empty">
+<section class="empty empty-reading">
     <div class="kick">Search</div>
     <h3>No results for “{{ query }}”.</h3>
     <p>Try a shorter query, another mode, or all podcasts.</p>
 </section>
 
 {% else %}
-<section class="empty">
+<section class="empty empty-reading">
     <div class="kick">Search</div>
     <h3>Search episodes and transcripts.</h3>
     <p>Use words, exact phrases, or semantic search across your podcast library.</p>
 </section>
 
 {% if recent_transcripts %}
-<section class="section">
-    <div class="sec-head page-x"><div><div class="kick">Recently transcribed</div><h2>Latest transcripts</h2></div></div>
-    <div class="desktop-only table-wrap">
-        <table class="table">
-            <thead><tr><th>Episode</th><th>Podcast</th><th class="right">Transcribed</th></tr></thead>
-            <tbody>
-            {% for episode, feed_title, image_url in recent_transcripts %}
-            <tr><td><a href="/episodes/{{ episode.id }}?back=search">{{ episode.title }}</a></td><td>{{ feed_title }}</td><td class="right num">{{ episode.updated_at|timeago }}</td></tr>
-            {% endfor %}
-            </tbody>
-        </table>
-    </div>
-    <div class="mobile-only">
-        {% for episode, feed_title, image_url in recent_transcripts %}
-        <a class="row" href="/episodes/{{ episode.id }}?back=search"><span class="truncate"><span class="row-title">{{ episode.title }}</span><span class="row-meta">{{ feed_title }} · {{ episode.updated_at|timeago }}</span></span></a>
-        {% endfor %}
+<section class="recent-list">
+    <div class="sec-head"><div><div class="kick">Recently transcribed</div><h2>Latest transcripts</h2></div></div>
+    <div class="row-group">
+    {% for episode, feed_title, image_url in recent_transcripts %}
+        <a class="row" href="/episodes/{{ episode.id }}?back=search"><span class="truncate"><span class="row-title">{{ episode.title }}</span><span class="row-meta"><span class="accent">{{ feed_title }}</span> · {{ episode.updated_at|timeago }}</span></span></a>
+    {% endfor %}
     </div>
 </section>
 {% endif %}
 {% endif %}
+</div>
 
 <details class="disclose">
     <summary class="kick">Index</summary>

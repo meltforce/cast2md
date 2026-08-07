@@ -1,72 +1,51 @@
 {% extends "base.html" %}
 
 {% block title %}Feeds - cast2md{% endblock %}
+{% block nav_active %}feeds{% endblock %}
+{% from "_macros.html" import artwork, pipeline %}
 
 {% block content %}
-<header class="page-head">
-    <div>
-        <div class="kick">Manage your podcast subscriptions</div>
-        <h1>Podcast Feeds</h1>
-    </div>
-    <div class="page-head-actions">
+<div class="reading-col">
+    <header class="stream-head">
+        <div><div class="kick">Manage your podcast subscriptions</div><h1>Podcast Feeds</h1></div>
         <button class="btn btn-primary" type="button" onclick="showAddFeedDialog()">Add Feed</button>
-    </div>
-</header>
+    </header>
 
-<section class="hero" aria-label="Feed statistics">
-    <div><div class="kick">Feeds</div><div class="value">{{ feeds|length }}</div></div>
-    <div><div class="kick">Episodes</div><div class="value">{{ total_episodes }}</div></div>
-    <div><div class="kick">Transcribed</div><div class="value">{{ status_counts.get('completed', 0) }}</div></div>
-    <div><div class="kick">New</div><div class="value">{{ status_counts.get('new', 0) }}</div></div>
-</section>
+    <section class="hero hero-reading" aria-label="Feed statistics">
+        <div><div class="kick">Feeds</div><div class="value">{{ feeds|length }}</div></div>
+        <div><div class="kick">Episodes</div><div class="value">{{ total_episodes }}</div></div>
+        <div><div class="kick">Transcribed</div><div class="value">{{ status_counts.get('completed', 0) }}</div></div>
+        <div><div class="kick">New</div><div class="value">{{ status_counts.get('new', 0) }}</div></div>
+    </section>
 
-{% if feeds %}
-<div class="desktop-only table-wrap">
-    <table class="table">
-        <thead>
-            <tr>
-                <th>Podcast</th>
-                <th>Category</th>
-                <th class="right">Episodes</th>
-                <th class="right">Last polled</th>
-                <th class="right">Refresh</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for item in feeds %}
-            <tr>
-                <td><a href="/feeds/{{ item.feed.id }}">{{ item.feed.display_title }}</a></td>
-                <td>{{ item.feed.category_list[0] if item.feed.category_list else '' }}</td>
-                <td class="right num">{{ item.episode_count }}</td>
-                <td class="right num {% if not item.feed.last_polled %}muted{% endif %}">
-                    {{ item.feed.last_polled.strftime('%Y-%m-%d %H:%M') if item.feed.last_polled else 'Never' }}
-                </td>
-                <td class="right">
-                    <button class="btn btn-ghost compact" type="button" onclick="refreshFeed({{ item.feed.id }})">Refresh</button>
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-</div>
-<div class="mobile-only">
-    {% for item in feeds %}
-    <a class="row" href="/feeds/{{ item.feed.id }}">
-        <span class="truncate">
-            <span class="row-title">{{ item.feed.display_title }}</span>
-            <span class="row-meta">{{ item.feed.category_list[0] if item.feed.category_list else 'Podcast' }} · {{ item.episode_count }} episodes · {% if item.feed.last_polled %}polled {{ item.feed.last_polled.strftime('%H:%M') }}{% else %}never polled{% endif %}</span>
+    {% if feeds %}
+    <nav class="directory-sort" aria-label="Sort feeds">
+        <span class="seg">
+            {% for value, label in [('recent', 'Recent'), ('name', 'Name'), ('episodes', 'Episodes')] %}<a class="seg-opt" href="?sort={{ value }}" {% if sort == value %}aria-current="true"{% endif %}>{{ label }}</a>{% endfor %}
         </span>
-    </a>
-    {% endfor %}
+    </nav>
+    <div class="feed-directory">
+        {% for item in feeds %}
+        <a class="media-row feed-row" href="/feeds/{{ item.feed.id }}">
+            {{ artwork(item.feed.image_url, 'feed-art') }}
+            <span class="media-copy">
+                <span class="media-kicker">{{ item.feed.category_list[0] if item.feed.category_list else 'Podcast' }} · {% if item.feed.last_polled %}polled {{ item.feed.last_polled.strftime('%H:%M') }}{% else %}never polled{% endif %}</span>
+                <h3 class="media-title">{{ item.feed.display_title }}</h3>
+                <span class="media-summary">{{ item.feed.description|episode_excerpt if item.feed.description else item.episode_count ~ ' episodes · ' ~ item.status_counts.get('completed', 0) ~ ' transcribed' }}</span>
+                <span class="feed-mobile-meta">{{ item.episode_count }} episodes · {{ item.status_counts.get('completed', 0) }} transcribed</span>
+            </span>
+            <span class="feed-count"><strong class="num">{{ item.episode_count }}</strong><small>{{ item.status_counts.get('completed', 0) }} transcribed</small>{{ pipeline(item.status_counts, item.feed.display_title) }}</span>
+        </a>
+        {% endfor %}
+    </div>
+    {% else %}
+    <section class="empty empty-reading">
+        <div class="kick">Library</div><h3>No feeds yet.</h3>
+        <p>Add a podcast to fetch its episodes and available transcripts.</p>
+        <button class="btn btn-primary" type="button" onclick="showAddFeedDialog()">Add Feed</button>
+    </section>
+    {% endif %}
 </div>
-{% else %}
-<section class="empty">
-    <div class="kick">Library</div>
-    <h3>No feeds yet.</h3>
-    <p>Add a podcast to fetch its episodes and available transcripts.</p>
-    <button class="btn btn-primary" type="button" onclick="showAddFeedDialog()">Add Feed</button>
-</section>
-{% endif %}
 
 <dialog id="addFeedDialog" class="dialog dialog-wide">
     <button type="button" class="btn btn-ghost btn-icon dialog-close" aria-label="Close" onclick="closeAddFeedDialog()">

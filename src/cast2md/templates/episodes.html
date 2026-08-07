@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% from "_macros.html" import episode_row %}
+
+{% block title %}Episodes - cast2md{% endblock %}
+{% block nav_active %}episodes{% endblock %}
+
+{% block content %}
+<div class="reading-col">
+    <header class="stream-head">
+        <div>
+            <div class="kick">{{ feed_count }} feeds · {{ episode_count }} episodes · {{ transcribed_count }} transcribed</div>
+            <h1>Episodes</h1>
+        </div>
+        <div class="stream-meta">{% if last_polled %}Last polled {{ last_polled.strftime('%H:%M') }}{% else %}Never polled{% endif %} · {{ transcribing_count }} transcribing</div>
+    </header>
+
+    <form class="library-filters" method="get" action="/episodes">
+        <label class="search-field" for="episodeQuery">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+            <span class="visually-hidden">Search episodes</span>
+            <input class="input" id="episodeQuery" name="q" value="{{ query }}" placeholder="Search episodes and transcripts…">
+        </label>
+        <div class="filters library-chips">
+            {% for value, label in [('all', 'All'), ('completed', 'Completed'), ('queued', 'Queued'), ('failed', 'Failed')] %}
+            <a class="chip" href="/episodes{% if query %}?q={{ query|urlencode }}{% if value != 'all' %}&amp;status={{ value }}{% endif %}{% elif value != 'all' %}?status={{ value }}{% endif %}" {% if status_filter == value %}aria-current="true"{% endif %}>{{ label }}</a>
+            {% endfor %}
+        </div>
+    </form>
+
+    {% if items %}
+    <div class="media-stream">
+        {% set groups = namespace(current='') %}
+        {% for item in items %}
+            {% if item.group_label != groups.current %}
+                {% if not loop.first %}</div>{% endif %}
+                <div class="date-band">{{ item.group_label }}</div><div class="date-group">
+                {% set groups.current = item.group_label %}
+            {% endif %}
+            {% set back_url = ('/episodes?q=' ~ query|urlencode ~ ('&status=' ~ status_filter if status_filter != 'all' else '') ~ '&page=' ~ page)|urlencode %}
+            {{ episode_row(item, lead=loop.first and not query and status_filter == 'all', force_status=status_filter != 'all', href='/episodes/' ~ item.episode.id ~ '?back=episodes&back_url=' ~ back_url) }}
+        {% endfor %}</div>
+    </div>
+    {% if total_pages > 1 %}
+    <nav class="reading-pagination" aria-label="Episode pages">
+        {% if page > 1 %}<a class="btn btn-ghost compact" href="?{% if query %}q={{ query|urlencode }}&amp;{% endif %}{% if status_filter != 'all' %}status={{ status_filter }}&amp;{% endif %}page={{ page - 1 }}">← Previous</a>{% endif %}
+        <span class="meta num">Page {{ page }} of {{ total_pages }}</span>
+        {% if page < total_pages %}<a class="btn btn-ghost compact" href="?{% if query %}q={{ query|urlencode }}&amp;{% endif %}{% if status_filter != 'all' %}status={{ status_filter }}&amp;{% endif %}page={{ page + 1 }}">Next →</a>{% endif %}
+    </nav>
+    {% endif %}
+    {% else %}
+    <section class="empty empty-reading">
+        <div class="kick">Library</div>
+        <h3>{% if query %}No episodes match “{{ query }}”.{% else %}Nothing transcribed yet.{% endif %}</h3>
+        <p>{% if query %}Try a shorter title or description query.{% else %}Add a podcast feed to begin building the library.{% endif %}</p>
+        <a class="btn btn-primary" href="/feeds">Add Feed</a>
+    </section>
+    {% endif %}
+</div>
+{% endblock %}

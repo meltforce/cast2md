@@ -1,0 +1,68 @@
+{% macro artwork(url, class_name='media-art') -%}
+{% if url %}
+<img class="{{ class_name }}" src="{{ url }}" alt="" loading="lazy">
+{% else %}
+<span class="{{ class_name }} no-art" aria-label="No artwork">no artwork</span>
+{% endif %}
+{%- endmacro %}
+
+{% macro status_badge(status, extra_class='') -%}
+{% set value = status.value if status.value is defined else status %}
+{% if value == 'completed' %}{% set treatment = 'done' %}
+{% elif value in ['downloading', 'transcribing'] %}{% set treatment = 'running' %}
+{% elif value == 'failed' %}{% set treatment = 'failed' %}
+{% else %}{% set treatment = 'queued' %}{% endif %}
+<span class="status status-{{ treatment }} {{ extra_class }}">{{ value }}</span>
+{%- endmacro %}
+
+{% macro pipeline(counts, title='Episode progress') -%}
+{% set complete = counts.get('completed', 0) %}
+{% set running = counts.get('downloading', 0) + counts.get('transcribing', 0) %}
+{% set queued = counts.get('new', 0) + counts.get('awaiting_transcript', 0) + counts.get('needs_audio', 0) + counts.get('audio_ready', 0) %}
+{% set failed = counts.get('failed', 0) %}
+{% set total = complete + running + queued + failed %}
+<span class="pipe tip" title="{{ title }}: {{ complete }} completed, {{ running }} active, {{ queued }} queued, {{ failed }} failed" aria-label="{{ title }}">
+{% for index in range(20) %}
+    {% set position = (index + 0.5) * total / 20 if total else 0 %}
+    {% if not total %}<i></i>
+    {% elif position <= complete %}<i class="pipe-done"></i>
+    {% elif position <= complete + running %}<i class="pipe-running"></i>
+    {% elif position <= complete + running + queued %}<i class="pipe-queued"></i>
+    {% else %}<i class="pipe-failed"></i>{% endif %}
+{% endfor %}
+</span>
+{%- endmacro %}
+
+{% macro episode_row(item, lead=false, show_artwork=true, show_feed=true, force_status=false, feed_mode=false, href='') -%}
+{% set ep = item.episode %}
+{% set row_href = href or (item.href if item.href is defined else '/episodes/' ~ ep.id) %}
+{% set summary = item.summary if item.summary is defined else ep.description|episode_excerpt %}
+{% set status_value = item.display_status if item.display_status is defined else (ep.status.value if ep.status.value is defined else ep.status) %}
+{% if feed_mode %}<div class="media-row media-episode episode-row" id="episode-row-{{ ep.id }}" data-episode-id="{{ ep.id }}" data-status="{{ status_value }}" data-has-external-transcript="{{ 'true' if item.has_external_transcript else 'false' }}" data-is-queued="{{ 'true' if item.is_queued else 'false' }}">
+    <input class="check episode-checkbox" type="checkbox" value="{{ ep.id }}" aria-label="Select {{ ep.title }}" {% if item.checkbox_disabled %}disabled{% endif %} onchange="updateSelectedCount()">
+{% else %}<a class="media-row media-episode{% if lead %} media-lead{% endif %}" href="{{ row_href }}">{% endif %}
+    {% if show_artwork %}{{ artwork(item.feed_image_url, 'media-art') }}{% endif %}
+    <span class="media-copy">
+        <span class="media-kicker">
+            {% if show_feed %}<span class="media-feed">{{ item.feed_title }}</span><span aria-hidden="true">·</span>{% endif %}
+            {% if ep.published_at %}<span>{{ ep.published_at|timeago if show_feed else ep.published_at.strftime('%-d %B') }}</span>{% endif %}
+            {% if ep.duration_seconds %}<span aria-hidden="true">·</span><span>{{ ep.duration_seconds|duration }}</span>{% endif %}
+        </span>
+        {% if feed_mode %}<a class="media-title-link" href="{{ row_href }}">{% endif %}<{% if lead %}h2{% else %}h3{% endif %} class="media-title">{{ ep.title }}</{% if lead %}h2{% else %}h3{% endif %}>{% if feed_mode %}</a>{% endif %}
+        {% if summary %}<span class="media-summary">{{ summary|safe if item.summary_safe is defined and item.summary_safe else summary }}</span>
+        {% elif status_value == 'transcribing' %}<span class="media-summary">Transcribing on {{ item.worker if item.worker is defined and item.worker else 'a worker' }}{% if item.progress is defined and item.progress is not none %} — {{ item.progress }}%{% if ep.duration_seconds %} of {{ ep.duration_seconds|duration }}{% endif %}{% endif %}</span>
+        {% elif status_value == 'audio_ready' %}<span class="media-summary">No external transcript found. Audio downloaded, waiting for a worker.</span>
+        {% elif status_value in ['new', 'awaiting_transcript'] %}<span class="media-summary">Checking publisher and Pocket Casts transcript sources.</span>
+        {% elif status_value == 'needs_audio' %}<span class="media-summary">No external transcript found. Audio is ready to download.</span>
+        {% elif status_value == 'failed' %}<span class="media-summary">Processing failed. Open the episode for details.</span>
+        {% else %}<span class="media-summary">Transcript available.</span>{% endif %}
+        {% if status_value == 'transcribing' and item.progress is defined and item.progress is not none %}<span class="media-progress"><progress value="{{ item.progress }}" max="100">{{ item.progress }}%</progress></span>{% endif %}
+        {% if item.more_matches is defined %}{% for match in item.more_matches %}<span class="media-match"><span class="num">{{ match.timestamp }}</span> {{ match.text }}</span>{% endfor %}{% endif %}
+    </span>
+    <span class="media-side">
+        {% if force_status or lead or status_value != 'completed' %}{{ status_badge(status_value, 'episode-status' if feed_mode else '') }}{% endif %}
+        {% if item.source_label is defined and item.source_label %}<span class="tag tag-neutral">{{ item.source_label }}</span>{% endif %}
+        {% if feed_mode %}<span class="episode-action-slot">{% if item.action_label is defined and item.action_label %}<button class="btn btn-ghost compact episode-action" type="button" {% if item.action == 'download' %}onclick="downloadEpisode({{ ep.id }})"{% elif item.action == 'transcribe' %}onclick="transcribeEpisode({{ ep.id }}, this)"{% elif item.action == 'retry' %}onclick="retryEpisode({{ ep.id }})"{% endif %}>{{ item.action_label }}</button>{% endif %}</span>{% endif %}
+    </span>
+{% if feed_mode %}</div>{% else %}</a>{% endif %}
+{%- endmacro %}

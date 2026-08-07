@@ -14,24 +14,35 @@
     </div>
 </div>
 
+<div class="settings-layout">
+<aside class="rail desktop-only" aria-label="Settings sections">
+    {% for value, label in [('general', 'General'), ('transcription', 'Transcription'), ('models', 'Models'), ('nodes', 'Nodes')] %}<a class="rail-item" href="?tab={{ value }}" {% if settings_tab == value %}aria-selected="true"{% endif %}>{{ label }}</a>{% endfor %}
+    <a class="rail-item" href="/admin/runpod">RunPod</a>
+    {% for value, label in [('feeds', 'Feeds'), ('storage', 'Storage')] %}<a class="rail-item" href="?tab={{ value }}" {% if settings_tab == value %}aria-selected="true"{% endif %}>{{ label }}</a>{% endfor %}
+</aside>
+<div class="settings-content">
 <form id="settingsForm">
 
 <!-- Storage -->
-<section class="section">
+<section class="settings-section settings-panel{% if settings_tab != 'storage' %} settings-panel-inactive{% endif %}">
     <header>
-        <h3>Storage</h3>
+        <h2>Storage</h2>
     </header>
+    <p>Choose where downloaded audio, transcripts and temporary files are stored.</p>
     <div id="storageFields" class="form-grid"></div>
 </section>
 
 <!-- Transcription -->
-<section class="section">
+<section class="settings-section settings-panel{% if settings_tab != 'transcription' %} settings-panel-inactive{% endif %}">
     <header>
-        <h3>Transcription</h3>
-        <button type="button" class="btn btn-ghost" onclick="resetModels()">Reset Models</button>
+        <h2>Transcription</h2>
     </header>
+    <p>Configure the transcription backend and processing defaults.</p>
     <div id="transcriptionFields" class="form-grid"></div>
+</section>
 
+<section class="settings-section settings-panel{% if settings_tab != 'models' %} settings-panel-inactive{% endif %}">
+    <header class="sec-head"><div><h2>Models</h2><p class="muted">Manage the models offered to local and remote transcription workers.</p></div><button type="button" class="btn btn-ghost" onclick="resetModels()">Reset Models</button></header>
     <details class="disclose">
         <summary class="kick">Available Models</summary>
         <table class="table" id="modelsTable">
@@ -87,27 +98,30 @@
 </section>
 
 <!-- Workers -->
-<section class="section">
+<section class="settings-section settings-panel{% if settings_tab != 'transcription' %} settings-panel-inactive{% endif %}">
     <header>
-        <h3>Workers</h3>
+        <h2>Workers</h2>
     </header>
+    <p>Set concurrency limits and thresholds for local pipeline workers.</p>
     <div id="workersFields" class="form-grid"></div>
 </section>
 
 <!-- Notifications -->
-<section class="section">
+<section class="settings-section settings-panel{% if settings_tab != 'feeds' %} settings-panel-inactive{% endif %}">
     <header>
-        <h3>Notifications</h3>
+        <h2>Feeds</h2>
         <button type="button" class="btn btn-ghost" onclick="testNotification()">Test</button>
     </header>
+    <p>Configure feed-related notifications and polling preferences.</p>
     <div id="notificationsFields"></div>
 </section>
 
 <!-- Distributed Transcription -->
-<section class="section">
+<section class="settings-section settings-panel{% if settings_tab != 'nodes' %} settings-panel-inactive{% endif %}">
     <header>
-        <h3>Distributed Transcription</h3>
+        <h2>Nodes</h2>
     </header>
+    <p>Connect and monitor machines that accept remote transcription jobs.</p>
     <div id="distributedFields"></div>
 
     <table class="table" id="nodesTable">
@@ -154,10 +168,11 @@
 </section>
 
 <!-- General -->
-<section class="section">
+<section class="settings-section settings-panel{% if settings_tab != 'general' %} settings-panel-inactive{% endif %}">
     <header>
-        <h3>General</h3>
+        <h2>General</h2>
     </header>
+    <p>Choose interface preferences and general service defaults.</p>
     <div class="set-row">
         <div class="kick">Theme</div>
         <div class="val">
@@ -172,7 +187,7 @@
 </form>
 
 <!-- Current Values (reference) -->
-<section class="section">
+<section class="settings-section settings-panel{% if settings_tab != 'general' %} settings-panel-inactive{% endif %}">
     <header>
         <h3>Current Values</h3>
     </header>
@@ -190,6 +205,8 @@
         </tbody>
     </table>
 </section>
+</div>
+</div>
 {% endblock %}
 
 {% block scripts %}

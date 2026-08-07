@@ -3,8 +3,6 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="theme-color" content="#f3f2f2" media="(prefers-color-scheme: light)">
-    <meta name="theme-color" content="#171615" media="(prefers-color-scheme: dark)">
     <title>{% block title %}cast2md{% endblock %}</title>
     <script>
         (function () {
@@ -12,18 +10,20 @@
             document.documentElement.setAttribute('data-theme', saved);
         })();
     </script>
-    <link rel="stylesheet" href="/static/homelab.css?v=modernist-3">
-    <link rel="stylesheet" href="/static/app.css?v=modernist-3">
+    <link rel="stylesheet" href="/static/homelab.css?v=modernist-4">
+    <link rel="stylesheet" href="/static/app.css?v=modernist-4">
     {% block head %}{% endblock %}
 </head>
 <body>
     {% set path = request.url.path %}
+    {% set active_nav %}{% block nav_active %}{% if path == '/episodes' or path.startswith('/episodes/') %}episodes{% elif path.startswith('/feeds') %}feeds{% elif path.startswith('/search') %}search{% elif path.startswith('/admin') %}admin{% endif %}{% endblock %}{% endset %}
     <nav class="nav" aria-label="Primary navigation">
-        <a class="nav-brand" href="/search">cast2md <span class="house">meltforce</span></a>
-        <a href="/feeds" {% if path.startswith('/feeds') or path.startswith('/episodes') %}aria-current="page"{% endif %}>Feeds</a>
-        <a href="/search" {% if path == '/' or path.startswith('/search') %}aria-current="page"{% endif %}>Search</a>
+        <a class="nav-brand" href="/episodes">cast2md <span class="house">meltforce</span></a>
+        <a href="/episodes" {% if active_nav|trim == 'episodes' %}aria-current="page"{% endif %}>Episodes</a>
+        <a href="/feeds" {% if active_nav|trim == 'feeds' %}aria-current="page"{% endif %}>Feeds</a>
+        <a href="/search" {% if active_nav|trim == 'search' %}aria-current="page"{% endif %}>Search</a>
         <span class="nav-end">
-            <a href="/admin" {% if path.startswith('/admin') %}aria-current="page"{% endif %}>Admin</a>
+            <a href="/admin" {% if active_nav|trim == 'admin' %}aria-current="page"{% endif %}>Admin</a>
         </span>
     </nav>
 
@@ -40,8 +40,8 @@
 
     <div class="tab-spacer" aria-hidden="true"></div>
     <nav class="tabs" aria-label="Mobile navigation">
-        <a href="/feeds" {% if path.startswith('/feeds') or path.startswith('/episodes') %}aria-current="page"{% endif %}>Feeds</a>
-        <a href="/search" {% if path == '/' or path.startswith('/search') %}aria-current="page"{% endif %}>Search</a>
+        <a href="/feeds" {% if active_nav|trim in ['feeds', 'episodes'] %}aria-current="page"{% endif %}>Feeds</a>
+        <a href="/search" {% if active_nav|trim == 'search' %}aria-current="page"{% endif %}>Search</a>
         <a href="/admin/queue" {% if path.startswith('/admin/queue') %}aria-current="page"{% endif %}>Queue</a>
         <a href="/admin" {% if path.startswith('/admin') and not path.startswith('/admin/queue') %}aria-current="page"{% endif %}>Admin</a>
     </nav>

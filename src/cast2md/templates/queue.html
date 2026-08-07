@@ -5,8 +5,8 @@
 {% block admin_content %}
 <div class="page-head">
     <hgroup>
-        <h1>Queue Management</h1>
-        <p>View and manage job queue</p>
+        <h1>Queue</h1>
+        <p>Admin</p>
     </hgroup>
     <div class="page-head-actions">
         <button class="btn btn-primary" onclick="queueAllPending()">Queue All Pending</button>
@@ -74,18 +74,19 @@
     <table class="table queue-table">
     <thead>
         <tr>
+            <th>Job</th>
             <th>Episode</th>
-            <th>Type</th>
+            <th>Worker</th>
+            <th>Progress</th>
             <th>Status</th>
-            <th>Runtime</th>
-            <th>Attempts</th>
-            <th>Priority</th>
+            <th class="right">Queued</th>
             <th>Actions</th>
         </tr>
     </thead>
     <tbody>
         {% for item in jobs %}
         <tr>
+            <td data-label="Job"><span class="num">#{{ item.job.id }}</span><br><span class="meta">{{ item.job.job_type.value|replace('_', ' ') }}</span></td>
             <td data-label="Episode">
                 <div>
                     <a href="/episodes/{{ item.episode.id }}">{{ item.episode.title[:50] }}{% if item.episode.title|length > 50 %}...{% endif %}</a>
@@ -93,18 +94,10 @@
                     <small>{{ item.feed.display_title if item.feed else 'Unknown' }}</small>
                 </div>
             </td>
-            <td data-label="Type">
-                {% if item.job.job_type.value == 'download' %}
-                <span class="tip" title="Audio Download">DL</span>
-                {% elif item.job.job_type.value == 'transcribe' %}
-                <span class="tip" title="Transcription (Whisper)">TX</span>
-                {% elif item.job.job_type.value == 'transcript_download' %}
-                <span class="tip" title="Transcript Fetch">TF</span>
-                {% elif item.job.job_type.value == 'embed' %}
-                <span class="tip" title="Embedding">EMB</span>
-                {% else %}
-                <span class="tip" title="{{ item.job.job_type.value }}">{{ item.job.job_type.value[:3]|upper }}</span>
-                {% endif %}
+            <td data-label="Worker">{{ item.job.assigned_node_id or ('local' if item.job.status.value == 'running' else '—') }}</td>
+            <td data-label="Progress">
+                <progress value="{{ item.job.progress_percent or 0 }}" max="100"></progress>
+                <span class="num compact">{% if item.job.progress_percent is not none %}{{ item.job.progress_percent }}%{% elif item.job.status.value == 'running' %}working{% else %}—{% endif %}</span>
             </td>
             <td data-label="Status">
                 {% if item.is_stuck %}
@@ -122,23 +115,7 @@
                 <span class="status status-done">DONE</span>
                 {% endif %}
             </td>
-            <td data-label="Runtime">
-                {% if item.runtime_seconds is not none %}
-                <span class="elapsed" data-seconds="{{ item.runtime_seconds }}">
-                    {% if item.runtime_seconds >= 3600 %}
-                    {{ (item.runtime_seconds // 3600) }}h {{ ((item.runtime_seconds % 3600) // 60) }}m
-                    {% elif item.runtime_seconds >= 60 %}
-                    {{ (item.runtime_seconds // 60) }}m {{ (item.runtime_seconds % 60) }}s
-                    {% else %}
-                    {{ item.runtime_seconds }}s
-                    {% endif %}
-                </span>
-                {% else %}
-                -
-                {% endif %}
-            </td>
-            <td data-label="Attempts">{{ item.job.attempts }} / {{ item.job.max_attempts }}</td>
-            <td data-label="Priority">{{ item.job.priority }}</td>
+            <td data-label="Queued" class="right num">{{ item.job.created_at|timeago }}</td>
             <td data-label="Actions">
                 <div class="actions">
                     {% if item.job.status.value == 'queued' %}
