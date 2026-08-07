@@ -80,7 +80,14 @@ cast2md = "cast2md.cli:cli"
 where = ["src"]
 
 [tool.setuptools.package-data]
-cast2md = ["templates/*.html", "node/templates/*.html", "static/*.css", "static/fonts/*.woff2"]
+cast2md = [
+    "templates/*.html",
+    "node/templates/*.html",
+    "static/*.css",
+    "static/manifest.webmanifest",
+    "static/app-icon/*.png",
+    "static/fonts/*.woff2",
+]
 
 [tool.ruff]
 line-length = 100

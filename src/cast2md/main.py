@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -201,6 +202,16 @@ configure_templates(templates)
 static_path = Path(__file__).parent / "static"
 if static_path.exists():
     app.mount("/static", StaticFiles(directory=str(static_path)), name="static")
+
+    # The manifest file lives under static/ but is served from the root, so its
+    # default scope covers the whole app rather than /static/.
+    @app.get("/manifest.webmanifest", include_in_schema=False)
+    async def manifest() -> FileResponse:
+        return FileResponse(
+            static_path / "manifest.webmanifest",
+            media_type="application/manifest+json",
+        )
+
 
 # Include routers
 app.include_router(feeds_router)
