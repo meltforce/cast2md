@@ -536,19 +536,6 @@ def force_delete_job(job_id: int):
     return MessageResponse(message="Job deleted", job_id=job_id)
 
 
-@router.get("/{job_id}", response_model=JobResponse)
-def get_job(job_id: int):
-    """Get job details."""
-    with get_db() as conn:
-        repo = JobRepository(conn)
-        job = repo.get_by_id(job_id)
-
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-
-    return _job_to_response(job)
-
-
 # Batch operations
 
 
@@ -1418,3 +1405,21 @@ def force_transcript_retry(episode_id: int, request: QueueEpisodeRequest | None 
         )
 
     return MessageResponse(message="Transcript download retry queued", job_id=job.id)
+
+
+# Declared last on purpose. FastAPI matches routes in declaration order, and
+# "/{job_id}" would otherwise swallow every single-segment literal below it --
+# it did exactly that to "/stuck" and "/all", which answered 422 int_parsing
+# from the day they were added until 2026-08-07. Keep any new literal route
+# above this one, or move this one further down.
+@router.get("/{job_id}", response_model=JobResponse)
+def get_job(job_id: int):
+    """Get job details."""
+    with get_db() as conn:
+        repo = JobRepository(conn)
+        job = repo.get_by_id(job_id)
+
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    return _job_to_response(job)

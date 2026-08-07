@@ -860,16 +860,6 @@ def admin_add_node(request: AddNodeRequest):
     )
 
 
-@router.delete("/{node_id}", response_model=MessageResponse)
-def delete_node(node_id: str):
-    """Delete a node (admin endpoint)."""
-    with get_db() as conn:
-        repo = TranscriberNodeRepository(conn)
-        if repo.delete(node_id):
-            return MessageResponse(message="Node deleted")
-        raise HTTPException(status_code=404, detail="Node not found")
-
-
 @router.post("/{node_id}/test", response_model=MessageResponse)
 def test_node(node_id: str):
     """Test connectivity to a node (admin endpoint)."""
@@ -968,3 +958,17 @@ def cleanup_stale_nodes(offline_hours: int = 24):
         deleted_count=deleted,
         message=f"Deleted {deleted} stale nodes (offline > {offline_hours}h)",
     )
+
+
+# Declared last on purpose. FastAPI matches in declaration order, and this
+# route would otherwise swallow every single-segment DELETE literal below it.
+# It did exactly that to "/stale", which answered 404 "Node not found" for a
+# node named stale rather than running the cleanup, until 2026-08-07.
+@router.delete("/{node_id}", response_model=MessageResponse)
+def delete_node(node_id: str):
+    """Delete a node (admin endpoint)."""
+    with get_db() as conn:
+        repo = TranscriberNodeRepository(conn)
+        if repo.delete(node_id):
+            return MessageResponse(message="Node deleted")
+        raise HTTPException(status_code=404, detail="Node not found")
