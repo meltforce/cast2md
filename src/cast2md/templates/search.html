@@ -90,7 +90,7 @@
                     <div style="display: flex; gap: 0.5rem; align-items: center;">
                         {% if result.published_at %}
                         <span style="font-size: 0.875rem; color: var(--muted-color);">
-                            {% if result.published_at is string %}{{ result.published_at[:10] }}{% else %}{{ result.published_at.strftime('%Y-%m-%d') }}{% endif %}
+                            {{ result.published_at.strftime('%Y-%m-%d') }}
                         </span>
                         {% endif %}
                         <div style="display: flex; gap: 0.25rem;">
@@ -117,7 +117,7 @@
                     <div style="display: flex; gap: 0.5rem; align-items: center;">
                         {% if result.published_at %}
                         <span style="font-size: 0.875rem; color: var(--muted-color);">
-                            {% if result.published_at is string %}{{ result.published_at[:10] }}{% else %}{{ result.published_at.strftime('%Y-%m-%d') }}{% endif %}
+                            {{ result.published_at.strftime('%Y-%m-%d') }}
                         </span>
                         {% endif %}
                         <div style="display: flex; gap: 0.25rem;">

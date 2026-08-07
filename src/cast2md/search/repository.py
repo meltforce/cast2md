@@ -3,6 +3,7 @@
 import logging
 import re
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
 
@@ -28,7 +29,9 @@ class SearchResult:
     episode_title: str
     feed_id: int
     feed_title: str
-    published_at: str | None
+    # The raw timestamp column, as psycopg2 returns it. Callers that cross a
+    # serialisation boundary format it there; see api/search.py.
+    published_at: datetime | None
     segment_start: float
     segment_end: float
     snippet: str
@@ -52,7 +55,8 @@ class HybridSearchResult:
     episode_title: str
     feed_id: int
     feed_title: str
-    published_at: str | None
+    # Same as SearchResult: the raw column, formatted at the boundary.
+    published_at: datetime | None
     segment_start: float
     segment_end: float
     text: str
