@@ -41,14 +41,16 @@ residual work those items exposed, each recorded before its entry left.
 
 ## API
 
-Both rows were found on 2026-08-07 while testing production after the deploy
-that ended the frozen `:edge`. Neither was introduced by that deploy: the files
-involved are byte-identical to `d6510ed`, the commit production had been serving.
+Both faults found on 2026-08-07 were fixed the same day and are removed from
+this table; their reasoning is in the commit messages. Neither came from that
+day's deploy — the files were byte-identical to `d6510ed`, the commit
+production had been serving. A third instance of the route-order fault,
+`DELETE /api/nodes/stale`, was found by the general test written for the first
+two and fixed with them.
 
 | Status | Item | Where | Trigger | Notes |
 |---|---|---|---|---|
-| `[open]` | `GET /api/search/transcripts` returns 500 on every query that builds a tsquery | `api/search.py:145-152` | | `SegmentResult.published_at` is typed `str \| None`, and the value reaches it as a `datetime` straight from the row (`search/repository.py:271`), so pydantic raises `string_type`. Reproduced on production with four query shapes: a single token, a two-word phrase, a hyphenated token, and a quoted phrase. A query consisting only of stopwords returns 200 with 0 results, because `build_flexible_tsquery` yields an empty string and the method returns before building any row. `GET /api/search/episodes` is unaffected and returns 174 hits for `KI`. The `/search` page is not affected either — `web/views.py:transcript_search_page` renders server-side from the repository and does not call this endpoint. Decide whether the field takes `datetime` or the repository serialises it; `SearchResult.published_at` carries the same annotation and the same mismatch. |
-| `[open]` | `GET /api/queue/all` and `/api/queue/stuck` are unreachable | `api/queue.py:539`, `:946`, `:995` | | `@router.get("/{job_id}")` is declared at line 539, ahead of `/stuck` at 946 and `/all` at 995. FastAPI matches in declaration order, so both paths bind `job_id="stuck"` / `"all"` and fail with 422 `int_parsing`. The declaration order is the same at `d6510ed`. Nothing in `src/`, `docs/`, `scripts/` or `tools/` calls either path, and the queue page renders server-side through `web/views.py:admin_queue_page`, so no surface depends on them today. Moving both declarations above `/{job_id}` fixes it; the endpoints then need their first exercise, since neither has ever returned a response. |
+| `[open]` | Exercise the endpoints that had never returned a response | `api/queue.py`, `api/nodes.py` | | `GET /api/queue/all`, `GET /api/queue/stuck` and `DELETE /api/nodes/stale` were unreachable from the day they were added until 2026-08-07, so their bodies have only ever run against a local instance with one feed and one job. `/api/queue/all` in particular carries the branch for `status="stuck"` and the N+1 over `episode_repo.get_by_id` per job, neither of which has seen a realistic result set. Check them against production data before anything is built on them. |
 
 ## Documentation
 
