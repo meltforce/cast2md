@@ -38,18 +38,6 @@ class DatabaseConfig(BaseSettings):
             return self.database_url
         raise ValueError("DATABASE_URL environment variable is required")
 
-    def get_postgres_dsn(self) -> str:
-        """Get PostgreSQL connection string.
-
-        Returns:
-            PostgreSQL DSN for psycopg2.
-        """
-        url = self.effective_url
-        # Normalize postgres:// to postgresql://
-        if url.startswith("postgres://"):
-            url = "postgresql://" + url[len("postgres://") :]
-        return url
-
     def get_postgres_params(self) -> dict:
         """Parse PostgreSQL URL into connection parameters.
 
@@ -80,57 +68,6 @@ def get_db_config() -> DatabaseConfig:
     if _config is None:
         _config = DatabaseConfig()
     return _config
-
-
-def reload_db_config() -> DatabaseConfig:
-    """Reload database configuration (clears cache).
-
-    Returns:
-        Fresh DatabaseConfig instance.
-    """
-    global _config
-    _config = DatabaseConfig()
-    return _config
-
-
-# SQL dialect helpers - PostgreSQL only
-def get_placeholder() -> str:
-    """Get the parameter placeholder for PostgreSQL.
-
-    Returns:
-        '%s' for PostgreSQL.
-    """
-    return "%s"
-
-
-def get_placeholder_num(n: int) -> str:
-    """Get numbered parameter placeholders.
-
-    Args:
-        n: Number of placeholders needed.
-
-    Returns:
-        Comma-separated placeholders (e.g., '%s, %s, %s').
-    """
-    return ", ".join(["%s"] * n)
-
-
-def get_current_timestamp_sql() -> str:
-    """Get SQL for current timestamp.
-
-    Returns:
-        SQL expression for current timestamp.
-    """
-    return "NOW()"
-
-
-def get_autoincrement_type() -> str:
-    """Get the auto-increment primary key type.
-
-    Returns:
-        SQL type for auto-increment primary key.
-    """
-    return "SERIAL PRIMARY KEY"
 
 
 class PostgresConnectionParams:
