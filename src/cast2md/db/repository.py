@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any
 
+from cast2md.constants import RUNPOD_TRANSCRIPTION_MODELS
 from cast2md.db.models import (
     Episode,
     EpisodeStatus,
@@ -15,6 +16,7 @@ from cast2md.db.models import (
     TranscriberNode,
 )
 from cast2md.db.sql import execute
+from cast2md.db.tsquery import build_flexible_tsquery
 
 # Type alias for database connection (psycopg2)
 Connection = Any
@@ -973,8 +975,6 @@ class EpisodeRepository:
         Returns:
             (list of episode IDs, total count)
         """
-        from cast2md.search.repository import build_flexible_tsquery
-
         tsquery_str = build_flexible_tsquery(query)
         if not tsquery_str:
             return [], 0
@@ -2461,9 +2461,6 @@ class RunPodModelRepository:
         cursor = execute(self.conn, "SELECT COUNT(*) FROM runpod_models")
         if cursor.fetchone()[0] > 0:
             return 0
-
-        # Import here to avoid circular import
-        from cast2md.config.settings import RUNPOD_TRANSCRIPTION_MODELS
 
         now = datetime.now().isoformat()
         for idx, (model_id, display_name) in enumerate(RUNPOD_TRANSCRIPTION_MODELS):

@@ -15,22 +15,22 @@
 
 # German stopword list for full-text search. This is search payload, not prose:
 # the words are the data the tokenizer removes from a German query.
-src/cast2md/search/repository.py%%"der", "die", "das", "den", "dem", "des",
-src/cast2md/search/repository.py%%"ein", "eine", "einen", "einer", "einem", "eines",
-src/cast2md/search/repository.py%%"und", "oder", "aber", "wenn", "weil", "dass", "als", "auch", "noch",
-src/cast2md/search/repository.py%%"wie", "was", "wer", "wo", "wann", "warum", "welche", "welcher", "welches",
-src/cast2md/search/repository.py%%"mit", "von", "zu", "zum", "zur", "bei", "beim", "nach", "vor", "für",
-src/cast2md/search/repository.py%%"über", "unter", "auf", "an", "am", "in", "im", "aus", "um",
-src/cast2md/search/repository.py%%"durch", "gegen", "ohne", "bis", "seit", "ob",
-src/cast2md/search/repository.py%%"ist", "sind", "war", "waren", "wird", "werden", "wurde", "wurden",
-src/cast2md/search/repository.py%%"hat", "haben", "hatte", "hatten", "kann", "können", "konnte", "konnten",
-src/cast2md/search/repository.py%%"muss", "müssen", "musste", "mussten", "soll", "sollen", "sollte", "sollten",
-src/cast2md/search/repository.py%%"will", "wollen", "wollte", "wollten", "darf", "dürfen", "durfte", "durften",
-src/cast2md/search/repository.py%%"macht", "machen", "machte", "machten", "geht", "gehen", "ging", "gingen",
-src/cast2md/search/repository.py%%"sagt", "sagen", "sagte", "sagten", "weiß", "wissen", "wusste", "wussten",
-src/cast2md/search/repository.py%%"nicht", "nur", "schon", "sehr", "so", "ja", "nein", "man", "sich",
-src/cast2md/search/repository.py%%"diesem", "dieser", "dieses", "diese", "diesen",
-src/cast2md/search/repository.py%%"jetzt", "hier", "dort", "dann", "denn", "doch", "immer", "wieder",
+src/cast2md/db/tsquery.py%%"der", "die", "das", "den", "dem", "des",
+src/cast2md/db/tsquery.py%%"ein", "eine", "einen", "einer", "einem", "eines",
+src/cast2md/db/tsquery.py%%"und", "oder", "aber", "wenn", "weil", "dass", "als", "auch", "noch",
+src/cast2md/db/tsquery.py%%"wie", "was", "wer", "wo", "wann", "warum", "welche", "welcher", "welches",
+src/cast2md/db/tsquery.py%%"mit", "von", "zu", "zum", "zur", "bei", "beim", "nach", "vor", "für",
+src/cast2md/db/tsquery.py%%"über", "unter", "auf", "an", "am", "in", "im", "aus", "um",
+src/cast2md/db/tsquery.py%%"durch", "gegen", "ohne", "bis", "seit", "ob",
+src/cast2md/db/tsquery.py%%"ist", "sind", "war", "waren", "wird", "werden", "wurde", "wurden",
+src/cast2md/db/tsquery.py%%"hat", "haben", "hatte", "hatten", "kann", "können", "konnte", "konnten",
+src/cast2md/db/tsquery.py%%"muss", "müssen", "musste", "mussten", "soll", "sollen", "sollte", "sollten",
+src/cast2md/db/tsquery.py%%"will", "wollen", "wollte", "wollten", "darf", "dürfen", "durfte", "durften",
+src/cast2md/db/tsquery.py%%"macht", "machen", "machte", "machten", "geht", "gehen", "ging", "gingen",
+src/cast2md/db/tsquery.py%%"sagt", "sagen", "sagte", "sagten", "weiß", "wissen", "wusste", "wussten",
+src/cast2md/db/tsquery.py%%"nicht", "nur", "schon", "sehr", "so", "ja", "nein", "man", "sich",
+src/cast2md/db/tsquery.py%%"diesem", "dieser", "dieses", "diese", "diesen",
+src/cast2md/db/tsquery.py%%"jetzt", "hier", "dort", "dann", "denn", "doch", "immer", "wieder",
 
 # German example queries in the MCP tool description, and the connecting-word
 # regex that strips them. Both are user-facing input handling for German
