@@ -26,15 +26,18 @@ Measured at `3bfb208` by the static structure analysis in
 match its section 4, where each row's numbers are reproducible by the command
 that produced them.
 
-A, B, C, D, E and F landed on 2026-08-07 and are removed from this table. A's
-and E's reasoning is in [`DECISIONS.md`](DECISIONS.md) under that date; B, C, D
-and F carry theirs in their commit messages, because none of them decided
-anything that a later session would re-derive.
+All seven items A to G landed on 2026-08-07 and are removed from this table.
+A's and E's reasoning is in [`DECISIONS.md`](DECISIONS.md) under that date; B,
+C, D, F and G carry theirs in their commit messages, because none of them
+decided anything that a later session would re-derive. The rows below are the
+residual work those items exposed, each recorded before its entry left.
 
 | Status | Item | Where | Trigger | Notes |
 |---|---|---|---|---|
+| `[open]` | The transcript-fetch card never reports an orphaned job | `web/status_view.py:_build_transcript_fetch_card` | | Found while moving the aggregation in **G**. The route added every running transcript-download job to the assigned set and then collected the jobs *not* in that set, so the list is empty by construction and the page has never shown one. The download and transcription cards do the same detection correctly, and the difference is that they assign against worker slots first. Preserved as-is by G, because fixing it changes what the page shows. Decide what an orphan means for a card that has no per-slot display, then implement it — the template already renders `orphaned` and `orphaned_total`. |
 | `[open]` | Split `EpisodeRepository` and `JobRepository` by concern | `db/repositories/episode.py`, `db/repositories/job.py` | | Residual work from **F**, which moved the two classes into their own modules without making them smaller: `episode.py` is 1015 lines and `job.py` 1024, both above the p90 yardstick of 980 from the structure analysis. `JobRepository` mixes claiming and lifecycle with statistics (`get_completed_jobs_stats`, `get_audio_minutes_processed`, `count_stuck_jobs`); `EpisodeRepository` mixes CRUD with the FTS entry points `search_episodes_fts`, `search_episodes_fts_full` and `search_by_feed`. Unlike F this is not a mechanical move — it changes which class a caller names, so it needs the split lines drawn first. |
-| `[open]` | **G** — move the `admin_status_page` aggregation out of `web/views.py` | `web/views.py`, `src/cast2md/templates/` | | 65 commits, the highest of any file; CC 28 in `admin_status_page` (231 lines). The measurement the row used to ask for is made: **47 of the 65 commits touch `views.py` and a template together, 72.3 %** — `base.html` 18, `status.html` 16, `feed_detail.html` 14, `search.html` 11, `episode_detail.html` 10, the rest below 8. The correlation is high, so the edit is the one the report names. `admin_status_page` holds no raw SQL (the report's "8 direct `get_db` calls" is a figure for the whole file); it opens one connection block and then derives — throughput, worker-slot assignment, three passes of orphan detection, server-vs-node state, display capping. Only the repository reads belong in a route. Its `episode_repo.get_by_id` in three loops is an N+1 that a batch method removes. |
+| `[open]` | Decide whether the remaining `web/views.py` routes are worth splitting | `web/views.py` | | Residual work from **G**, which took `admin_status_page` out and left the file at 853 lines. Next by complexity are `feed_detail` (CC 17), `render_transcript_html` (CC 16) and `episode_detail` (CC 15). Re-run G's co-change measurement once the file has settled: if the 72.3 % template correlation holds without `admin_status_page` in the count, the same treatment applies; if it drops, the churn was concentrated in the status page and the rest can stay. |
+| `[open]` | Add tests for `web/status_view.py` | `tests/` | | `build_status_context` was split out of the route specifically so it can be exercised without Postgres — it takes a `StatusData` and a queue-status dict and returns the template context. No test does so yet. G was verified by comparing the context against the pre-change function over five worker-status variants, which is a one-off check rather than a regression guard. |
 
 ## Documentation
 
