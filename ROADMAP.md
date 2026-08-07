@@ -17,7 +17,7 @@ each becomes its own `[open]` row before the entry is moved out.
 
 | Status | Item | Where | Trigger | Notes |
 |---|---|---|---|---|
-| `[open]` | Move cast2md off `build-push-deploy.yml@v1` | `.forgejo/workflows/ci.yml` | | `v1` is from 2026-05-12; the other callers are on `v3`. Missing since then: authenticated Docker Hub login against the 429 rate limit (`v2`) and the compose sync (`v3`). **A bump needs `sync_compose: false`** — homelab owns the deployed `compose.yaml`, and `v3` would otherwise copy this repo's `docker-compose.yml`, the dev stack with password `dev` and port 5432 published, over it. `v2` also makes `DOCKERHUB_USERNAME`/`TOKEN` required secrets, which this repo does not pass today. |
+| `[open]` | Make a frozen `:edge` fail visibly rather than only in the run list | `.forgejo/workflows/ci.yml`, homelab monitoring | | `build-deploy` failed on every push from `04adeee` (2026-08-06) to `b32746f` (2026-08-07), and production stayed on `edge-d6510ed` for 16 commits without anything reporting it. `deploy-gate` did turn the pipeline red, so the state was visible in the run list and nowhere else. Postmortem: `homelab/INCIDENTS.md`, 2026-08-07. The open question is what should carry the signal — a notification on a failed `main` run, or a check that compares the `build` field of `/api/health` against the head of `main` on a schedule. |
 
 ## Code structure
 

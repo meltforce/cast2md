@@ -115,6 +115,12 @@ jobs:
     secrets:
       REGISTRY_USER: ${{ secrets.REGISTRY_USER }}
       REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
+      # v2 added an authenticated Docker Hub login against the anonymous 429
+      # rate limit, and docker/login-action fails the job outright when the
+      # username is empty. Omitting these two is what froze :edge from
+      # 2026-08-06 to 2026-08-07 -- see homelab/INCIDENTS.md.
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
 
   deploy-gate:
     # Turns a skipped deploy into a red pipeline. Without this job, a
