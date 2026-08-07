@@ -35,7 +35,7 @@ def make_repo(monkeypatch, rows):
         conn.cursor_obj.params = params
         return conn.cursor_obj
 
-    monkeypatch.setattr("cast2md.db.repository.execute", fake_execute)
+    monkeypatch.setattr("cast2md.db.repositories.episode.execute", fake_execute)
     return repo, conn.cursor_obj
 
 
