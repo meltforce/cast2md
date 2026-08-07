@@ -1815,11 +1815,11 @@ class JobRepository:
         self.conn.commit()
         return cursor.rowcount
 
-    def get_stuck_jobs(self, threshold_minutes: int = 2) -> list[Job]:
+    def get_stuck_jobs(self, threshold_minutes: int) -> list[Job]:
         """Get jobs that have been running longer than threshold.
 
         Args:
-            threshold_minutes: Hours after which a running job is considered stuck.
+            threshold_minutes: Minutes after which a running job is considered stuck.
 
         Returns:
             List of stuck jobs.
@@ -1883,8 +1883,6 @@ class JobRepository:
         status: JobStatus | None = None,
         job_type: JobType | None = None,
         limit: int = 100,
-        include_stuck: bool = False,
-        stuck_threshold_minutes: int = 2,
     ) -> list[Job]:
         """Get all jobs with optional filters.
 
@@ -1892,8 +1890,6 @@ class JobRepository:
             status: Filter by job status.
             job_type: Filter by job type.
             limit: Maximum number of jobs to return.
-            include_stuck: If True and status is None, includes stuck indicator.
-            stuck_threshold_minutes: Hours after which running job is stuck.
 
         Returns:
             List of jobs ordered by priority, then scheduled time.
@@ -1977,11 +1973,11 @@ class JobRepository:
         self.conn.commit()
         return cursor.rowcount > 0
 
-    def batch_force_reset_stuck(self, threshold_minutes: int = 2) -> tuple[int, int]:
+    def batch_force_reset_stuck(self, threshold_minutes: int) -> tuple[int, int]:
         """Reset all stuck jobs back to queued state or fail them if max attempts exceeded.
 
         Args:
-            threshold_minutes: Hours after which a running job is considered stuck.
+            threshold_minutes: Minutes after which a running job is considered stuck.
 
         Returns:
             Tuple of (jobs_requeued, jobs_failed).
@@ -2036,11 +2032,11 @@ class JobRepository:
         self.conn.commit()
         return cursor.rowcount
 
-    def count_stuck_jobs(self, threshold_minutes: int = 2) -> int:
+    def count_stuck_jobs(self, threshold_minutes: int) -> int:
         """Count jobs that have been running longer than threshold.
 
         Args:
-            threshold_minutes: Hours after which a running job is considered stuck.
+            threshold_minutes: Minutes after which a running job is considered stuck.
 
         Returns:
             Number of stuck jobs.

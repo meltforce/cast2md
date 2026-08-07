@@ -2,7 +2,7 @@
 
 import json
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from enum import Enum
 
 
@@ -202,6 +202,19 @@ class Job:
     assigned_node_id: str | None = None
     claimed_at: datetime | None = None
     progress_percent: int | None = None
+
+    def is_stuck(self, threshold_minutes: int) -> bool:
+        """Whether this job has been running longer than the threshold.
+
+        Args:
+            threshold_minutes: Minutes after which a running job is considered stuck.
+
+        Returns:
+            True only for running jobs that started before the threshold.
+        """
+        if self.status != JobStatus.RUNNING or not self.started_at:
+            return False
+        return self.started_at < datetime.now() - timedelta(minutes=threshold_minutes)
 
     @classmethod
     def from_row(cls, row: tuple) -> "Job":

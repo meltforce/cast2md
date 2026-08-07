@@ -775,7 +775,7 @@ def queue_page_redirect(request: Request, status: str | None = None):
 @router.get("/admin/queue", response_class=HTMLResponse)
 def admin_queue_page(request: Request, status: str | None = None):
     """Admin queue management page for viewing and managing all jobs."""
-    from datetime import datetime, timedelta
+    from datetime import datetime
 
     from cast2md.config.settings import get_settings
     from cast2md.db.models import JobStatus
@@ -804,7 +804,6 @@ def admin_queue_page(request: Request, status: str | None = None):
             jobs = job_repo.get_all_jobs(limit=100)
 
         # Build job info with episode and feed details
-        stuck_threshold = datetime.now() - timedelta(minutes=stuck_threshold_minutes)
         job_list = []
         for job in jobs:
             episode = episode_repo.get_by_id(job.episode_id)
@@ -814,10 +813,9 @@ def admin_queue_page(request: Request, status: str | None = None):
 
             # Calculate runtime
             runtime_seconds = None
-            is_stuck = False
             if job.status == JobStatus.RUNNING and job.started_at:
                 runtime_seconds = int((datetime.now() - job.started_at).total_seconds())
-                is_stuck = job.started_at < stuck_threshold
+            is_stuck = job.is_stuck(stuck_threshold_minutes)
 
             job_list.append(
                 {

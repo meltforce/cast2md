@@ -1006,7 +1006,7 @@ def get_all_jobs(
     limit: int = 100,
 ):
     """Get all jobs with optional filtering."""
-    from datetime import datetime, timedelta
+    from datetime import datetime
 
     from cast2md.db.repository import FeedRepository
 
@@ -1036,7 +1036,6 @@ def get_all_jobs(
 
         threshold_minutes = _get_stuck_threshold()
         jobs = job_repo.get_all_jobs(status=job_status, job_type=jt, limit=limit)
-        stuck_threshold = datetime.now() - timedelta(minutes=threshold_minutes)
         stuck_count = job_repo.count_stuck_jobs(threshold_minutes)
 
         job_infos = []
@@ -1048,10 +1047,9 @@ def get_all_jobs(
 
             # Calculate runtime for running jobs
             runtime = None
-            is_stuck = False
             if job.status == JobStatus.RUNNING and job.started_at:
                 runtime = int((datetime.now() - job.started_at).total_seconds())
-                is_stuck = job.started_at < stuck_threshold
+            is_stuck = job.is_stuck(threshold_minutes)
 
             job_infos.append(
                 AllJobInfo(
