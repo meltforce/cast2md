@@ -32,7 +32,7 @@ and the German example query in `src/cast2md/mcp/tools.py`.
 
 ```bash
 uv sync --extra dev              # no .venv in a fresh checkout
-docker compose up -d postgres    # 68 of 102 tests need a database
+docker compose up -d postgres    # 68 of 117 tests need a database
 DATABASE_URL="postgresql://cast2md:dev@localhost:5432/cast2md" .venv/bin/python -m pytest -q
 .venv/bin/ruff check src tests
 .venv/bin/ruff format --check src tests
@@ -40,11 +40,11 @@ uv build
 ```
 
 All four must pass — CI runs the same set in the `test` job, so a failure here
-is a failure there. The expected result is **105 passed**, `All checks passed!`
-and `81 files already formatted`.
+is a failure there. The expected result is **117 passed**, `All checks passed!`
+and `85 files already formatted`.
 
 **Without Postgres, 68 tests error at fixture setup** with
-`ValueError: DATABASE_URL environment variable is required` and 34 pass. That is
+`ValueError: DATABASE_URL environment variable is required` and 49 pass. That is
 not a passing run. If you cannot start Postgres, report the numbers rather than
 the word "passed".
 

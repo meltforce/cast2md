@@ -49,7 +49,7 @@ jobs:
 
   test:
     runs-on: docker
-    # 68 of the 102 tests take a real database: their fixtures open a
+    # 68 of the 117 tests take a real database: their fixtures open a
     # connection at setup and fail with "DATABASE_URL environment variable is
     # required" without one. pgvector rather than plain postgres because the
     # search schema declares vector(384) columns.
