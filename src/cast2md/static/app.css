@@ -133,4 +133,12 @@ progress::-moz-progress-bar { background: var(--color-text); }
   .service-table td:nth-child(2)::before { content: "Queued "; }
   .service-table td:nth-child(3)::before { content: "Running "; }
   .service-table td:nth-child(4)::before { content: "Completed "; }
+  .queue-table, .queue-table tbody, .queue-table tr, .queue-table td { display: block; width: 100%; }
+  .queue-table thead { display: none; }
+  .queue-table tr { padding: 14px 0; border-bottom: var(--rule-hair); }
+  .queue-table td { display: grid; grid-template-columns: 76px minmax(0, 1fr); gap: var(--space-2); padding: 3px 0; border: 0; }
+  .queue-table td::before { content: attr(data-label); font: 600 10px var(--font-body); letter-spacing: .12em; text-transform: uppercase; color: var(--color-neutral-600); }
+  .queue-table td:first-child { display: block; padding-bottom: var(--space-2); font-weight: 600; }
+  .queue-table td:first-child::before { display: none; }
+  .queue-table .actions { align-items: flex-start; }
 }

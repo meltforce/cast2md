@@ -71,7 +71,7 @@
     {% endif %}
 
     {% if jobs %}
-    <table class="table">
+    <table class="table queue-table">
     <thead>
         <tr>
             <th>Episode</th>
@@ -86,14 +86,14 @@
     <tbody>
         {% for item in jobs %}
         <tr>
-            <td>
+            <td data-label="Episode">
                 <div>
                     <a href="/episodes/{{ item.episode.id }}">{{ item.episode.title[:50] }}{% if item.episode.title|length > 50 %}...{% endif %}</a>
                     <br>
                     <small>{{ item.feed.display_title if item.feed else 'Unknown' }}</small>
                 </div>
             </td>
-            <td>
+            <td data-label="Type">
                 {% if item.job.job_type.value == 'download' %}
                 <span class="tip" title="Audio Download">DL</span>
                 {% elif item.job.job_type.value == 'transcribe' %}
@@ -106,7 +106,7 @@
                 <span class="tip" title="{{ item.job.job_type.value }}">{{ item.job.job_type.value[:3]|upper }}</span>
                 {% endif %}
             </td>
-            <td>
+            <td data-label="Status">
                 {% if item.is_stuck %}
                 <span class="status status-failed">STUCK</span>
                 {% elif item.job.status.value == 'running' %}
@@ -122,7 +122,7 @@
                 <span class="status status-done">DONE</span>
                 {% endif %}
             </td>
-            <td>
+            <td data-label="Runtime">
                 {% if item.runtime_seconds is not none %}
                 <span class="elapsed" data-seconds="{{ item.runtime_seconds }}">
                     {% if item.runtime_seconds >= 3600 %}
@@ -137,9 +137,9 @@
                 -
                 {% endif %}
             </td>
-            <td>{{ item.job.attempts }} / {{ item.job.max_attempts }}</td>
-            <td>{{ item.job.priority }}</td>
-            <td>
+            <td data-label="Attempts">{{ item.job.attempts }} / {{ item.job.max_attempts }}</td>
+            <td data-label="Priority">{{ item.job.priority }}</td>
+            <td data-label="Actions">
                 <div class="actions">
                     {% if item.job.status.value == 'queued' %}
                     <button class="btn btn-ghost" onclick="cancelJob({{ item.job.id }})">Cancel</button>
