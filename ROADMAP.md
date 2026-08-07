@@ -39,6 +39,17 @@ residual work those items exposed, each recorded before its entry left.
 | `[open]` | Decide whether the remaining `web/views.py` routes are worth splitting | `web/views.py` | | Residual work from **G**, which took `admin_status_page` out and left the file at 853 lines. Next by complexity are `feed_detail` (CC 17), `render_transcript_html` (CC 16) and `episode_detail` (CC 15). Re-run G's co-change measurement once the file has settled: if the 72.3 % template correlation holds without `admin_status_page` in the count, the same treatment applies; if it drops, the churn was concentrated in the status page and the rest can stay. |
 | `[open]` | Add tests for `web/status_view.py` | `tests/` | | `build_status_context` was split out of the route specifically so it can be exercised without Postgres — it takes a `StatusData` and a queue-status dict and returns the template context. No test does so yet. G was verified by comparing the context against the pre-change function over five worker-status variants, which is a one-off check rather than a regression guard. |
 
+## API
+
+Both rows were found on 2026-08-07 while testing production after the deploy
+that ended the frozen `:edge`. Neither was introduced by that deploy: the files
+involved are byte-identical to `d6510ed`, the commit production had been serving.
+
+| Status | Item | Where | Trigger | Notes |
+|---|---|---|---|---|
+| `[open]` | `GET /api/search/transcripts` returns 500 on every query that builds a tsquery | `api/search.py:145-152` | | `SegmentResult.published_at` is typed `str \| None`, and the value reaches it as a `datetime` straight from the row (`search/repository.py:271`), so pydantic raises `string_type`. Reproduced on production for `KI`, `künstliche Intelligenz`, `KI-Revolution` and a quoted phrase. A query consisting only of stopwords returns 200 with 0 results, because `build_flexible_tsquery` yields an empty string and the method returns before building any row. `GET /api/search/episodes` is unaffected and returns 174 hits for `KI`. The `/search` page is not affected either — `web/views.py:transcript_search_page` renders server-side from the repository and does not call this endpoint. Decide whether the field takes `datetime` or the repository serialises it; `SearchResult.published_at` carries the same annotation and the same mismatch. |
+| `[open]` | `GET /api/queue/all` and `/api/queue/stuck` are unreachable | `api/queue.py:539`, `:946`, `:995` | | `@router.get("/{job_id}")` is declared at line 539, ahead of `/stuck` at 946 and `/all` at 995. FastAPI matches in declaration order, so both paths bind `job_id="stuck"` / `"all"` and fail with 422 `int_parsing`. The declaration order is the same at `d6510ed`. Nothing in `src/`, `docs/`, `scripts/` or `tools/` calls either path, and the queue page renders server-side through `web/views.py:admin_queue_page`, so no surface depends on them today. Moving both declarations above `/{job_id}` fixes it; the endpoints then need their first exercise, since neither has ever returned a response. |
+
 ## Documentation
 
 | Status | Item | Where | Trigger | Notes |
