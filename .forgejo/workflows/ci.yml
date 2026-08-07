@@ -7,6 +7,12 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+  # Drives deploy-freshness below, and nothing else. Every four hours at :17,
+  # off the top of the hour so it does not queue behind whatever else fires
+  # there. A scheduled run is created on the default branch, which is what makes
+  # github.sha the head of main without an API call.
+  schedule:
+    - cron: '17 */4 * * *'
 
 # No `permissions:` block: Forgejo does not support it and logs a warning
 # for every job in the run, including the jobs of any reusable workflow this
@@ -354,3 +360,80 @@ jobs:
           git add -A
           git commit -m "docs: build from ${GITHUB_SHA::7}"
           git push -f "https://${FJ_PUSH_TOKEN}@git.coydog-fence.ts.net/meltforce.net/cast2md.git" gh-pages
+
+  deploy-freshness:
+    # Answers the question deploy-gate cannot: is production still serving the
+    # head of main, hours or days after the push that deployed it?
+    #
+    # deploy-gate checks the same thing, but only inside the run that deployed.
+    # When CI itself is broken, no run happens and no gate fires. On 2026-08-06 a
+    # version bump of the shared deploy workflow added a required Docker Hub
+    # secret this repo did not pass, every run went red, and production served a
+    # commit 16 behind main for a day. deploy-gate reported it correctly, as a
+    # red run in a list, which produces no mail and no push.
+    #
+    # The signal is a heartbeat to an Uptime Kuma push monitor rather than the
+    # job's own exit status, because the failure to catch is silence. Three
+    # cases, three outcomes:
+    #
+    #   production matches main  -> ping status=up, monitor stays green
+    #   production is behind     -> ping status=down, Kuma alerts immediately
+    #   this job never runs      -> no ping, Kuma alerts once its interval
+    #                               (7h, against this 4h schedule) elapses
+    #
+    # The third case is the one that matters and the reason for a push monitor:
+    # a broken workflow file, a dead runner or a Forgejo outage all stop the
+    # check, and all of them look identical to "nothing to report" without it.
+    #
+    # Monitor and notification routing: homelab, configuration/uptimekuma,
+    # "cast2md - deploy freshness". Postmortem: homelab/INCIDENTS.md 2026-08-07.
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: docker
+    steps:
+      - name: Compare the running build against the head of main
+        env:
+          # A scheduled run is created on the default branch, so github.sha is
+          # already main's head; the deployed string is edge-<sha>, set by
+          # build-push-deploy.yml as VERSION and reported by /api/health.
+          EXPECTED: edge-${{ github.sha }}
+          PUSH_URL: ${{ secrets.KUMA_DEPLOY_PUSH_URL }}
+        run: |
+          # No -x: PUSH_URL embeds the monitor token, and a trace would put it
+          # in the job log unfiltered. Same reason as the docs job above.
+          set -euo pipefail
+          test -n "${PUSH_URL}" || {
+            echo "::error::KUMA_DEPLOY_PUSH_URL is empty."
+            echo "Without it this job cannot signal, and the monitor will alert"
+            echo "on the missing heartbeat instead. The value is in setec as"
+            echo "cast2md/uptime-kuma-deploy-freshness-push-url."
+            exit 1
+          }
+
+          # Retry rather than judge on one reading: a schedule that fires while a
+          # deploy is in flight would otherwise report a stale build for a
+          # difference that resolves in seconds.
+          got=""
+          for attempt in 1 2 3 4 5 6; do
+            body="$(curl -fsS --max-time 10 https://cast2md.coydog-fence.ts.net/api/health || true)"
+            got="$(printf '%s' "${body}" \
+                   | sed -n 's/.*"build"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
+            [ "${got}" = "${EXPECTED}" ] && break
+            echo "attempt ${attempt}: serving '${got:-unknown}', main is '${EXPECTED}'"
+            sleep 10
+          done
+
+          base="${PUSH_URL%%\?*}"
+          if [ "${got}" = "${EXPECTED}" ]; then
+            echo "production serves ${got}, which is the head of main"
+            curl -fsS --max-time 10 -o /dev/null \
+              "${base}?status=up&msg=$(printf '%s' "${got}" | sed 's/[^A-Za-z0-9-]/%20/g')"
+            exit 0
+          fi
+
+          echo "::error::Production serves '${got:-unknown}', main is '${EXPECTED}'."
+          echo "The deploy chain has stopped moving :edge. Check the run list for"
+          echo "a failing build-deploy, and homelab/INCIDENTS.md 2026-08-07 for the"
+          echo "shape this took last time."
+          curl -fsS --max-time 10 -o /dev/null \
+            "${base}?status=down&msg=stale%3A%20serving%20${got:-unknown}" || true
+          exit 1

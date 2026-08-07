@@ -17,7 +17,7 @@ each becomes its own `[open]` row before the entry is moved out.
 
 | Status | Item | Where | Trigger | Notes |
 |---|---|---|---|---|
-| `[open]` | Make a frozen `:edge` fail visibly rather than only in the run list | `.forgejo/workflows/ci.yml`, homelab monitoring | | `build-deploy` failed on every push from `04adeee` (2026-08-06) to `b32746f` (2026-08-07), and production stayed on `edge-d6510ed` for 16 commits without anything reporting it. `deploy-gate` did turn the pipeline red, so the state was visible in the run list and nowhere else. Postmortem: `homelab/INCIDENTS.md`, 2026-08-07. The open question is what should carry the signal — a notification on a failed `main` run, or a check that compares the `build` field of `/api/health` against the head of `main` on a schedule. |
+| `[open]` | Give vimmary the same deploy-freshness heartbeat | `vimmary`, `configuration/uptimekuma` | | cast2md got one on 2026-08-07 (`deploy-freshness` in `.forgejo/workflows/ci.yml`, monitor `cast2md - deploy freshness`). vimmary calls the same shared deploy workflow, sits on the same runner and had its own deploy outage on 2026-08-06, so it carries the same exposure and none of the signal. The pieces to copy: a `schedule` trigger, the job, a push monitor in the Uptime Kuma spec, a setec target, and the resulting URL as a repo secret. |
 
 ## Code structure
 
