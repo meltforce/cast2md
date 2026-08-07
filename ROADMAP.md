@@ -18,6 +18,7 @@ each becomes its own `[open]` row before the entry is moved out.
 | Status | Item | Where | Trigger | Notes |
 |---|---|---|---|---|
 | `[open]` | Give vimmary the same deploy-freshness heartbeat | `vimmary`, `configuration/uptimekuma` | | cast2md got one on 2026-08-07 (`deploy-freshness` in `.forgejo/workflows/ci.yml`, monitor `cast2md - deploy freshness`). vimmary calls the same shared deploy workflow, sits on the same runner and had its own deploy outage on 2026-08-06, so it carries the same exposure and none of the signal. The pieces to copy: a `schedule` trigger, the job, a push monitor in the Uptime Kuma spec, a setec target, and the resulting URL as a repo secret. |
+| `[open]` | The afterburner image no longer builds | `deploy/afterburner/Dockerfile` | | Step 7 pre-downloads the Parakeet model and dies on `OSError: Could not load this library: .../torchaudio/lib/libtorchaudio.so` — `import nemo.collections.asr` pulls in `torchaudio`, whose compiled extension does not match the torch in the CUDA base image. Found on 2026-08-07 because a `workflow_dispatch` runs `build-afterburner` unconditionally; its push trigger fires only when this Dockerfile changes, so the breakage was invisible. `docker.io/meltforce/cast2md-afterburner` was last pushed 2026-01-29, which bounds how long this has been latent. Nothing running is affected — RunPod pods use the published image — but the next edit to the Dockerfile cannot ship. Pin torch and torchaudio to a matching pair for the base image's CUDA version. |
 
 ## Code structure
 
