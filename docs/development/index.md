@@ -83,12 +83,15 @@ src/cast2md/
 │   └── system.py
 ├── config/
 │   └── settings.py      # Pydantic settings model
+├── constants.py         # Constants shared across packages, imports nothing
 ├── db/
-│   ├── connection.py     # Database connection pool
+│   ├── connection.py     # Database connection pool, ping()
 │   ├── migrations.py     # Schema migrations
 │   ├── models.py         # Data models
 │   ├── repository.py     # Database operations
-│   └── schema.py         # SQL schema
+│   ├── schema.py         # SQL schema
+│   ├── sql.py            # execute() helper
+│   └── tsquery.py        # PostgreSQL tsquery builder, stopword list
 ├── download/
 │   └── downloader.py     # Audio download logic
 ├── feed/
@@ -146,7 +149,28 @@ uv run ruff check --fix
 
 ### Database Access
 
-All database operations go through repository classes in `db/repository.py`. Direct SQL queries are concentrated there.
+Data access goes through repository classes, and those live in exactly two
+places: `db/repository.py` and `search/repository.py`. Endpoint modules — `api/`,
+`web/`, `mcp/` and `cli.py` — issue no SQL and open no cursor; they construct a
+repository on the connection they already hold.
+
+The one exception is the connectivity probe `SELECT 1`, which asserts that the
+database answers rather than reading anything. It has a home of its own in
+`db/connection.py:ping()`, so no endpoint needs to write it either.
+
+The rule is checkable, and that is the point of the wording:
+
+```bash
+grep -rInE '(SELECT |INSERT INTO |UPDATE .* SET |DELETE FROM )' \
+  src/cast2md --include='*.py' | grep -vE '^src/cast2md/(db|search)/'
+
+grep -rn 'cursor.execute\|conn.cursor()' src/cast2md --include='*.py' \
+  | grep -vE '^src/cast2md/(db|search)/'
+```
+
+Both must come back empty. The second one is needed because the first misses a
+statement whose `SET` clause wraps onto the next line — that is how two sites
+went unnoticed until 2026-08-07.
 
 ### Settings
 

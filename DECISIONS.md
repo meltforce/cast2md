@@ -14,6 +14,46 @@ place with the old form recorded under revisions — the entry is not duplicated
 
 ---
 
+## 2026-08-07 — the repository rule covers `search/` too, and is written to be grep-checkable
+
+**Decided:** 2026-08-07
+
+**Decision.** Data access goes through repository classes under `db/` and
+`search/`. Endpoint modules — `api/`, `web/`, `mcp/`, `cli.py` — issue no SQL and
+open no cursor. The connectivity probe `SELECT 1` is the single exception and has
+its own home, `db/connection.py:ping()`. The rule in
+`docs/development/index.md` carries the two greps that check it, and both must
+come back empty.
+
+**Reasoning.** The previous wording named `db/repository.py` and nothing else.
+That excluded `search/repository.py` on wording though not in substance — it is a
+repository class, it owns the `transcript_segments` table, and 16 of the raw-SQL
+hits the structure analysis counted were inside it. A rule that flags the code
+that follows it is a rule nobody can act on.
+
+It also described 14 sites that broke it. Those are moved behind repository
+methods in the same day's work, so the rule now describes the code rather than
+contradicting it.
+
+Writing the check into the rule is the part worth keeping. The structure
+analysis counted 12 violations where there were 14: its pattern
+`UPDATE .* SET` does not match a statement whose `SET` clause wraps onto the
+next line, which hid `api/nodes.py` and `api/queue.py`. A single grep is not
+enough, so the documented check is two — the statement keywords, and
+`cursor.execute`/`conn.cursor()` directly. The second catches what line breaks
+hide from the first.
+
+`SELECT 1` is exempted by giving it a function rather than by wording an
+exception into the rule, because an exception in prose is not enforceable and
+this one is a single call site.
+
+**Trigger to re-open.** A third package acquires repository classes, which would
+make the two-directory list a list that keeps growing and argue for a marker on
+the class instead; or the greps start producing false positives often enough
+that a real static check is worth the setup.
+
+---
+
 ## 2026-08-07 — the German stopword list lives under `db/`, with the tsquery builder
 
 **Decided:** 2026-08-07
