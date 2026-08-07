@@ -11,6 +11,8 @@ from cast2md.db.models import Episode, EpisodeStatus
 from cast2md.db.repository import EpisodeRepository, FeedRepository
 from cast2md.download.downloader import download_episode
 from cast2md.export.formats import export_transcript
+from cast2md.search.parser import format_segments, format_time_range
+from cast2md.search.repository import TranscriptSearchRepository
 from cast2md.transcription.service import transcribe_episode
 
 router = APIRouter(prefix="/api", tags=["episodes"])
@@ -438,49 +440,22 @@ def get_transcript_section(
         feed = feed_repo.get_by_id(episode.feed_id)
 
         # Get segments from database
-        cursor = conn.cursor()
+        search_repo = TranscriptSearchRepository(conn)
         if start_time is not None:
             half_duration = duration / 2
-            time_start = max(0, start_time - half_duration)
-            time_end = start_time + half_duration
-
-            cursor.execute(
-                """
-                SELECT segment_start, segment_end, text
-                FROM transcript_segments
-                WHERE episode_id = %s
-                  AND segment_start >= %s
-                  AND segment_start <= %s
-                ORDER BY segment_start
-                """,
-                (episode_id, time_start, time_end),
+            segments = search_repo.get_segments(
+                episode_id,
+                start=max(0, start_time - half_duration),
+                end=start_time + half_duration,
             )
         else:
-            cursor.execute(
-                """
-                SELECT segment_start, segment_end, text
-                FROM transcript_segments
-                WHERE episode_id = %s
-                  AND segment_start <= %s
-                ORDER BY segment_start
-                """,
-                (episode_id, duration),
-            )
-
-        segments = cursor.fetchall()
-
-        # Format segments with timestamps
-        lines = []
-        for seg_start, seg_end, text in segments:
-            minutes = int(seg_start) // 60
-            seconds = int(seg_start) % 60
-            lines.append(f"[{minutes:02d}:{seconds:02d}] {text}")
+            segments = search_repo.get_segments(episode_id, end=duration)
 
         return {
             "episode_id": episode_id,
             "episode_title": episode.title,
             "feed_title": feed.display_title if feed else None,
             "published_at": episode.published_at.isoformat() if episode.published_at else None,
-            "time_range": f"{int(segments[0][0])}s - {int(segments[-1][1])}s" if segments else None,
-            "transcript": "\n".join(lines),
+            "time_range": format_time_range(segments),
+            "transcript": format_segments(segments),
         }

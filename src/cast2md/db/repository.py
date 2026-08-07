@@ -283,6 +283,29 @@ class EpisodeRepository:
         )
         return [Episode.from_row(row) for row in cursor.fetchall()]
 
+    def get_transcript_paths(self, feed_id: int | None = None) -> dict[int, str]:
+        """Map episode ID to transcript path for completed episodes with a transcript.
+
+        Args:
+            feed_id: Restrict to one feed, or None for every feed.
+
+        Returns:
+            Dict of episode ID to transcript path, in the shape the search
+            repository's reindex_all expects.
+        """
+        sql = """
+            SELECT id, transcript_path FROM episode
+            WHERE transcript_path IS NOT NULL AND status = %s
+        """
+        params: list[Any] = [EpisodeStatus.COMPLETED.value]
+
+        if feed_id is not None:
+            sql += " AND feed_id = %s"
+            params.append(feed_id)
+
+        cursor = execute(self.conn, sql, tuple(params))
+        return {row[0]: row[1] for row in cursor.fetchall()}
+
     def get_by_feed_paginated(
         self,
         feed_id: int,
@@ -2319,6 +2342,16 @@ class WhisperModelRepository:
         self.conn.commit()
         return cursor.rowcount > 0
 
+    def delete_all(self) -> int:
+        """Delete every model, so seed_defaults can repopulate the table.
+
+        Returns:
+            Number of models deleted.
+        """
+        cursor = execute(self.conn, "DELETE FROM whisper_models")
+        self.conn.commit()
+        return cursor.rowcount
+
     def seed_defaults(self) -> int:
         """Seed the default models if table is empty."""
         cursor = execute(self.conn, "SELECT COUNT(*) FROM whisper_models")
@@ -2451,6 +2484,16 @@ class RunPodModelRepository:
         cursor = execute(self.conn, "DELETE FROM runpod_models WHERE id = %s", (model_id,))
         self.conn.commit()
         return cursor.rowcount > 0
+
+    def delete_all(self) -> int:
+        """Delete every model, so seed_defaults can repopulate the table.
+
+        Returns:
+            Number of models deleted.
+        """
+        cursor = execute(self.conn, "DELETE FROM runpod_models")
+        self.conn.commit()
+        return cursor.rowcount
 
     def seed_defaults(self) -> int:
         """Seed the default models if table is empty."""
@@ -2597,6 +2640,48 @@ class TranscriberNodeRepository:
             WHERE id = %s
             """,
             (ts, now, node_id),
+        )
+        self.conn.commit()
+
+    def reregister(
+        self,
+        node_id: str,
+        url: str,
+        api_key: str,
+        whisper_model: str | None = None,
+        whisper_backend: str | None = None,
+    ) -> None:
+        """Reclaim an existing offline entry for a node that restarted.
+
+        Sets the new URL and API key, puts the status back to offline and
+        clears the heartbeat and job claim, so the entry looks the way create()
+        leaves a fresh one. Prevents an orphaned entry per pod restart.
+
+        Args:
+            node_id: ID of the existing entry to reclaim.
+            url: New URL the node is reachable at.
+            api_key: Newly issued API key.
+            whisper_model: Model the node reports, or None to clear it.
+            whisper_backend: Backend the node reports, or None to clear it.
+        """
+        execute(
+            self.conn,
+            """
+            UPDATE transcriber_node
+            SET url = %s, api_key = %s, whisper_model = %s, whisper_backend = %s,
+                status = %s, last_heartbeat = NULL, current_job_id = NULL,
+                updated_at = %s
+            WHERE id = %s
+            """,
+            (
+                url,
+                api_key,
+                whisper_model,
+                whisper_backend,
+                NodeStatus.OFFLINE.value,
+                datetime.now().isoformat(),
+                node_id,
+            ),
         )
         self.conn.commit()
 

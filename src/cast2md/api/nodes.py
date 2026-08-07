@@ -181,26 +181,13 @@ def register_node(request: RegisterNodeRequest):
         if existing and existing.status == NodeStatus.OFFLINE:
             # Reuse existing offline node with new API key
             api_key = secrets.token_urlsafe(32)
-            cursor = conn.cursor()
-            cursor.execute(
-                """
-                UPDATE transcriber_node
-                SET url = %s, api_key = %s, whisper_model = %s, whisper_backend = %s,
-                    status = %s, last_heartbeat = NULL, current_job_id = NULL,
-                    updated_at = %s
-                WHERE id = %s
-                """,
-                (
-                    request.url,
-                    api_key,
-                    request.whisper_model,
-                    request.whisper_backend,
-                    NodeStatus.OFFLINE.value,
-                    datetime.now().isoformat(),
-                    existing.id,
-                ),
+            repo.reregister(
+                existing.id,
+                url=request.url,
+                api_key=api_key,
+                whisper_model=request.whisper_model,
+                whisper_backend=request.whisper_backend,
             )
-            conn.commit()
 
             return RegisterNodeResponse(
                 node_id=existing.id,

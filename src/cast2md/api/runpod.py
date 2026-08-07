@@ -507,12 +507,9 @@ def reset_runpod_models():
     from cast2md.db.repository import RunPodModelRepository
 
     with get_db() as conn:
-        # Clear all models
-        cursor = conn.cursor()
-        cursor.execute("DELETE FROM runpod_models")
-        conn.commit()
-        # Re-seed defaults
         repo = RunPodModelRepository(conn)
+        # Clear all models, then re-seed defaults
+        repo.delete_all()
         count = repo.seed_defaults()
 
     return MessageResponse(message=f"Models reset to {count} defaults.")

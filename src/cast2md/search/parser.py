@@ -14,6 +14,50 @@ class TranscriptSegment:
     end: float  # End time in seconds
 
 
+def format_timestamp_mmss(seconds: float) -> str:
+    """Format seconds as MM:SS, with minutes unbounded.
+
+    A segment at 3900 seconds renders as 65:00, not 01:05:00. This differs
+    deliberately from transcription/formats.py:_format_timestamp, which rolls
+    over to hours — that one writes transcript files, this one labels segments
+    in API responses and the transcript view.
+
+    Args:
+        seconds: Offset from the start of the episode.
+
+    Returns:
+        Zero-padded MM:SS string.
+    """
+    total = int(seconds)
+    return f"{total // 60:02d}:{total % 60:02d}"
+
+
+def format_segments(segments: list["TranscriptSegment"]) -> str:
+    """Join segments into '[MM:SS] text' lines.
+
+    Args:
+        segments: Segments in the order they should appear.
+
+    Returns:
+        Newline-separated lines, empty string for no segments.
+    """
+    return "\n".join(f"[{format_timestamp_mmss(seg.start)}] {seg.text}" for seg in segments)
+
+
+def format_time_range(segments: list["TranscriptSegment"]) -> str | None:
+    """Describe the span the segments cover.
+
+    Args:
+        segments: Segments in the order they should appear.
+
+    Returns:
+        A string like "120s - 480s", or None for no segments.
+    """
+    if not segments:
+        return None
+    return f"{int(segments[0].start)}s - {int(segments[-1].end)}s"
+
+
 def parse_timestamp(ts: str) -> float:
     """Parse timestamp string to seconds.
 

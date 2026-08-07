@@ -199,6 +199,19 @@ def init_db() -> None:
         run_migrations(conn)
 
 
+def ping() -> None:
+    """Round-trip a trivial query to assert the database is reachable.
+
+    Asserts connectivity, not the presence of any table, which is why it lives
+    here rather than on a repository. Propagates the driver's exception rather
+    than returning a bool, so a caller can report why the check failed.
+    """
+    with get_db() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT 1")
+        cursor.fetchone()
+
+
 def get_pool_stats() -> dict | None:
     """Get connection pool utilization stats.
 

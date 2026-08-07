@@ -8,7 +8,11 @@ from typing import Any, Literal
 
 from cast2md.db.sql import execute
 from cast2md.db.tsquery import build_flexible_tsquery
-from cast2md.search.parser import merge_word_level_segments, parse_transcript_file
+from cast2md.search.parser import (
+    TranscriptSegment,
+    merge_word_level_segments,
+    parse_transcript_file,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -107,6 +111,47 @@ class TranscriptSearchRepository:
 
         self.conn.commit()
         return len(segments)
+
+    def get_segments(
+        self,
+        episode_id: int,
+        start: float | None = None,
+        end: float | None = None,
+    ) -> list[TranscriptSegment]:
+        """Read the indexed segments of one episode, ordered by start time.
+
+        Both bounds filter on segment_start, so a segment that begins before
+        `end` is included even when it runs past it.
+
+        Args:
+            episode_id: Episode ID to read segments for.
+            start: Optional lower bound on segment_start, in seconds.
+            end: Optional upper bound on segment_start, in seconds.
+
+        Returns:
+            List of segments, empty when the episode is not indexed.
+        """
+        sql = """
+            SELECT segment_start, segment_end, text
+            FROM transcript_segments
+            WHERE episode_id = %s
+        """
+        params: list[Any] = [episode_id]
+
+        if start is not None:
+            sql += " AND segment_start >= %s"
+            params.append(start)
+        if end is not None:
+            sql += " AND segment_start <= %s"
+            params.append(end)
+
+        sql += " ORDER BY segment_start"
+
+        cursor = execute(self.conn, sql, tuple(params))
+        return [
+            TranscriptSegment(text=text, start=seg_start, end=seg_end)
+            for seg_start, seg_end, text in cursor.fetchall()
+        ]
 
     def remove_episode(self, episode_id: int) -> int:
         """Remove all indexed segments for an episode.

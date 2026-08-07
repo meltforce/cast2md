@@ -13,6 +13,10 @@ LATEST_PATTERNS = [
 ]
 LATEST_RE = re.compile("|".join(LATEST_PATTERNS), re.IGNORECASE)
 
+# How much of the latest episode to quote back when a query asks for it.
+# A presentation choice of this tool, not a storage default.
+LATEST_EPISODE_PREVIEW_SECONDS = 600
+
 
 def _normalize(text: str) -> str:
     """Normalize text for matching: lowercase, hyphens to spaces, collapse whitespace."""
@@ -132,6 +136,7 @@ def search(query: str) -> dict:
     """
     from cast2md.db.connection import get_db
     from cast2md.db.repository import EpisodeRepository, FeedRepository
+    from cast2md.search.parser import format_segments
     from cast2md.search.repository import TranscriptSearchRepository
 
     # Get all feeds for matching
@@ -187,25 +192,11 @@ def search(query: str) -> dict:
 
             # Get transcript content
             if latest.transcript_path:
-                cursor = conn.cursor()
-                cursor.execute(
-                    """
-                    SELECT segment_start, segment_end, text
-                    FROM transcript_segments
-                    WHERE episode_id = %s AND segment_start <= 600
-                    ORDER BY segment_start
-                    """,
-                    (latest.id,),
-                )
-                segments = cursor.fetchall()
+                search_repo = TranscriptSearchRepository(conn)
+                segments = search_repo.get_segments(latest.id, end=LATEST_EPISODE_PREVIEW_SECONDS)
 
                 if segments:
-                    lines = []
-                    for seg_start, seg_end, text in segments:
-                        minutes = int(seg_start) // 60
-                        seconds = int(seg_start) % 60
-                        lines.append(f"[{minutes:02d}:{seconds:02d}] {text}")
-                    transcript = "\n".join(lines)
+                    transcript = format_segments(segments)
                 else:
                     transcript = "Transcript segments not indexed yet"
             else:
@@ -633,6 +624,8 @@ def get_transcript(
 
     from cast2md.db.connection import get_db
     from cast2md.db.repository import EpisodeRepository, FeedRepository
+    from cast2md.search.parser import format_segments, format_time_range
+    from cast2md.search.repository import TranscriptSearchRepository
 
     with get_db() as conn:
         episode_repo = EpisodeRepository(conn)
@@ -656,38 +649,18 @@ def get_transcript(
         feed = feed_repo.get_by_id(episode.feed_id)
 
         # Read transcript segments from database for timestamp filtering
-        cursor = conn.cursor()
+        search_repo = TranscriptSearchRepository(conn)
         if start_time is not None:
             # Get segments around the specified time
             half_duration = duration / 2
-            time_start = max(0, start_time - half_duration)
-            time_end = start_time + half_duration
-
-            cursor.execute(
-                """
-                SELECT segment_start, segment_end, text
-                FROM transcript_segments
-                WHERE episode_id = %s
-                  AND segment_start >= %s
-                  AND segment_start <= %s
-                ORDER BY segment_start
-                """,
-                (episode_id, time_start, time_end),
+            segments = search_repo.get_segments(
+                episode_id,
+                start=max(0, start_time - half_duration),
+                end=start_time + half_duration,
             )
         else:
             # Get first N minutes
-            cursor.execute(
-                """
-                SELECT segment_start, segment_end, text
-                FROM transcript_segments
-                WHERE episode_id = %s
-                  AND segment_start <= %s
-                ORDER BY segment_start
-                """,
-                (episode_id, duration),
-            )
-
-        segments = cursor.fetchall()
+            segments = search_repo.get_segments(episode_id, end=duration)
 
         if not segments:
             # Fall back to reading file directly
@@ -705,20 +678,13 @@ def get_transcript(
                 "transcript": content,
             }
 
-        # Format segments with timestamps
-        lines = []
-        for seg_start, seg_end, text in segments:
-            minutes = int(seg_start) // 60
-            seconds = int(seg_start) % 60
-            lines.append(f"[{minutes:02d}:{seconds:02d}] {text}")
-
         return {
             "episode_id": episode_id,
             "episode_title": episode.title,
             "feed_title": feed.display_title if feed else None,
             "published_at": episode.published_at.isoformat() if episode.published_at else None,
-            "time_range": f"{int(segments[0][0])}s - {int(segments[-1][1])}s" if segments else None,
-            "transcript": "\n".join(lines),
+            "time_range": format_time_range(segments),
+            "transcript": format_segments(segments),
         }
 
 

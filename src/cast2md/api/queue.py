@@ -461,17 +461,10 @@ def retry_job(job_id: int):
         if job.status != JobStatus.FAILED:
             raise HTTPException(status_code=400, detail="Can only retry failed jobs")
 
-        # Reset job to queued
-        cursor = conn.cursor()
-        cursor.execute(
-            """
-            UPDATE job_queue
-            SET status = 'queued', attempts = 0, error_message = NULL, next_retry_at = NULL
-            WHERE id = %s
-            """,
-            (job_id,),
-        )
-        conn.commit()
+        # Reset job to queued. The method re-checks the failed status inside the
+        # UPDATE, so a job that changed state since the read above is not reset.
+        if not repo.retry_failed_job(job_id):
+            raise HTTPException(status_code=409, detail="Job is no longer failed")
 
     return MessageResponse(message="Job requeued", job_id=job_id)
 

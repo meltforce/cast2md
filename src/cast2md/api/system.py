@@ -9,7 +9,7 @@ from pydantic import BaseModel
 
 from cast2md.config.settings import get_settings
 from cast2md.db.config import get_db_config
-from cast2md.db.connection import get_db, get_pool_stats
+from cast2md.db.connection import get_db, get_pool_stats, ping
 from cast2md.db.models import EpisodeStatus
 from cast2md.db.repository import EpisodeRepository, FeedRepository
 
@@ -122,9 +122,7 @@ def health_check():
 
     # Check database connectivity
     try:
-        with get_db() as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT 1")
+        ping()
         checks["database"] = True
     except Exception as e:
         errors.append(f"Database: {e}")

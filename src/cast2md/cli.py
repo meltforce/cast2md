@@ -537,34 +537,17 @@ def cmd_reindex_transcripts(feed_id: int | None, embeddings: bool):
     Use --embeddings to also regenerate embeddings for semantic search.
     """
     from cast2md.db.connection import get_db, init_db
+    from cast2md.db.repository import EpisodeRepository
     from cast2md.search.repository import TranscriptSearchRepository
 
     init_db()
 
     with get_db() as conn:
         search_repo = TranscriptSearchRepository(conn)
+        episode_repo = EpisodeRepository(conn)
 
         # Build dict of episode_id -> transcript_path
-        cursor = conn.cursor()
-        if feed_id:
-            # Get episodes for specific feed
-            cursor.execute(
-                """
-                SELECT id, transcript_path FROM episode
-                WHERE feed_id = %s AND transcript_path IS NOT NULL AND status = 'completed'
-                """,
-                (feed_id,),
-            )
-        else:
-            # Get all completed episodes with transcripts
-            cursor.execute(
-                """
-                SELECT id, transcript_path FROM episode
-                WHERE transcript_path IS NOT NULL AND status = 'completed'
-                """
-            )
-
-        episode_transcripts = {row[0]: row[1] for row in cursor.fetchall()}
+        episode_transcripts = episode_repo.get_transcript_paths(feed_id)
 
         if not episode_transcripts:
             click.echo("No transcripts found to index")
@@ -652,6 +635,7 @@ def cmd_backfill_embeddings(feed_id: int | None, limit: int | None):
     Use --limit for testing with a smaller batch.
     """
     from cast2md.db.connection import get_db, init_db
+    from cast2md.db.repository import EpisodeRepository
     from cast2md.search.embeddings import is_embeddings_available
     from cast2md.search.repository import TranscriptSearchRepository
 
@@ -665,26 +649,10 @@ def cmd_backfill_embeddings(feed_id: int | None, limit: int | None):
 
     with get_db() as conn:
         search_repo = TranscriptSearchRepository(conn)
+        episode_repo = EpisodeRepository(conn)
 
-        # Build query for episodes with transcripts
-        cursor = conn.cursor()
-        if feed_id:
-            cursor.execute(
-                """
-                SELECT id, transcript_path FROM episode
-                WHERE feed_id = %s AND transcript_path IS NOT NULL AND status = 'completed'
-                """,
-                (feed_id,),
-            )
-        else:
-            cursor.execute(
-                """
-                SELECT id, transcript_path FROM episode
-                WHERE transcript_path IS NOT NULL AND status = 'completed'
-                """
-            )
-
-        episode_transcripts = {row[0]: row[1] for row in cursor.fetchall()}
+        # Build dict of episode_id -> transcript_path
+        episode_transcripts = episode_repo.get_transcript_paths(feed_id)
 
         if not episode_transcripts:
             click.echo("No transcripts found to embed")
