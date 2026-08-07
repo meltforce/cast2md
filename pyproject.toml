@@ -79,6 +79,9 @@ cast2md = "cast2md.cli:cli"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+cast2md = ["templates/*.html", "node/templates/*.html", "static/*.css", "static/fonts/*.woff2"]
+
 [tool.ruff]
 line-length = 100
 target-version = "py311"

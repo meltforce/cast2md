@@ -2,220 +2,65 @@
 
 {% block title %}Status - Admin - cast2md{% endblock %}
 
-{% block content %}
-<div class="page-header">
-    <hgroup>
-        <h1>System Status</h1>
-        <p>Worker overview and queue status</p>
-    </hgroup>
-</div>
+{% block admin_content %}
+<header class="page-head"><div><div class="kick">Admin</div><h1>Status</h1></div></header>
 
-<!-- Stats Grid -->
-<article>
-    <div class="stats-grid" style="margin-bottom: 0;">
-        <div class="stat-card">
-            <h3>{{ feed_count }}</h3>
-            <p>Feeds</p>
-        </div>
-        <div class="stat-card">
-            <h3>{{ status_counts.get('new', 0) }}</h3>
-            <p>New</p>
-        </div>
-        <div class="stat-card">
-            <h3>{{ queue_status.download_queue.queued + queue_status.transcribe_queue.queued + queue_status.transcript_download_queue.queued }}</h3>
-            <p>Queued</p>
-        </div>
-        <div class="stat-card">
-            <h3>{{ queue_status.download_queue.running + queue_status.transcribe_queue.running + queue_status.transcript_download_queue.running }}</h3>
-            <p>Running</p>
-        </div>
-        <div class="stat-card">
-            <h3>{{ status_counts.get('completed', 0) }}</h3>
-            <p>Completed</p>
-        </div>
-        <div class="stat-card">
-            <h3>{{ status_counts.get('failed', 0) }}</h3>
-            <p>Failed</p>
-        </div>
-    </div>
-</article>
+<section class="hero" aria-label="System statistics">
+    <div><div class="kick">Feeds</div><div class="value">{{ feed_count }}</div></div>
+    <div><div class="kick">Queued</div><div class="value">{{ queue_status.download_queue.queued + queue_status.transcribe_queue.queued + queue_status.transcript_download_queue.queued }}</div></div>
+    <div><div class="kick">Running</div><div class="value">{{ queue_status.download_queue.running + queue_status.transcribe_queue.running + queue_status.transcript_download_queue.running }}</div></div>
+    <div><div class="kick">Completed</div><div class="value">{{ status_counts.get('completed', 0) }}</div></div>
+</section>
 
-<!-- Small Worker Cards (top row) -->
-<article>
-<div class="worker-cards worker-cards-small" style="margin-bottom: 0;">
-    <!-- Audio Download Card -->
-    <div class="worker-card">
-        <h4>{{ worker_groups.download.title }}</h4>
-
-        <div class="card-section">
-            <div class="section-label">Queued</div>
-            <div class="queued-count">{{ worker_groups.download.queued }}</div>
-        </div>
-
-        <div class="card-section">
-            <div class="section-label">Workers</div>
-            <div class="worker-row dots-only">
-                {% for worker in worker_groups.download.workers %}
-                <span class="worker-dot dot-{{ worker.status }}" title="{{ worker.status }}"></span>
+<section class="section">
+    <div class="sec-head"><div><div class="kick">Transcription</div><h2>Workers</h2></div></div>
+    <div class="table-wrap">
+        <table class="table mobile-stack-table worker-table">
+            <thead><tr><th>Worker</th><th>State</th><th>Current job</th><th>Progress</th></tr></thead>
+            <tbody>
+                {% set server = worker_groups.transcription.server %}
+                <tr>
+                    <td>Server</td>
+                    <td><span class="worker-state {{ 'busy' if server.status == 'busy' else 'offline' if server.status in ['offline', 'stopped'] else '' }}">{{ server.status }}</span></td>
+                    <td>{% if server.episode %}<a href="/episodes/{{ server.episode.id }}">{{ server.episode.title }}</a>{% else %}<span class="muted">—</span>{% endif %}</td>
+                    <td>{% if server.progress is not none %}<progress value="{{ server.progress }}" max="100"></progress> <span class="num compact">{{ server.progress }}%</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+                </tr>
+                {% for node in worker_groups.transcription.nodes %}
+                <tr>
+                    <td>{{ node.name }}</td>
+                    <td><span class="worker-state {{ 'busy' if node.status == 'busy' else 'offline' if node.status in ['offline', 'stopped'] else 'stuck' if node.status == 'stuck' else '' }}">{{ node.status }}</span></td>
+                    <td>{% if node.episode %}<a href="/episodes/{{ node.episode.id }}">{{ node.episode.title }}</a>{% else %}<span class="muted">—</span>{% endif %}</td>
+                    <td>{% if node.progress is not none %}<progress value="{{ node.progress }}" max="100"></progress> <span class="num compact">{{ node.progress }}%</span>{% else %}<span class="muted">—</span>{% endif %}</td>
+                </tr>
                 {% endfor %}
-                {% if not worker_groups.download.workers %}
-                <span class="muted">No workers</span>
-                {% endif %}
-            </div>
-        </div>
+            </tbody>
+        </table>
     </div>
+</section>
 
-    <!-- Transcript Fetch Card -->
-    <div class="worker-card">
-        <h4>{{ worker_groups.transcript_fetch.title }}</h4>
-
-        <div class="card-section">
-            <div class="section-label">Queued</div>
-            <div class="queued-count">{{ worker_groups.transcript_fetch.queued }}</div>
-        </div>
-
-        <div class="card-section">
-            <div class="section-label">Workers</div>
-            <div class="worker-row dots-only">
-                {% for i in range(worker_groups.transcript_fetch.active_count) %}
-                <span class="worker-dot dot-busy" title="busy"></span>
-                {% endfor %}
-                {% for i in range(worker_groups.transcript_fetch.total_count - worker_groups.transcript_fetch.active_count) %}
-                <span class="worker-dot dot-idle" title="idle"></span>
-                {% endfor %}
-            </div>
-        </div>
-
-        {% if worker_groups.transcript_fetch.orphaned %}
-        <div class="card-section">
-            <a href="/admin/queue?filter=stuck" class="section-label" style="color: #ef4444;">
-                Stuck{% if worker_groups.transcript_fetch.orphaned_total > 3 %} ({{ worker_groups.transcript_fetch.orphaned_total }}){% endif %} &rarr;
-            </a>
-            {% for item in worker_groups.transcript_fetch.orphaned %}
-            <div class="worker-row">
-                <span class="worker-dot dot-stuck"></span>
-                <span class="worker-name">{{ item.episode.title[:30] }}...</span>
-            </div>
-            {% endfor %}
-        </div>
-        {% endif %}
+<section class="section">
+    <div class="sec-head"><div><div class="kick">Pipeline</div><h2>Services</h2></div></div>
+    <div class="table-wrap">
+        <table class="table mobile-stack-table service-table">
+            <thead><tr><th>Service</th><th class="right">Queued</th><th class="right">Running</th><th class="right">Completed</th></tr></thead>
+            <tbody>
+                <tr><td>Audio download</td><td class="right num">{{ queue_status.download_queue.queued }}</td><td class="right num">{{ queue_status.download_queue.running }}</td><td class="right num">{{ queue_status.download_queue.completed }}</td></tr>
+                <tr><td>Transcript fetch</td><td class="right num">{{ queue_status.transcript_download_queue.queued }}</td><td class="right num">{{ queue_status.transcript_download_queue.running }}</td><td class="right num">{{ queue_status.transcript_download_queue.completed }}</td></tr>
+                <tr><td>Transcription</td><td class="right num">{{ queue_status.transcribe_queue.queued }}</td><td class="right num">{{ queue_status.transcribe_queue.running }}</td><td class="right num">{{ queue_status.transcribe_queue.completed }}</td></tr>
+                <tr><td>Search index</td><td class="right num">{{ search_stats.indexed_episodes - search_stats.embedded_episodes }}</td><td class="right num">—</td><td class="right num">{{ search_stats.embedded_episodes }}</td></tr>
+            </tbody>
+        </table>
     </div>
+</section>
 
-    <!-- Search Index Card -->
-    <div class="worker-card">
-        <h4>Search Index</h4>
-
-        <div class="card-section">
-            <div class="section-label">Full-text</div>
-            <div class="queued-count">{{ search_stats.indexed_episodes }}</div>
-        </div>
-
-        <div class="card-section">
-            <div class="section-label">Semantic</div>
-            <div class="queued-count">{{ search_stats.embedded_episodes }}</div>
-        </div>
-
-        {% set pending = search_stats.indexed_episodes - search_stats.embedded_episodes %}
-        {% if pending > 0 %}
-        <div class="card-section">
-            <div class="section-label">Pending</div>
-            <div style="color: var(--pico-muted-color);">{{ pending }} episode{% if pending != 1 %}s{% endif %}</div>
-        </div>
-        {% endif %}
-    </div>
-</div>
-</article>
-
-<!-- Large Worker Cards (bottom row) -->
-<article>
-<div class="worker-cards worker-cards-large" style="margin-bottom: 0;">
-    <!-- Transcription Card -->
-    <div class="worker-card">
-        <h4>{{ worker_groups.transcription.title }}</h4>
-
-        <div class="card-section">
-            <div class="section-label">Queued</div>
-            <div class="queued-count">{{ worker_groups.transcription.queued }}</div>
-        </div>
-
-        <div class="card-section">
-            <div class="section-label">Workers</div>
-            <!-- Server worker -->
-            <div class="worker-row">
-                <span class="worker-dot dot-{{ worker_groups.transcription.server.status }}"></span>
-                <span class="worker-name">Server{% if worker_groups.transcription.server.status == 'standby' %} <span class="muted">(standby)</span>{% endif %}</span>
-                {% if worker_groups.transcription.server.episode %}
-                <span class="worker-job">
-                    <a href="/episodes/{{ worker_groups.transcription.server.episode.id }}">{{ worker_groups.transcription.server.episode.title[:20] }}...</a>
-                </span>
-                {% if worker_groups.transcription.server.progress is not none %}
-                <span class="worker-progress">{{ worker_groups.transcription.server.progress }}%</span>
-                {% endif %}
-                {% endif %}
-            </div>
-            <!-- Remote nodes -->
-            {% if worker_groups.transcription.distributed_enabled and worker_groups.transcription.nodes %}
-            {% for node in worker_groups.transcription.nodes %}
-            <div class="worker-row">
-                <span class="worker-dot dot-{{ node.status }}"></span>
-                <span class="worker-name">{{ node.name }} <span class="muted">(remote)</span></span>
-                {% if node.episode %}
-                <span class="worker-job">
-                    <a href="/episodes/{{ node.episode.id }}">{{ node.episode.title[:15] }}...</a>
-                </span>
-                {% if node.progress is not none and (node.progress > 0 or not node.name.startswith('RunPod')) %}
-                <span class="worker-progress">{{ node.progress }}%</span>
-                {% endif %}
-                {% endif %}
-            </div>
-            {% endfor %}
-            {% endif %}
-        </div>
-
-        {% if worker_groups.transcription.orphaned %}
-        <div class="card-section">
-            <a href="/admin/queue?filter=stuck" class="section-label" style="color: #ef4444;">
-                Stuck{% if worker_groups.transcription.orphaned_total > 3 %} ({{ worker_groups.transcription.orphaned_total }}){% endif %} &rarr;
-            </a>
-            {% for item in worker_groups.transcription.orphaned %}
-            <div class="worker-row">
-                <span class="worker-dot dot-stuck"></span>
-                <span class="worker-name">{{ item.episode.title[:25] }}...</span>
-                {% if item.progress is not none %}
-                <span class="worker-progress">{{ item.progress }}%</span>
-                {% endif %}
-            </div>
-            {% endfor %}
-        </div>
-        {% endif %}
-    </div>
-
-    <!-- Performance Card -->
-    <div class="worker-card">
-        <h4>Performance</h4>
-
-        <div class="card-section">
-            <div class="section-label">Last Hour</div>
-            <div class="queued-count">{{ performance_stats.hour_throughput }}x</div>
-            <div style="color: var(--pico-muted-color); font-size: 0.8rem;">{{ performance_stats.hour_episodes }} episodes</div>
-        </div>
-
-        <div class="card-section">
-            <div class="section-label">Last 24h</div>
-            <div class="queued-count">{{ performance_stats.day_throughput }}x</div>
-            <div style="color: var(--pico-muted-color); font-size: 0.8rem;">{{ performance_stats.day_episodes }} episodes</div>
-        </div>
-    </div>
-</div>
-<p style="color: var(--pico-muted-color); text-align: center; margin-bottom: 0;">
-    For detailed job management, see the <a href="/admin/queue">Queue</a> page.
-</p>
-</article>
+<section class="section">
+    <div class="sec-head"><div><div class="kick">Throughput</div><h2>Performance</h2></div></div>
+    <div class="cluster meta num">Last hour {{ performance_stats.hour_throughput }}× · {{ performance_stats.hour_episodes }} episodes · Last 24h {{ performance_stats.day_throughput }}× · {{ performance_stats.day_episodes }} episodes</div>
+</section>
 {% endblock %}
 
 {% block scripts %}
 <script>
-// Auto-refresh every 10 seconds if there are running jobs
 {% if queue_status.download_queue.running or queue_status.transcribe_queue.running or queue_status.transcript_download_queue.running %}
 setTimeout(() => window.location.reload(), 10000);
 {% endif %}

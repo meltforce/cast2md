@@ -2,39 +2,39 @@
 
 {% block title %}Settings - Admin - cast2md{% endblock %}
 
-{% block content %}
-<div class="page-header">
+{% block admin_content %}
+<div class="page-head">
     <hgroup>
         <h1>Settings</h1>
-        <p>Configure storage, transcription, and workers</p>
+        <p>Admin</p>
     </hgroup>
-    <div class="header-actions">
-        <button type="submit" form="settingsForm" style="width: auto;">Save</button>
-        <button type="button" class="secondary" style="width: auto;" onclick="resetAllSettings()">Reset All</button>
+    <div class="page-head-actions">
+        <button class="btn btn-primary" type="submit" form="settingsForm">Save</button>
+        <button type="button" class="btn btn-secondary" onclick="resetAllSettings()">Reset All</button>
     </div>
 </div>
 
 <form id="settingsForm">
 
 <!-- Storage -->
-<article>
+<section class="section">
     <header>
-        <h3 style="margin: 0;">Storage</h3>
+        <h3>Storage</h3>
     </header>
-    <div id="storageFields" class="grid"></div>
-</article>
+    <div id="storageFields" class="form-grid"></div>
+</section>
 
 <!-- Transcription -->
-<article>
-    <header style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
-        <h3 style="margin: 0;">Transcription</h3>
-        <button type="button" class="outline secondary" onclick="resetModels()">Reset Models</button>
+<section class="section">
+    <header>
+        <h3>Transcription</h3>
+        <button type="button" class="btn btn-ghost" onclick="resetModels()">Reset Models</button>
     </header>
-    <div id="transcriptionFields" class="grid"></div>
+    <div id="transcriptionFields" class="form-grid"></div>
 
-    <details style="margin-top: 1rem;">
-        <summary>Available Models</summary>
-        <table id="modelsTable" style="margin-top: 0.5rem;">
+    <details class="disclose">
+        <summary class="kick">Available Models</summary>
+        <table class="table" id="modelsTable">
             <thead>
                 <tr>
                     <th>Model ID</th>
@@ -50,67 +50,67 @@
         </table>
     </details>
 
-    <details>
-        <summary>Add Custom Model</summary>
-        <div style="margin-top: 1rem;">
-            <div class="grid">
+    <details class="disclose">
+        <summary class="kick">Add Custom Model</summary>
+        <div>
+            <div class="form-grid">
                 <label>
                     Model ID
-                    <input type="text" id="newModelId" placeholder="e.g., distil-large-v3">
+                    <input class="input" type="text" id="newModelId" placeholder="e.g., distil-large-v3">
                 </label>
                 <label>
                     Backend
-                    <select id="newModelBackend">
+                    <select class="select" id="newModelBackend">
                         <option value="both">both</option>
                         <option value="faster-whisper">faster-whisper</option>
                         <option value="mlx">mlx</option>
                     </select>
                 </label>
             </div>
-            <div class="grid">
+            <div class="form-grid">
                 <label>
                     HuggingFace Repo (for mlx)
-                    <input type="text" id="newModelHfRepo" placeholder="e.g., mlx-community/whisper-...">
+                    <input class="input" type="text" id="newModelHfRepo" placeholder="e.g., mlx-community/whisper-...">
                 </label>
                 <label>
                     Size (MB)
-                    <input type="number" id="newModelSize" placeholder="optional">
+                    <input class="input" type="number" id="newModelSize" placeholder="optional">
                 </label>
             </div>
             <label>
                 Description
-                <input type="text" id="newModelDesc" placeholder="optional">
+                <input class="input" type="text" id="newModelDesc" placeholder="optional">
             </label>
-            <button type="button" onclick="addModel()">Add Model</button>
+            <button class="btn btn-primary" type="button" onclick="addModel()">Add Model</button>
         </div>
     </details>
-</article>
+</section>
 
 <!-- Workers -->
-<article>
+<section class="section">
     <header>
-        <h3 style="margin: 0;">Workers</h3>
+        <h3>Workers</h3>
     </header>
-    <div id="workersFields" class="grid"></div>
-</article>
+    <div id="workersFields" class="form-grid"></div>
+</section>
 
 <!-- Notifications -->
-<article>
-    <header style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
-        <h3 style="margin: 0;">Notifications</h3>
-        <button type="button" class="outline secondary" onclick="testNotification()">Test</button>
+<section class="section">
+    <header>
+        <h3>Notifications</h3>
+        <button type="button" class="btn btn-ghost" onclick="testNotification()">Test</button>
     </header>
     <div id="notificationsFields"></div>
-</article>
+</section>
 
 <!-- Distributed Transcription -->
-<article>
+<section class="section">
     <header>
-        <h3 style="margin: 0;">Distributed Transcription</h3>
+        <h3>Distributed Transcription</h3>
     </header>
     <div id="distributedFields"></div>
 
-    <table id="nodesTable" style="margin-top: 1rem;">
+    <table class="table" id="nodesTable">
         <thead>
             <tr>
                 <th>Name</th>
@@ -125,50 +125,58 @@
         </tbody>
     </table>
 
-    <details style="margin-top: 1rem;">
-        <summary>Add Node Manually</summary>
-        <div style="margin-top: 1rem;">
-            <div class="grid">
+    <details class="disclose">
+        <summary class="kick">Add Node Manually</summary>
+        <div>
+            <div class="form-grid">
                 <label>
                     Name
-                    <input type="text" id="newNodeName" placeholder="e.g., M4 MacBook Pro">
+                    <input class="input" type="text" id="newNodeName" placeholder="e.g., M4 MacBook Pro">
                 </label>
                 <label>
                     URL
-                    <input type="text" id="newNodeUrl" placeholder="e.g., http://192.168.1.100:8001">
+                    <input class="input" type="text" id="newNodeUrl" placeholder="e.g., http://192.168.1.100:8001">
                 </label>
             </div>
-            <div class="grid">
+            <div class="form-grid">
                 <label>
                     Whisper Model (optional)
-                    <input type="text" id="newNodeModel" placeholder="e.g., large-v3-turbo">
+                    <input class="input" type="text" id="newNodeModel" placeholder="e.g., large-v3-turbo">
                 </label>
                 <label>
                     Priority
-                    <input type="number" id="newNodePriority" value="10" min="1" max="100">
+                    <input class="input" type="number" id="newNodePriority" value="10" min="1" max="100">
                 </label>
             </div>
-            <button type="button" onclick="addNode()">Add Node</button>
+            <button class="btn btn-primary" type="button" onclick="addNode()">Add Node</button>
         </div>
     </details>
-</article>
+</section>
 
 <!-- General -->
-<article>
+<section class="section">
     <header>
-        <h3 style="margin: 0;">General</h3>
+        <h3>General</h3>
     </header>
-    <div id="generalFields" class="grid"></div>
-</article>
+    <div class="set-row">
+        <div class="kick">Theme</div>
+        <div class="val">
+            <div class="seg" role="radiogroup" aria-label="Theme">
+                {% for value in ['auto', 'light', 'dark'] %}<label class="seg-opt"><input type="radio" name="theme" value="{{ value }}">{{ value }}</label>{% endfor %}
+            </div>
+        </div>
+    </div>
+    <div id="generalFields" class="form-grid"></div>
+</section>
 
 </form>
 
 <!-- Current Values (reference) -->
-<article>
+<section class="section">
     <header>
-        <h3 style="margin: 0;">Current Values</h3>
+        <h3>Current Values</h3>
     </header>
-    <table id="currentSettings">
+    <table class="table" id="currentSettings">
         <thead>
             <tr>
                 <th>Setting</th>
@@ -181,7 +189,7 @@
             <!-- Populated by JavaScript -->
         </tbody>
     </table>
-</article>
+</section>
 {% endblock %}
 
 {% block scripts %}
@@ -250,28 +258,28 @@ async function loadSettings() {
                 const isChecked = info.value === true || info.value === 'true' || info.value === '1';
                 const locked = info.env_override;
                 const disabledAttr = locked ? 'disabled' : '';
-                const envHint = locked ? '<small style="color: var(--pico-muted-color); font-style: italic;">Set by environment variable</small>' : '';
+                const envHint = locked ? '<small>Set by environment variable</small>' : '';
 
                 let inputHtml = '';
                 if (info.type === 'int') {
-                    inputHtml = `<input type="number" name="${key}" id="${key}" min="${info.min || ''}" max="${info.max || ''}" value="${info.value}" ${disabledAttr}>`;
+                    inputHtml = `<input class="input" type="number" name="${key}" id="${key}" min="${info.min || ''}" max="${info.max || ''}" value="${info.value}" ${disabledAttr}>`;
                 } else if (info.type === 'select') {
                     const options = info.options.map(opt =>
                         `<option value="${opt}" ${info.value === opt ? 'selected' : ''}>${opt}</option>`
                     ).join('');
-                    inputHtml = `<select name="${key}" id="${key}" ${disabledAttr}>${options}</select>`;
+                    inputHtml = `<select class="select" name="${key}" id="${key}" ${disabledAttr}>${options}</select>`;
                 } else if (info.type === 'bool') {
-                    inputHtml = `<input type="checkbox" name="${key}" id="${key}" value="true" ${isChecked ? 'checked' : ''} role="switch" ${disabledAttr}>`;
+                    inputHtml = `<input class="input" type="checkbox" name="${key}" id="${key}" value="true" ${isChecked ? 'checked' : ''} role="switch" ${disabledAttr}>`;
                 } else {
-                    inputHtml = `<input type="text" name="${key}" id="${key}" value="${info.value || ''}" ${disabledAttr}>`;
+                    inputHtml = `<input class="input" type="text" name="${key}" id="${key}" value="${info.value || ''}" ${disabledAttr}>`;
                 }
 
                 if (isBool) {
                     html += `
-                        <label style="display: flex; align-items: center; gap: 0.5rem;">
+                        <label>
                             ${inputHtml} ${info.label}
                         </label>
-                        <small style="margin-top: -0.5rem; margin-bottom: 1rem; display: block;">${info.description}</small>
+                        <small>${info.description}</small>
                         ${envHint}
                     `;
                 } else {
@@ -297,9 +305,9 @@ async function loadSettings() {
             if (key.startsWith('runpod_')) continue;  // Skip RunPod settings
             const row = document.createElement('tr');
 
-            let sourceClass = 'status-new';
-            if (info.source === 'database') sourceClass = 'status-completed';
-            else if (info.source === 'env_file') sourceClass = 'status-downloading';
+            let sourceClass = 'status-queued';
+            if (info.source === 'database') sourceClass = 'status-done';
+            else if (info.source === 'env_file') sourceClass = 'status-running';
 
             const hasDbValue = info.db_value !== null && info.db_value !== undefined;
 
@@ -309,9 +317,9 @@ async function loadSettings() {
                     <small>${info.description}</small>
                 </td>
                 <td><code>${info.value}</code></td>
-                <td><span class="status-badge ${sourceClass}">${info.source}</span></td>
+                <td><span class="status ${sourceClass}">${info.source}</span></td>
                 <td>
-                    ${hasDbValue ? `<button type="button" class="outline secondary" style="padding: 0.25rem 0.5rem; font-size: 0.875rem;" onclick="resetSetting('${key}')">Reset</button>` : ''}
+                    ${hasDbValue ? `<button type="button" class="btn btn-ghost" onclick="resetSetting('${key}')">Reset</button>` : ''}
                 </td>
             `;
             tbody.appendChild(row);
@@ -420,7 +428,7 @@ async function loadModels() {
                 <td>${model.description || '-'}</td>
                 <td>${model.size_mb ? model.size_mb + ' MB' : '-'}</td>
                 <td>
-                    <button type="button" class="outline secondary" style="padding: 0.25rem 0.5rem; font-size: 0.875rem;"
+                    <button type="button" class="btn btn-ghost"
                             onclick="deleteModel('${model.id}')">Delete</button>
                 </td>
             `;
@@ -518,7 +526,7 @@ async function loadNodes() {
 
         if (data.nodes.length === 0) {
             const row = document.createElement('tr');
-            row.innerHTML = '<td colspan="5" style="text-align: center; color: var(--pico-muted-color);">No nodes registered</td>';
+            row.innerHTML = '<td colspan="5">No nodes registered</td>';
             tbody.appendChild(row);
             return;
         }
@@ -529,20 +537,20 @@ async function loadNodes() {
                 ? new Date(node.last_heartbeat).toLocaleString()
                 : 'Never';
 
-            let statusClass = 'status-new';
-            if (node.status === 'online') statusClass = 'status-completed';
-            else if (node.status === 'busy') statusClass = 'status-downloading';
+            let statusClass = 'status-queued';
+            if (node.status === 'online') statusClass = 'status-done';
+            else if (node.status === 'busy') statusClass = 'status-running';
             else if (node.status === 'offline') statusClass = 'status-failed';
 
             row.innerHTML = `
                 <td><strong>${node.name}</strong><br><small><code>${node.id.slice(0, 8)}...</code></small></td>
-                <td><span class="status-badge ${statusClass}">${node.status}</span></td>
+                <td><span class="status ${statusClass}">${node.status}</span></td>
                 <td>${node.whisper_model || '-'}</td>
                 <td>${lastHeartbeat}</td>
                 <td>
-                    <button type="button" class="outline secondary" style="padding: 0.25rem 0.5rem; font-size: 0.875rem;"
+                    <button type="button" class="btn btn-ghost"
                             onclick="testNode('${node.id}')">Test</button>
-                    <button type="button" class="outline secondary" style="padding: 0.25rem 0.5rem; font-size: 0.875rem;"
+                    <button type="button" class="btn btn-ghost"
                             onclick="deleteNode('${node.id}')">Delete</button>
                 </td>
             `;

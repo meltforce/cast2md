@@ -1,0 +1,658 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   homelab.css — one stylesheet for every meltforce homelab app.
+
+   Derived from FreeReps' server/web/src/index.css, which ported the Modernist
+   design system. This file is app-agnostic: no Tailwind, no framework, no app
+   name. Copy it into a project, link it once, build with the classes.
+
+   Font: Archivo. Self-host it (`npm i @fontsource-variable/archivo` and
+   `@import "@fontsource-variable/archivo/wght.css"`) — a tailnet-only server
+   has no route to a font CDN, and the UI would fall back to system-ui.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Tokens ──────────────────────────────────────────────────────────────── */
+
+@font-face {
+  font-family: "Archivo Variable";
+  src: url("/static/fonts/Archivo-Variable.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+}
+
+:root {
+  --color-bg: #f3f2f2;
+  --color-surface: #eae9e9;
+  --color-text: #201e1d;
+  --color-accent: #ec3013;
+  --color-divider: color-mix(in srgb, #201e1d 32%, transparent);
+
+  --color-neutral-100: #f8f4f4;
+  --color-neutral-200: #eae7e7;
+  --color-neutral-300: #d7d3d3;
+  --color-neutral-400: #bab6b6;
+  --color-neutral-500: #9b9797;
+  --color-neutral-600: #7d7979;
+  --color-neutral-700: #605d5d;
+  --color-neutral-800: #444141;
+  --color-neutral-900: #2d2b2b;
+
+  --color-accent-100: #fff2ef;
+  --color-accent-200: #ffe0d9;
+  --color-accent-300: #ffc4b8;
+  --color-accent-400: #ff9783;
+  --color-accent-500: #ff563c;
+  --color-accent-600: #dd2b0f;
+  --color-accent-700: #ae1800;
+  --color-accent-800: #7c1405;
+  --color-accent-900: #4d170e;
+
+  --font-heading: "Archivo Variable", "Archivo", system-ui, sans-serif;
+  --font-body: "Archivo Variable", "Archivo", system-ui, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
+
+  /* Page horizontal padding. Nav, headers, table cells, rows and footers
+     all align to this one value. */
+  --page-x: 40px;
+
+  /* The two rule weights. 2px separates sections and carries structure;
+     1px separates records inside a section. There is no third weight. */
+  --rule-strong: 2px solid var(--color-text);
+  --rule-hair: 1px solid var(--color-divider);
+}
+
+@media (max-width: 767px) {
+  :root {
+    --page-x: 20px;
+  }
+}
+
+[data-theme="dark"] {
+  --color-bg: #171615;
+  --color-surface: #201e1d;
+  --color-text: #f3f2f2;
+  --color-divider: color-mix(in srgb, #f3f2f2 32%, transparent);
+  --color-neutral-100: #2d2b2b;
+  --color-neutral-200: #211f1f;
+  --color-neutral-300: #3c3939;
+  --color-neutral-400: #514e4e;
+  --color-neutral-500: #7d7979;
+  --color-neutral-600: #9b9797;
+  --color-neutral-700: #bab6b6;
+  --color-neutral-800: #d7d3d3;
+  --color-neutral-900: #eae7e7;
+  --color-accent: #ff563c;
+  --color-accent-100: #3a1a13;
+  --color-accent-700: #ff9783;
+}
+
+@media (prefers-color-scheme: dark) {
+  [data-theme="auto"] {
+    --color-bg: #171615;
+    --color-surface: #201e1d;
+    --color-text: #f3f2f2;
+    --color-divider: color-mix(in srgb, #f3f2f2 32%, transparent);
+    --color-neutral-100: #2d2b2b;
+    --color-neutral-200: #211f1f;
+    --color-neutral-300: #3c3939;
+    --color-neutral-400: #514e4e;
+    --color-neutral-500: #7d7979;
+    --color-neutral-600: #9b9797;
+    --color-neutral-700: #bab6b6;
+    --color-neutral-800: #d7d3d3;
+    --color-neutral-900: #eae7e7;
+    --color-accent: #ff563c;
+    --color-accent-100: #3a1a13;
+    --color-accent-700: #ff9783;
+  }
+}
+
+/* ── Base ────────────────────────────────────────────────────────────────── */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { background: var(--color-bg); }
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.55;
+  font-weight: 400;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-heading);
+  font-weight: 800;
+  line-height: 1.12;
+  letter-spacing: -0.015em;
+  margin: 0;
+}
+
+a { color: var(--color-accent-700); text-decoration: none; text-underline-offset: 3px; }
+a:hover { color: var(--color-accent); }
+
+:focus { outline: none; }
+:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+::selection { background: color-mix(in srgb, var(--color-accent) 30%, transparent); }
+
+/* Every number that can change carries this, or values jitter on each poll. */
+.num { font-variant-numeric: tabular-nums; }
+
+/* Kicker — the 10px uppercase label above a value, and the table header face. */
+.kick {
+  font: 600 10px var(--font-body);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-neutral-600);
+}
+
+.mono { font-family: var(--font-mono); font-size: 12.5px; }
+
+.page-x { padding-inline: var(--page-x); }
+.hr { border: 0; border-top: var(--rule-strong); margin: 0; }
+
+/* ── Shell: desktop nav ──────────────────────────────────────────────────── */
+
+.nav {
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+  padding: 16px var(--page-x);
+  border-bottom: var(--rule-strong);
+}
+
+/* Brand lockup: app name in the heading face, house mark as a kicker beside
+   it. Every app spells its own name; only the mark is shared. */
+.nav-brand {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-family: var(--font-heading);
+  font-weight: 800;
+  font-size: 19px;
+  letter-spacing: -0.02em;
+  margin-right: var(--space-4);
+  color: var(--color-text);
+}
+
+.nav-brand .house {
+  font: 600 10px var(--font-body);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-accent);
+}
+
+.nav a { color: var(--color-neutral-700); font-size: 13px; font-weight: 500; }
+.nav a:hover { color: var(--color-text); }
+
+/* Inset shadow, not a border: the active mark must not shift the baseline. */
+.nav a[aria-current="page"] {
+  font-weight: 600;
+  color: var(--color-text);
+  box-shadow: inset 0 -2px 0 var(--color-accent);
+}
+
+.nav-end { margin-left: auto; display: flex; align-items: center; gap: var(--space-4); }
+
+/* ── Shell: mobile tab bar ───────────────────────────────────────────────── */
+
+.tabs {
+  position: sticky;
+  bottom: 0;
+  z-index: 20;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  border-top: var(--rule-strong);
+  background: var(--color-bg);
+}
+
+.tabs a {
+  padding: 14px 0 22px;
+  padding-bottom: calc(22px + env(safe-area-inset-bottom));
+  text-align: center;
+  font: 600 10px var(--font-body);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-neutral-600);
+  min-height: 44px;
+}
+
+.tabs a[aria-current="page"] {
+  color: var(--color-text);
+  box-shadow: inset 0 3px 0 var(--color-accent);
+}
+
+/* ── Page header ─────────────────────────────────────────────────────────── */
+
+.page-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-6);
+  padding: 22px var(--page-x) 18px;
+}
+
+.page-head h1 {
+  font-size: 34px;
+  line-height: 1.05;
+  letter-spacing: -0.025em;
+  margin-top: 8px;
+}
+
+.page-head-actions { display: flex; align-items: baseline; gap: 14px; flex: none; }
+
+@media (max-width: 767px) {
+  .page-head { padding-top: 8px; padding-bottom: 14px; }
+  .page-head h1 { font-size: 30px; letter-spacing: -0.03em; }
+}
+
+/* ── Buttons ─────────────────────────────────────────────────────────────── */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  text-decoration: none;
+  font-family: var(--font-heading);
+  font-weight: 800;
+  font-size: 14px;
+  line-height: 1.2;
+  color: var(--color-text);
+  background: transparent;
+  border: 1px solid transparent;
+  padding: var(--space-2) calc(var(--space-3) * 1.2);
+  border-radius: var(--radius-md);
+}
+
+/* Flush left, per Modernist: a button wider than its label starts the text at
+   the left padding edge. Only .btn-center opts out. */
+.btn-center { justify-content: center; }
+.btn-block { display: flex; width: 100%; }
+
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.btn-primary { background: var(--color-accent); color: var(--color-bg); }
+.btn-primary:hover:not(:disabled) { background: var(--color-accent-600); }
+.btn-primary:active:not(:disabled) { background: var(--color-accent-700); }
+
+.btn-secondary { border-color: var(--color-divider); }
+.btn-secondary:hover:not(:disabled) { background: color-mix(in srgb, var(--color-text) 7%, transparent); }
+.btn-secondary:active:not(:disabled) { background: color-mix(in srgb, var(--color-text) 14%, transparent); }
+
+.btn-ghost { color: var(--color-accent-700); padding-inline: var(--space-1); }
+.btn-ghost:hover:not(:disabled) { background: color-mix(in srgb, var(--color-accent) 10%, transparent); }
+.btn-ghost:active:not(:disabled) { background: color-mix(in srgb, var(--color-accent) 18%, transparent); }
+
+.btn-danger { border-color: var(--color-accent); color: var(--color-accent-700); }
+.btn-danger:hover:not(:disabled) { background: var(--color-accent); color: var(--color-bg); }
+
+.btn-icon { padding: var(--space-2); justify-content: center; }
+
+/* ── Forms ───────────────────────────────────────────────────────────────── */
+
+.field > label { display: block; font-size: 12px; margin-bottom: 5px; color: var(--color-neutral-600); }
+.field-hint { font-size: 12px; color: var(--color-neutral-600); margin: 5px 0 0; }
+.field-error { font-size: 12px; color: var(--color-accent-700); margin: 5px 0 0; }
+
+.input, .select, .textarea {
+  width: 100%;
+  min-height: 36px;
+  padding: 6px 10px;
+  font: inherit;
+  font-size: 14px;
+  color: var(--color-text);
+  caret-color: var(--color-accent);
+  background: var(--color-surface);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-md);
+}
+
+.textarea { min-height: 96px; resize: vertical; line-height: 1.55; }
+.select { appearance: none; padding-right: 30px; cursor: pointer; }
+
+.input:hover, .select:hover, .textarea:hover { border-color: color-mix(in srgb, var(--color-text) 45%, transparent); }
+.input:focus-visible, .select:focus-visible, .textarea:focus-visible { border-color: var(--color-accent); outline-offset: 0; }
+.input[aria-invalid="true"] { border-color: var(--color-accent); }
+.input::placeholder { color: var(--color-neutral-500); }
+
+/* Command line — the app-wide URL/query field. One tall field, one primary
+   action, flush against each other, no radius to soften the seam. */
+.cmdline { display: flex; gap: 0; }
+.cmdline .input { min-height: 44px; font-size: 15px; border-right: 0; }
+.cmdline .btn { min-height: 44px; flex: none; }
+
+/* Search field with a leading icon slot. */
+.search { position: relative; }
+.search .input { padding-left: 34px; }
+.search > svg {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--color-neutral-600);
+  pointer-events: none;
+}
+
+/* Square controls — never rounded, never a pill. */
+.check {
+  width: 15px; height: 15px; flex: none; padding: 0; cursor: pointer;
+  border-radius: 0;
+  border: 1px solid var(--color-divider);
+  background: transparent;
+}
+.check[aria-checked="true"] { border: 2px solid var(--color-accent); background: var(--color-accent); }
+
+.switch {
+  width: 44px; height: 26px; flex: none; padding: 2px; cursor: pointer;
+  border-radius: 0;
+  border: 1px solid var(--color-neutral-400);
+  background: transparent;
+  display: flex; align-items: center; justify-content: flex-start;
+}
+.switch[aria-checked="true"] { background: var(--color-accent); border-color: var(--color-accent); justify-content: flex-end; }
+.switch > span { width: 20px; height: 20px; display: block; background: var(--color-neutral-400); }
+.switch[aria-checked="true"] > span { background: var(--color-bg); }
+
+/* Segmented control — a real radio group, not buttons. */
+.seg { display: inline-flex; overflow: hidden; border: 1px solid var(--color-divider); border-radius: var(--radius-md); }
+.seg-opt { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; font-size: 12px; cursor: pointer; white-space: nowrap; }
+.seg-opt input { position: absolute; opacity: 0; width: 0; height: 0; pointer-events: none; }
+.seg-opt + .seg-opt { border-left: 1px solid var(--color-divider); }
+.seg-opt:has(input:checked) { background: var(--color-accent); color: var(--color-bg); }
+.seg-opt:not(:has(input:checked)):hover { background: color-mix(in srgb, var(--color-text) 7%, transparent); }
+.seg-opt:has(input:focus-visible) { outline: 2px solid var(--color-accent); outline-offset: -2px; }
+
+/* Chip — the mobile range control and list filters. */
+.chip {
+  font: 600 11px var(--font-body);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 7px 12px;
+  border: 1px solid var(--color-neutral-400);
+  background: transparent;
+  color: var(--color-neutral-700);
+  white-space: nowrap;
+  cursor: pointer;
+  border-radius: 0;
+}
+.chip[aria-pressed="true"], .chip[aria-current="true"] {
+  background: var(--color-text);
+  border-color: var(--color-text);
+  color: var(--color-bg);
+}
+
+/* Filter bar — chips and fields on one line under the page header. */
+.filters {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 12px var(--page-x);
+  border-top: var(--rule-strong);
+  border-bottom: var(--rule-hair);
+  flex-wrap: wrap;
+}
+.filters .spacer { margin-left: auto; }
+
+/* ── Tags and status ─────────────────────────────────────────────────────── */
+
+.tag {
+  display: inline-flex; align-items: center;
+  font-size: 11px; letter-spacing: 0.02em;
+  padding: 3px 10px; border-radius: var(--radius-md);
+}
+.tag-accent { background: var(--color-accent-100); color: var(--color-accent-700); }
+.tag-neutral { background: var(--color-neutral-100); color: var(--color-neutral-800); }
+.tag-outline { border: 1px solid var(--color-accent); color: var(--color-accent-700); }
+
+/* Status — a job or record state. Uppercase, ink-weighted, never a colour
+   wheel: done reads as plain ink, running carries the accent, failed is
+   outlined in the accent, queued is grey. */
+.status {
+  display: inline-flex; align-items: center; gap: 6px;
+  font: 600 10px var(--font-body);
+  letter-spacing: 0.12em; text-transform: uppercase;
+  padding: 3px 8px; border: 1px solid transparent; border-radius: 0;
+  white-space: nowrap;
+}
+.status-done { color: var(--color-neutral-800); border-color: var(--color-neutral-400); }
+.status-running { color: var(--color-bg); background: var(--color-accent); }
+.status-queued { color: var(--color-neutral-600); border-color: var(--color-neutral-300); }
+.status-failed { color: var(--color-accent-700); border-color: var(--color-accent); }
+
+/* The 6px square that precedes a status word in dense rows. */
+.dot { width: 6px; height: 6px; display: inline-block; background: currentColor; }
+
+/* ── Tables ──────────────────────────────────────────────────────────────── */
+
+.table { width: 100%; border-collapse: collapse; font-size: 14px; }
+
+.table th {
+  text-align: left;
+  font: 600 10px var(--font-body);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-neutral-600);
+  padding: 10px 16px;
+  border-bottom: var(--rule-strong);
+  white-space: nowrap;
+}
+
+.table td { padding: 13px 16px; border-bottom: 1px solid var(--color-neutral-300); }
+.table th:first-child, .table td:first-child { padding-left: var(--page-x); }
+.table th:last-child, .table td:last-child { padding-right: var(--page-x); }
+.table tbody tr:hover:not(.grp) { background: var(--color-accent-100); }
+.table td.right, .table th.right { text-align: right; }
+
+/* Group header row — breaks a table into categories. Not hoverable. */
+.table tr.grp td {
+  background: var(--color-neutral-200);
+  border-bottom: var(--rule-strong);
+  padding-top: 8px; padding-bottom: 8px;
+}
+
+.table tr[aria-selected="true"] { background: var(--color-accent-100); }
+
+/* ── Record row — what a table becomes below 768px ───────────────────────── */
+
+.row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px var(--page-x);
+  border-bottom: var(--rule-hair);
+  width: 100%; text-align: left;
+  background: transparent; border-left: 0; border-right: 0; border-top: 0;
+  font: inherit; color: inherit;
+}
+.row-group {
+  padding: 8px var(--page-x);
+  background: var(--color-neutral-200);
+  border-bottom: var(--rule-hair);
+}
+.row-title { font: 500 14px var(--font-body); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row-meta { font: 400 11px var(--font-body); color: var(--color-neutral-600); margin-top: 3px; }
+.row-value { text-align: right; flex: none; }
+
+/* ── Rail (settings, metric pickers, long tables of contents) ────────────── */
+
+.rail { width: 248px; flex: none; border-right: var(--rule-strong); }
+
+.rail-item {
+  display: block; width: 100%; text-align: left;
+  font-size: 13px; color: var(--color-neutral-700);
+  background: transparent; border: 0;
+  border-left: 3px solid transparent;
+  padding: 11px 20px;
+  cursor: pointer; font-family: var(--font-body);
+}
+.rail-item:hover { background: color-mix(in srgb, var(--color-text) 5%, transparent); color: var(--color-text); }
+.rail-item[aria-selected="true"] {
+  border-left-color: var(--color-accent);
+  background: var(--color-accent-100);
+  color: var(--color-text); font-weight: 600;
+}
+
+/* Settings row: kicker label column, value on the same baseline. */
+.set-row {
+  display: flex; align-items: baseline; gap: 24px;
+  padding: 15px 0; border-bottom: 1px solid var(--color-neutral-300);
+}
+.set-row > .kick { width: 180px; flex: none; }
+.set-row > .val { flex: 1; min-width: 0; }
+
+@media (max-width: 767px) {
+  .set-row { flex-direction: column; gap: 6px; }
+  .set-row > .kick { width: auto; }
+  .set-row > .val { width: 100%; }
+}
+
+/* ── Reader — long-form text, the widest a measure ever gets ─────────────── */
+
+.reader { max-width: 68ch; font-size: 16px; line-height: 1.62; }
+.reader p { margin: 0 0 1em; }
+.reader h2 { font-size: 20px; margin: 32px 0 10px; }
+.reader h3 { font-size: 15px; margin: 24px 0 8px; }
+.reader ul, .reader ol { margin: 0 0 1em; padding-left: 22px; }
+.reader li { margin-bottom: 6px; }
+.reader blockquote {
+  margin: 24px 0; padding-left: 18px;
+  border-left: var(--rule-strong);
+  font-size: 17px;
+}
+
+/* Timestamped transcript line — the cue is a fixed left column. */
+.cue { display: flex; gap: 16px; padding: 7px 0; }
+.cue > time { flex: none; width: 56px; font-variant-numeric: tabular-nums; font-size: 12.5px; color: var(--color-neutral-600); }
+.cue:hover { background: var(--color-accent-100); }
+
+/* ── Log — sync output, job history, ingest results ─────────────────────── */
+
+.log { font-family: var(--font-mono); font-size: 12.5px; border-top: var(--rule-strong); }
+.log-line { display: flex; gap: 14px; padding: 6px var(--page-x); border-bottom: 1px solid var(--color-neutral-300); }
+.log-line > time { flex: none; color: var(--color-neutral-600); }
+.log-line.err { color: var(--color-accent-700); background: var(--color-accent-100); }
+
+/* ── Empty and error states ─────────────────────────────────────────────── */
+
+/* No illustration, no centred card: a kicker, a sentence, one action, all
+   flush left where the content would have started. */
+.empty { padding: 56px var(--page-x); border-top: var(--rule-strong); max-width: 62ch; }
+.empty h3 { font-size: 22px; margin-bottom: 8px; }
+.empty p { font-size: 13.5px; color: var(--color-neutral-700); margin: 0 0 18px; }
+
+/* Error banner — accent rule above, accent tint, ink text. */
+.banner {
+  display: flex; gap: 12px; align-items: flex-start;
+  padding: 14px var(--page-x);
+  background: var(--color-accent-100);
+  border-top: 2px solid var(--color-accent);
+  border-bottom: var(--rule-hair);
+  font-size: 13px;
+}
+.banner > svg { flex: none; color: var(--color-accent); margin-top: 1px; }
+
+/* ── Toast ──────────────────────────────────────────────────────────────── */
+
+/* Bottom left, above the tab bar on the phone. Square, opaque, ink border. */
+.toast {
+  display: flex; align-items: center; gap: 16px;
+  background: var(--color-text); color: var(--color-bg);
+  padding: 12px 16px; font-size: 13px;
+  box-shadow: 0 4px 16px color-mix(in srgb, var(--color-text) 22%, transparent);
+}
+.toast .btn-ghost { color: var(--color-accent-400); }
+
+/* ── Dialog ─────────────────────────────────────────────────────────────── */
+
+.dialog-backdrop {
+  position: fixed; inset: 0; z-index: 30;
+  display: flex; align-items: center; justify-content: center;
+  background: color-mix(in srgb, var(--color-text) 45%, transparent);
+}
+.dialog {
+  background: var(--color-bg);
+  border: var(--rule-strong);
+  width: min(480px, calc(100vw - 40px));
+  padding: 24px;
+}
+.dialog-title { font-size: 20px; }
+.dialog-body { font-size: 13.5px; color: var(--color-neutral-700); margin: 10px 0 20px; }
+.dialog-actions { display: flex; gap: 8px; }
+
+/* Sheet — the phone's dialog. Comes up from the bottom edge, full width. */
+.sheet-backdrop { position: fixed; inset: 0; z-index: 30; display: flex; flex-direction: column; justify-content: flex-end;
+  background: color-mix(in srgb, var(--color-text) 45%, transparent); }
+.sheet { background: var(--color-bg); border-top: var(--rule-strong); padding-bottom: calc(20px + env(safe-area-inset-bottom)); }
+
+/* ── Skeleton — reserves a value's height so nothing reflows on arrival ─── */
+
+.skel { display: inline-block; background: var(--color-neutral-300); vertical-align: baseline; }
+
+/* ── Hero strip — the numbers a page opens with ─────────────────────────── */
+
+.hero {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  border-top: var(--rule-strong);
+  border-bottom: var(--rule-strong);
+}
+.hero > div { padding: 24px var(--page-x) 22px; border-right: var(--rule-hair); }
+.hero > div:last-child { border-right: 0; }
+.hero .value {
+  font: 800 56px/1 var(--font-heading);
+  letter-spacing: -0.035em;
+  margin-top: 14px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.hero .unit { font: 500 15px var(--font-body); color: var(--color-neutral-600); margin-left: 6px; }
+
+@media (max-width: 767px) {
+  .hero { grid-template-columns: 1fr 1fr; }
+  .hero > div { padding: 16px var(--page-x); border-bottom: var(--rule-hair); }
+  .hero .value { font-size: 40px; margin-top: 10px; }
+  .hero .unit { font-size: 12px; margin-left: 4px; }
+}
+
+/* ── Charts ─────────────────────────────────────────────────────────────── */
+
+/* Series colours, in order. Ink first, accent second — the accent marks the
+   series the page is about, never every series at once. */
+:root {
+  --series-1: var(--color-text);
+  --series-2: var(--color-accent);
+  --series-3: var(--color-neutral-500);
+  --series-4: var(--color-neutral-700);
+  --grid-line: var(--color-neutral-300);
+  --band-fill: color-mix(in srgb, var(--color-text) 6%, transparent);
+}
+
+.axis { font: 400 10px var(--font-body); fill: var(--color-neutral-600); letter-spacing: 0.04em; }
+.legend { display: flex; gap: 18px; align-items: center; font: 400 11.5px var(--font-body); color: var(--color-neutral-700); }
+.legend .swatch { width: 10px; height: 10px; display: inline-block; margin-right: 6px; vertical-align: -1px; }
+
+/* ── Footer — the row of onward links every page ends with ─────────────── */
+
+.footer {
+  display: flex; align-items: center; gap: var(--space-6); flex-wrap: wrap;
+  padding: 16px var(--page-x);
+  border-top: var(--rule-strong);
+  margin-top: auto;
+}
+.footer .spacer { margin-left: auto; }
+.footer .note { font: 400 11.5px var(--font-body); color: var(--color-neutral-600); }

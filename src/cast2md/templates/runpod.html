@@ -2,8 +2,8 @@
 
 {% block title %}RunPod - Admin - cast2md{% endblock %}
 
-{% block content %}
-<div class="page-header">
+{% block admin_content %}
+<div class="page-head">
     <hgroup>
         <h1>RunPod GPU Workers</h1>
         <p>On-demand GPU transcription pods</p>
@@ -12,26 +12,26 @@
 
 {% if not runpod_status.available %}
 <!-- Not Configured Message -->
-<article>
+<section class="section">
     <h4>RunPod Not Configured</h4>
     <p>To enable RunPod GPU workers, set your API key:</p>
     <pre><code>RUNPOD_API_KEY=...   # From https://runpod.io/console/user/settings</code></pre>
     <p>Server URL/IP are auto-detected. Tailscale auth key should be stored in <a href="https://www.runpod.io/console/user/secrets" target="_blank">RunPod Secrets</a> as <code>ts_auth_key</code>.</p>
-    <p style="margin-top: 1rem;">
+    <p>
         <a href="https://console.runpod.io/deploy" target="_blank" rel="noopener">Open RunPod Console</a>
     </p>
-</article>
+</section>
 {% else %}
 
 <!-- Master Switch -->
-<article>
-    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+<section class="section">
+    <div>
         <div>
-            <label style="display: flex; align-items: center; gap: 0.75rem; margin: 0; cursor: pointer;">
-                <input type="checkbox" id="runpod-enabled-toggle" role="switch" {% if runpod_status.enabled %}checked{% endif %}>
-                <span style="font-weight: 600;">RunPod Enabled</span>
+            <label>
+                <input class="input" type="checkbox" id="runpod-enabled-toggle" role="switch" {% if runpod_status.enabled %}checked{% endif %}>
+                <span>RunPod Enabled</span>
             </label>
-            <small style="color: var(--pico-muted-color); display: block; margin-top: 0.25rem;">
+            <small>
                 {% if runpod_status.enabled %}
                 GPU workers can be started manually or via auto-scale
                 {% else %}
@@ -39,57 +39,57 @@
                 {% endif %}
             </small>
         </div>
-        <a href="https://console.runpod.io/deploy" target="_blank" rel="noopener" class="secondary outline" role="button" style="font-size: 0.875rem;">
+        <a href="https://console.runpod.io/deploy" target="_blank" rel="noopener" class="btn btn-ghost" role="button">
             RunPod Console
         </a>
     </div>
-</article>
+</section>
 
 {% if runpod_status.enabled %}
 <!-- Status Overview (only when enabled) -->
-<article>
+<section class="section">
     {% set running_pods = runpod_status.setup_states | selectattr('phase', 'equalto', 'ready') | list | length %}
     {% set starting_pods = runpod_status.setup_states | rejectattr('phase', 'equalto', 'ready') | rejectattr('phase', 'equalto', 'failed') | list | length %}
-    <div class="stats-grid" style="margin-bottom: 0;">
-        <div class="stat-card">
+    <div class="hero">
+        <div class="hero-cell">
             <h3>{{ running_pods }}</h3>
             <p>Running</p>
         </div>
-        <div class="stat-card">
+        <div class="hero-cell">
             <h3>{{ starting_pods }}</h3>
             <p>Starting</p>
         </div>
-        <div class="stat-card">
+        <div class="hero-cell">
             <h3>{{ runpod_status.max_pods }}</h3>
             <p>Max Pods</p>
         </div>
-        <div class="stat-card">
+        <div class="hero-cell">
             <h3>{{ transcribe_queued }}{% if settings.runpod_auto_scale %} / {{ settings.runpod_scale_threshold }}{% endif %}</h3>
             <p>{% if settings.runpod_auto_scale %}Queue / Threshold{% else %}Queued Jobs{% endif %}</p>
         </div>
     </div>
-</article>
+</section>
 
 <!-- Actions -->
-<article>
-    <div style="display: flex; gap: 1rem; align-items: center; flex-wrap: wrap;">
-        <button id="start-pod-btn" {% if not runpod_status.can_create %}disabled{% endif %}>
+<section class="section">
+    <div>
+        <button class="btn btn-primary" id="start-pod-btn" {% if not runpod_status.can_create %}disabled{% endif %}>
             Start New Pod
         </button>
-        <button id="terminate-all-btn" class="secondary" {% if not runpod_status.active_pods and not runpod_status.setup_states %}disabled{% endif %}>
+        <button id="terminate-all-btn" class="btn btn-secondary" {% if not runpod_status.active_pods and not runpod_status.setup_states %}disabled{% endif %}>
             Terminate All
         </button>
         {% if not runpod_status.can_create and runpod_status.can_create_reason %}
-        <span style="color: var(--pico-muted-color); font-size: 0.875rem;">{{ runpod_status.can_create_reason }}</span>
+        <span>{{ runpod_status.can_create_reason }}</span>
         {% endif %}
     </div>
-</article>
+</section>
 
 <!-- Active Pods -->
 {% if runpod_status.active_pods or runpod_status.setup_states %}
-<article>
+<section class="section">
     <h4>Pods</h4>
-    <table>
+    <table class="table">
         <thead>
             <tr>
                 <th>Name / Instance</th>
@@ -104,26 +104,26 @@
                 <td><strong>{{ state.pod_name or state.instance_id }}</strong></td>
                 <td>
                     {% if state.phase == 'failed' %}
-                    <span class="status-badge status-failed">FAILED</span>
-                    {% if state.error %}<small style="color: #ef4444;"> {{ state.error[:40] }}{% if state.error|length > 40 %}...{% endif %}</small>{% endif %}
+                    <span class="status status-failed">FAILED</span>
+                    {% if state.error %}<small> {{ state.error[:40] }}{% if state.error|length > 40 %}...{% endif %}</small>{% endif %}
                     {% elif state.phase == 'ready' %}
-                    <span style="color: var(--pico-muted-color);">CREATED</span> &rarr;
-                    <span style="color: var(--pico-muted-color);">SETUP</span> &rarr;
-                    <span class="status-badge status-ready">RUNNING</span>
+                    <span>CREATED</span> &rarr;
+                    <span>SETUP</span> &rarr;
+                    <span class="status status-done">RUNNING</span>
                     {% else %}
                     {% set phase_map = {'creating': 0, 'starting': 1, 'connecting': 2, 'installing': 2} %}
                     {% set step = phase_map.get(state.phase, 0) %}
-                    <span {% if step == 0 %}class="status-badge status-creating"{% else %}style="color: var(--pico-muted-color);"{% endif %}>CREATED</span> &rarr;
-                    <span {% if step >= 1 %}class="status-badge status-installing"{% else %}style="color: var(--pico-muted-color);"{% endif %}>SETUP</span> &rarr;
-                    <span style="color: var(--pico-muted-color);">RUNNING</span>
+                    <span class="{% if step == 0 %}status status-running{% else %}muted{% endif %}">CREATED</span> &rarr;
+                    <span class="{% if step >= 1 %}status status-running{% else %}muted{% endif %}">SETUP</span> &rarr;
+                    <span>RUNNING</span>
                     {% endif %}
                 </td>
                 <td>{{ state.gpu_type or '-' }}</td>
                 <td>
                     {% if state.phase == 'failed' %}
-                    <button class="secondary outline small dismiss-btn" data-instance-id="{{ state.instance_id }}">Dismiss</button>
+                    <button class="btn btn-ghost small dismiss-btn" data-instance-id="{{ state.instance_id }}">Dismiss</button>
                     {% elif state.pod_id %}
-                    <button class="secondary outline small terminate-btn" data-pod-id="{{ state.pod_id }}">Terminate</button>
+                    <button class="btn btn-ghost small terminate-btn" data-pod-id="{{ state.pod_id }}">Terminate</button>
                     {% else %}
                     -
                     {% endif %}
@@ -136,50 +136,51 @@
             <tr>
                 <td>
                     <strong>{{ pod.name }}</strong>
-                    <br><small style="color: var(--pico-muted-color);">{{ pod.id }}</small>
+                    <br><small>{{ pod.id }}</small>
                 </td>
                 <td>
-                    <span class="status-badge status-{{ pod.status | lower }}">{{ pod.status }}</span>
+                    {% set pod_state = pod.status|lower %}
+                    <span class="status {{ 'status-running' if pod_state in ['running', 'starting'] else 'status-done' if pod_state in ['ready', 'completed'] else 'status-failed' if pod_state in ['failed', 'terminated'] else 'status-queued' }}">{{ pod.status }}</span>
                 </td>
                 <td>{{ pod.gpu_type }}</td>
                 <td>
-                    <button class="secondary outline small terminate-btn" data-pod-id="{{ pod.id }}">Terminate</button>
+                    <button class="btn btn-ghost small terminate-btn" data-pod-id="{{ pod.id }}">Terminate</button>
                 </td>
             </tr>
             {% endfor %}
         </tbody>
     </table>
-</article>
+</section>
 {% else %}
-<article>
-    <p style="text-align: center; color: var(--pico-muted-color);">No active pods. Click "Start New Pod" to create one.</p>
-</article>
+<section class="section">
+    <p>No active pods. Click "Start New Pod" to create one.</p>
+</section>
 {% endif %}
 
 <!-- Settings -->
-<article>
-    <header style="display: flex; justify-content: space-between; align-items: center;">
-        <h4 style="margin: 0;">Settings</h4>
-        <button type="button" id="save-settings-btn" class="outline">Save Settings</button>
+<section class="section">
+    <header>
+        <h4>Settings</h4>
+        <button type="button" id="save-settings-btn" class="btn btn-ghost">Save Settings</button>
     </header>
-    <div class="grid" style="margin-top: 1rem;">
+    <div class="form-grid">
         <label>
             GPU Type
-            <div style="display: flex; gap: 0.5rem;">
-                <select id="setting-gpu-type" name="runpod_gpu_type" style="flex: 1;">
+            <div>
+                <select class="select" id="setting-gpu-type" name="runpod_gpu_type">
                     {% for gpu in gpu_types %}
                     <option value="{{ gpu.id }}" {% if gpu.id == settings.runpod_gpu_type %}selected{% endif %}>
                         {{ gpu.display_name }}{% if gpu.memory_gb %} ({{ gpu.memory_gb }}GB){% endif %}{% if gpu.price_hr %} - ${{ "%.2f"|format(gpu.price_hr) }}/hr{% endif %}
                     </option>
                     {% endfor %}
                 </select>
-                <button type="button" id="refresh-gpus-btn" class="outline secondary" style="padding: 0.5rem; width: auto;" title="Refresh GPU prices">↻</button>
+                <button type="button" id="refresh-gpus-btn" class="btn btn-ghost" title="Refresh GPU prices">Refresh</button>
             </div>
             <small>Sorted by price - fallback uses next cheapest available</small>
         </label>
         <label>
             Transcription Model
-            <select id="setting-whisper-model" name="runpod_whisper_model">
+            <select class="select" id="setting-whisper-model" name="runpod_whisper_model">
                 {% for model in transcription_models %}
                 <option value="{{ model.id }}" {% if model.id == settings.runpod_whisper_model %}selected{% endif %}>{{ model.display_name }}</option>
                 {% endfor %}
@@ -187,33 +188,33 @@
             <small>Parakeet (fast, 25 EU languages) or Whisper models</small>
         </label>
     </div>
-    <div class="grid">
+    <div class="form-grid">
         <label>
             Max Pods
-            <input type="number" id="setting-max-pods" name="runpod_max_pods" value="{{ settings.runpod_max_pods }}" min="1" max="10">
+            <input class="input" type="number" id="setting-max-pods" name="runpod_max_pods" value="{{ settings.runpod_max_pods }}" min="1" max="10">
             <small>Maximum concurrent GPU pods</small>
         </label>
         <label>
             Scale Threshold
-            <input type="number" id="setting-scale-threshold" name="runpod_scale_threshold" value="{{ settings.runpod_scale_threshold }}" min="1" max="100" {% if not settings.runpod_auto_scale %}disabled{% endif %}>
+            <input class="input" type="number" id="setting-scale-threshold" name="runpod_scale_threshold" value="{{ settings.runpod_scale_threshold }}" min="1" max="100" {% if not settings.runpod_auto_scale %}disabled{% endif %}>
             <small>Start pods when queue exceeds this</small>
         </label>
     </div>
-    <label style="display: flex; align-items: center; gap: 0.5rem; margin-top: 0.5rem;">
-        <input type="checkbox" id="setting-auto-scale" name="runpod_auto_scale" role="switch" {% if settings.runpod_auto_scale %}checked{% endif %}>
+    <label>
+        <input class="input" type="checkbox" id="setting-auto-scale" name="runpod_auto_scale" role="switch" {% if settings.runpod_auto_scale %}checked{% endif %}>
         Auto-scale
     </label>
-    <small style="display: block; margin-top: -0.5rem; color: var(--pico-muted-color);">Automatically start pods when queue grows</small>
+    <small>Automatically start pods when queue grows</small>
 
-    <hr style="margin: 1.5rem 0 1rem;">
-    <div style="color: var(--pico-muted-color); font-size: 0.875rem;">
+    <hr>
+    <div>
         <strong>Server:</strong> {{ runpod_status.server_url or 'Not detected' }} &nbsp;|&nbsp;
         <strong>IP:</strong> {{ runpod_status.server_ip or 'Not detected' }}
     </div>
 
-    <details style="margin-top: 1rem;">
-        <summary>Manage Transcription Models</summary>
-        <table id="modelsTable" style="margin-top: 0.5rem;">
+    <details class="disclose">
+        <summary class="kick">Manage Transcription Models</summary>
+        <table class="table" id="modelsTable">
             <thead>
                 <tr>
                     <th>Model ID</th>
@@ -229,7 +230,7 @@
                     <td>{{ model.display_name }}</td>
                     <td>{{ model.backend }}</td>
                     <td>
-                        <button type="button" class="outline secondary" style="padding: 0.25rem 0.5rem; font-size: 0.875rem;"
+                        <button type="button" class="btn btn-ghost"
                                 onclick="deleteModel('{{ model.id }}')">Delete</button>
                     </td>
                 </tr>
@@ -237,43 +238,43 @@
             </tbody>
         </table>
 
-        <details style="margin-top: 1rem;">
-            <summary>Add Custom Model</summary>
-            <div style="margin-top: 1rem;">
-                <div class="grid">
+        <details class="disclose">
+            <summary class="kick">Add Custom Model</summary>
+            <div>
+                <div class="form-grid">
                     <label>
                         Model ID
-                        <input type="text" id="newModelId" placeholder="e.g., distil-large-v3">
+                        <input class="input" type="text" id="newModelId" placeholder="e.g., distil-large-v3">
                     </label>
                     <label>
                         Display Name
-                        <input type="text" id="newModelDisplayName" placeholder="e.g., Whisper distil-large-v3">
+                        <input class="input" type="text" id="newModelDisplayName" placeholder="e.g., Whisper distil-large-v3">
                     </label>
                 </div>
-                <div class="grid">
+                <div class="form-grid">
                     <label>
                         Backend
-                        <select id="newModelBackend">
+                        <select class="select" id="newModelBackend">
                             <option value="whisper">whisper</option>
                             <option value="parakeet">parakeet</option>
                         </select>
                     </label>
-                    <div style="display: flex; align-items: flex-end; gap: 0.5rem;">
-                        <button type="button" onclick="addModel()" style="flex: 1;">Add Model</button>
-                        <button type="button" class="outline secondary" onclick="resetModels()">Reset to Defaults</button>
+                    <div>
+                        <button class="btn btn-primary" type="button" onclick="addModel()">Add Model</button>
+                        <button type="button" class="btn btn-ghost" onclick="resetModels()">Reset to Defaults</button>
                     </div>
                 </div>
             </div>
         </details>
     </details>
-</article>
+</section>
 
 <!-- Pod Run History -->
-<article>
-    <header style="display: flex; justify-content: space-between; align-items: center;">
-        <h4 style="margin: 0;">Run History (30 days)</h4>
+<section class="section">
+    <header>
+        <h4>Run History (30 days)</h4>
         {% if pod_run_stats %}
-        <div style="color: var(--pico-muted-color); font-size: 0.875rem;">
+        <div>
             {{ pod_run_stats.total_runs }} runs &bull;
             {{ pod_run_stats.total_hours }}h &bull;
             ${{ "%.2f"|format(pod_run_stats.total_cost) }} total
@@ -281,7 +282,7 @@
         {% endif %}
     </header>
     {% if pod_runs %}
-    <table>
+    <table class="table">
         <thead>
             <tr>
                 <th>Pod</th>
@@ -296,9 +297,9 @@
             <tr>
                 <td>
                     <strong>{{ run.pod_name }}</strong>
-                    <br><small style="color: var(--pico-muted-color);">{{ run.started_at.strftime('%Y-%m-%d %H:%M') if run.started_at else '-' }}</small>
+                    <br><small>{{ run.started_at.strftime('%Y-%m-%d %H:%M') if run.started_at else '-' }}</small>
                 </td>
-                <td>{{ run.gpu_type }}{% if run.gpu_price_hr %}<br><small style="color: var(--pico-muted-color);">${{ "%.2f"|format(run.gpu_price_hr) }}/hr</small>{% endif %}</td>
+                <td>{{ run.gpu_type }}{% if run.gpu_price_hr %}<br><small>${{ "%.2f"|format(run.gpu_price_hr) }}/hr</small>{% endif %}</td>
                 <td>
                     {% if run.ended_at and run.started_at %}
                     {% set duration_seconds = (run.ended_at - run.started_at).total_seconds() %}
@@ -306,52 +307,52 @@
                     {% set minutes = ((duration_seconds % 3600) // 60) | int %}
                     {{ hours }}h {{ minutes }}m
                     {% elif run.status == 'running' %}
-                    <span style="color: var(--pico-primary);">Running...</span>
+                    <span>Running...</span>
                     {% else %}
                     -
                     {% endif %}
                 </td>
                 <td>{% if run.cost is not none %}${{ "%.2f"|format(run.cost) }}{% else %}-{% endif %}</td>
                 <td>
-                    <span class="status-badge status-{{ run.status }}">{{ run.status }}</span>
+                    <span class="status {{ 'status-running' if run.status == 'running' else 'status-done' if run.status == 'completed' else 'status-failed' if run.status == 'failed' else 'status-queued' }}">{{ run.status }}</span>
                 </td>
             </tr>
             {% endfor %}
         </tbody>
     </table>
     {% else %}
-    <p style="text-align: center; color: var(--pico-muted-color);">No pod runs recorded yet. Start a pod to begin tracking costs.</p>
+    <p>No pod runs recorded yet. Start a pod to begin tracking costs.</p>
     {% endif %}
-</article>
+</section>
 
 {% else %}
 <!-- Disabled state - show settings but greyed out -->
-<article style="opacity: 0.6;">
-    <p style="text-align: center; color: var(--pico-muted-color); margin-bottom: 1rem;">
+<section class="section">
+    <p>
         RunPod is disabled. Enable it above to manage GPU workers.
     </p>
-    <header style="display: flex; justify-content: space-between; align-items: center;">
-        <h4 style="margin: 0;">Settings</h4>
-        <button type="button" id="save-settings-btn" class="outline">Save Settings</button>
+    <header>
+        <h4>Settings</h4>
+        <button type="button" id="save-settings-btn" class="btn btn-ghost">Save Settings</button>
     </header>
-    <div class="grid" style="margin-top: 1rem;">
+    <div class="form-grid">
         <label>
             GPU Type
-            <div style="display: flex; gap: 0.5rem;">
-                <select id="setting-gpu-type" name="runpod_gpu_type" style="flex: 1;">
+            <div>
+                <select class="select" id="setting-gpu-type" name="runpod_gpu_type">
                     {% for gpu in gpu_types %}
                     <option value="{{ gpu.id }}" {% if gpu.id == settings.runpod_gpu_type %}selected{% endif %}>
                         {{ gpu.display_name }}{% if gpu.memory_gb %} ({{ gpu.memory_gb }}GB){% endif %}{% if gpu.price_hr %} - ${{ "%.2f"|format(gpu.price_hr) }}/hr{% endif %}
                     </option>
                     {% endfor %}
                 </select>
-                <button type="button" id="refresh-gpus-btn" class="outline secondary" style="padding: 0.5rem; width: auto;" title="Refresh GPU prices">↻</button>
+                <button type="button" id="refresh-gpus-btn" class="btn btn-ghost" title="Refresh GPU prices">Refresh</button>
             </div>
             <small>Sorted by price - fallback uses next cheapest available</small>
         </label>
         <label>
             Transcription Model
-            <select id="setting-whisper-model" name="runpod_whisper_model">
+            <select class="select" id="setting-whisper-model" name="runpod_whisper_model">
                 {% for model in transcription_models %}
                 <option value="{{ model.id }}" {% if model.id == settings.runpod_whisper_model %}selected{% endif %}>{{ model.display_name }}</option>
                 {% endfor %}
@@ -359,57 +360,36 @@
             <small>Parakeet (fast, 25 EU languages) or Whisper models</small>
         </label>
     </div>
-    <div class="grid">
+    <div class="form-grid">
         <label>
             Max Pods
-            <input type="number" id="setting-max-pods" name="runpod_max_pods" value="{{ settings.runpod_max_pods }}" min="1" max="10">
+            <input class="input" type="number" id="setting-max-pods" name="runpod_max_pods" value="{{ settings.runpod_max_pods }}" min="1" max="10">
             <small>Maximum concurrent GPU pods</small>
         </label>
         <label>
             Scale Threshold
-            <input type="number" id="setting-scale-threshold" name="runpod_scale_threshold" value="{{ settings.runpod_scale_threshold }}" min="1" max="100" {% if not settings.runpod_auto_scale %}disabled{% endif %}>
+            <input class="input" type="number" id="setting-scale-threshold" name="runpod_scale_threshold" value="{{ settings.runpod_scale_threshold }}" min="1" max="100" {% if not settings.runpod_auto_scale %}disabled{% endif %}>
             <small>Start pods when queue exceeds this</small>
         </label>
     </div>
-    <label style="display: flex; align-items: center; gap: 0.5rem; margin-top: 0.5rem;">
-        <input type="checkbox" id="setting-auto-scale" name="runpod_auto_scale" role="switch" {% if settings.runpod_auto_scale %}checked{% endif %}>
+    <label>
+        <input class="input" type="checkbox" id="setting-auto-scale" name="runpod_auto_scale" role="switch" {% if settings.runpod_auto_scale %}checked{% endif %}>
         Auto-scale
     </label>
-    <small style="display: block; margin-top: -0.5rem; color: var(--pico-muted-color);">Automatically start pods when queue grows</small>
+    <small>Automatically start pods when queue grows</small>
 
-    <hr style="margin: 1.5rem 0 1rem;">
-    <div style="color: var(--pico-muted-color); font-size: 0.875rem;">
+    <hr>
+    <div>
         <strong>Server:</strong> {{ runpod_status.server_url or 'Not detected' }} &nbsp;|&nbsp;
         <strong>IP:</strong> {{ runpod_status.server_ip or 'Not detected' }}
     </div>
-</article>
+</section>
 {% endif %}
 
 {% endif %}
 {% endblock %}
 
 {% block scripts %}
-<style>
-    .status-creating, .status-starting, .status-connecting, .status-installing {
-        background: color-mix(in srgb, var(--pico-primary) 15%, transparent);
-        color: var(--pico-primary);
-        border: 1px solid color-mix(in srgb, var(--pico-primary) 40%, transparent);
-    }
-    .status-ready, .status-running, .status-completed {
-        background: color-mix(in srgb, #22c55e 15%, transparent);
-        color: #22c55e;
-        border: 1px solid color-mix(in srgb, #22c55e 40%, transparent);
-    }
-    .status-failed, .status-exited, .status-error {
-        background: color-mix(in srgb, #ef4444 15%, transparent);
-        color: #ef4444;
-        border: 1px solid color-mix(in srgb, #ef4444 40%, transparent);
-    }
-    button.small {
-        padding: 0.25rem 0.5rem;
-        font-size: 0.75rem;
-    }
-</style>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     // Master switch toggle
@@ -559,25 +539,6 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    // Toast helper
-    function showToast(message, type) {
-        const container = document.getElementById('toast-container');
-        if (!container) return;
-
-        const toast = document.createElement('div');
-        toast.className = 'toast toast-' + type;
-        toast.style.cssText = 'padding: 0.75rem 1rem; background: var(--pico-card-background-color); border: 1px solid var(--pico-muted-border-color); border-radius: 0.25rem; box-shadow: 0 4px 6px rgba(0,0,0,0.1);';
-        if (type === 'error') {
-            toast.style.borderColor = '#ef4444';
-        } else if (type === 'success') {
-            toast.style.borderColor = '#22c55e';
-        }
-        toast.textContent = message;
-        container.appendChild(toast);
-
-        setTimeout(() => toast.remove(), 5000);
-    }
-
     // Auto-scale toggle - enable/disable threshold field
     const autoScaleToggle = document.getElementById('setting-auto-scale');
     const thresholdInput = document.getElementById('setting-scale-threshold');
@@ -655,7 +616,7 @@ document.addEventListener('DOMContentLoaded', function() {
             } finally {
                 refreshGpusBtn.disabled = false;
                 refreshGpusBtn.removeAttribute('aria-busy');
-                refreshGpusBtn.textContent = '↻';
+                refreshGpusBtn.textContent = 'Refresh';
             }
         });
     }
@@ -732,22 +693,5 @@ async function resetModels() {
     }
 }
 
-function showToast(message, type) {
-    const container = document.getElementById('toast-container');
-    if (!container) return;
-
-    const toast = document.createElement('div');
-    toast.className = 'toast toast-' + type;
-    toast.style.cssText = 'padding: 0.75rem 1rem; background: var(--pico-card-background-color); border: 1px solid var(--pico-muted-border-color); border-radius: 0.25rem; box-shadow: 0 4px 6px rgba(0,0,0,0.1);';
-    if (type === 'error') {
-        toast.style.borderColor = '#ef4444';
-    } else if (type === 'success') {
-        toast.style.borderColor = '#22c55e';
-    }
-    toast.textContent = message;
-    container.appendChild(toast);
-
-    setTimeout(() => toast.remove(), 5000);
-}
 </script>
 {% endblock %}

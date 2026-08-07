@@ -3,13 +3,10 @@
 {% block title %}Error - cast2md{% endblock %}
 
 {% block content %}
-<article>
-    <header>
-        <h1>Error</h1>
-    </header>
+<section class="empty">
+    <div class="kick">Error</div>
+    <h3>Something went wrong.</h3>
     <p>{{ message }}</p>
-    <footer>
-        <a href="/" role="button">Go to Home</a>
-    </footer>
-</article>
+    <a class="btn btn-primary" href="/search">Go to Search</a>
+</section>
 {% endblock %}

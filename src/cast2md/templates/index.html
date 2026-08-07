@@ -3,86 +3,84 @@
 {% block title %}Feeds - cast2md{% endblock %}
 
 {% block content %}
-<div class="page-header">
-    <hgroup>
+<header class="page-head">
+    <div>
+        <div class="kick">Manage your podcast subscriptions</div>
         <h1>Podcast Feeds</h1>
-        <p>Manage your podcast subscriptions</p>
-    </hgroup>
-    <div class="header-actions">
-        <button onclick="showAddFeedDialog()">Add Feed</button>
     </div>
-</div>
+    <div class="page-head-actions">
+        <button class="btn btn-primary" type="button" onclick="showAddFeedDialog()">Add Feed</button>
+    </div>
+</header>
 
-<div class="stats-grid">
-    <div class="stat-card">
-        <h3>{{ feeds|length }}</h3>
-        <p>Feeds</p>
-    </div>
-    <div class="stat-card">
-        <h3>{{ total_episodes }}</h3>
-        <p>Episodes</p>
-    </div>
-    <div class="stat-card">
-        <h3>{{ status_counts.get('completed', 0) }}</h3>
-        <p>Transcribed</p>
-    </div>
-    <div class="stat-card">
-        <h3>{{ status_counts.get('new', 0) }}</h3>
-        <p>New</p>
-    </div>
-</div>
+<section class="hero" aria-label="Feed statistics">
+    <div><div class="kick">Feeds</div><div class="value">{{ feeds|length }}</div></div>
+    <div><div class="kick">Episodes</div><div class="value">{{ total_episodes }}</div></div>
+    <div><div class="kick">Transcribed</div><div class="value">{{ status_counts.get('completed', 0) }}</div></div>
+    <div><div class="kick">New</div><div class="value">{{ status_counts.get('new', 0) }}</div></div>
+</section>
 
-<article>
-    {% if feeds %}
-    <table>
+{% if feeds %}
+<div class="desktop-only table-wrap">
+    <table class="table">
         <thead>
             <tr>
                 <th>Podcast</th>
                 <th>Category</th>
-                <th>Episodes</th>
-                <th>Last Polled</th>
-                <th>Actions</th>
+                <th class="right">Episodes</th>
+                <th class="right">Last polled</th>
+                <th class="right">Refresh</th>
             </tr>
         </thead>
         <tbody>
             {% for item in feeds %}
             <tr>
-                <td>
-                    <a href="/feeds/{{ item.feed.id }}">{{ item.feed.display_title }}</a>
-                </td>
+                <td><a href="/feeds/{{ item.feed.id }}">{{ item.feed.display_title }}</a></td>
                 <td>{{ item.feed.category_list[0] if item.feed.category_list else '' }}</td>
-                <td>{{ item.episode_count }}</td>
-                <td>
-                    {% if item.feed.last_polled %}
-                        {{ item.feed.last_polled.strftime('%Y-%m-%d %H:%M') }}
-                    {% else %}
-                        Never
-                    {% endif %}
+                <td class="right num">{{ item.episode_count }}</td>
+                <td class="right num {% if not item.feed.last_polled %}muted{% endif %}">
+                    {{ item.feed.last_polled.strftime('%Y-%m-%d %H:%M') if item.feed.last_polled else 'Never' }}
                 </td>
-                <td class="actions">
-                    <button class="outline" onclick="refreshFeed({{ item.feed.id }})">Refresh</button>
+                <td class="right">
+                    <button class="btn btn-ghost compact" type="button" onclick="refreshFeed({{ item.feed.id }})">Refresh</button>
                 </td>
             </tr>
             {% endfor %}
         </tbody>
     </table>
-    {% else %}
-    <p>No feeds yet. Add one to get started!</p>
-    {% endif %}
-</article>
+</div>
+<div class="mobile-only">
+    {% for item in feeds %}
+    <a class="row" href="/feeds/{{ item.feed.id }}">
+        <span class="truncate">
+            <span class="row-title">{{ item.feed.display_title }}</span>
+            <span class="row-meta">{{ item.feed.category_list[0] if item.feed.category_list else 'Podcast' }} · {{ item.episode_count }} episodes · {% if item.feed.last_polled %}polled {{ item.feed.last_polled.strftime('%H:%M') }}{% else %}never polled{% endif %}</span>
+        </span>
+    </a>
+    {% endfor %}
+</div>
+{% else %}
+<section class="empty">
+    <div class="kick">Library</div>
+    <h3>No feeds yet.</h3>
+    <p>Add a podcast to fetch its episodes and available transcripts.</p>
+    <button class="btn btn-primary" type="button" onclick="showAddFeedDialog()">Add Feed</button>
+</section>
+{% endif %}
 
-<dialog id="addFeedDialog">
-    <article>
-        <header>
-            <button aria-label="Close" rel="prev" onclick="closeAddFeedDialog()"></button>
-            <h3>Add Podcast Feed</h3>
-        </header>
-
-        <input type="text" id="feedInput" placeholder="Search or enter URL" oninput="handleInput()" autocomplete="off">
-        <div id="feedResults" class="itunes-search-results">
-            <div class="itunes-search-empty">Type to search for podcasts</div>
-        </div>
-    </article>
+<dialog id="addFeedDialog" class="dialog dialog-wide">
+    <button type="button" class="btn btn-ghost btn-icon dialog-close" aria-label="Close" onclick="closeAddFeedDialog()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+    </button>
+    <h2 class="dialog-title">Add Podcast Feed</h2>
+    <div class="dialog-body search">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        <label class="visually-hidden" for="feedInput">Search or enter URL</label>
+        <input class="input" type="text" id="feedInput" placeholder="Search or enter URL" oninput="handleInput()" autocomplete="off">
+    </div>
+    <div id="feedResults" class="dialog-results">
+        <div class="dialog-state">Type to search for podcasts</div>
+    </div>
 </dialog>
 {% endblock %}
 
@@ -100,113 +98,78 @@ function closeAddFeedDialog() {
     document.getElementById('addFeedDialog').close();
     document.getElementById('feedInput').value = '';
     document.getElementById('feedInput').disabled = false;
-    document.getElementById('feedResults').innerHTML =
-        '<div class="itunes-search-empty">Type to search for podcasts</div>';
+    document.getElementById('feedResults').innerHTML = '<div class="dialog-state">Type to search for podcasts</div>';
     isAddingFeed = false;
 }
 
 function isUrl(input) {
     const trimmed = input.trim().toLowerCase();
-    return trimmed.startsWith('http://') ||
-           trimmed.startsWith('https://') ||
-           trimmed.includes('podcasts.apple.com');
+    return trimmed.startsWith('http://') || trimmed.startsWith('https://') || trimmed.includes('podcasts.apple.com');
 }
 
 function handleInput() {
     if (searchTimeout) clearTimeout(searchTimeout);
     const input = document.getElementById('feedInput').value.trim();
-
     if (!input) {
-        document.getElementById('feedResults').innerHTML =
-            '<div class="itunes-search-empty">Type to search for podcasts</div>';
+        document.getElementById('feedResults').innerHTML = '<div class="dialog-state">Type to search for podcasts</div>';
         return;
     }
-
-    if (isUrl(input)) {
-        renderUrlOption(input);
-    } else {
-        searchTimeout = setTimeout(() => searchItunes(input), 300);
-    }
+    if (isUrl(input)) renderUrlOption(input);
+    else searchTimeout = setTimeout(() => searchItunes(input), 300);
 }
 
 function renderUrlOption(url) {
-    const resultsDiv = document.getElementById('feedResults');
-    resultsDiv.innerHTML = `
-        <div class="feed-url-option" onclick="addFromSearch('${escapeHtml(url)}')">
-            <div class="url-icon">🔗</div>
-            <div class="url-info">
-                <p class="url-label">Add podcast from URL</p>
-                <p class="url-value">${escapeHtml(url)}</p>
-            </div>
-        </div>
-    `;
+    document.getElementById('feedResults').innerHTML = `
+        <button class="row" type="button" onclick="addFromSearch('${escapeHtml(url)}')">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.1.1l2-2a5 5 0 0 0-7.1-7.1l-1.1 1.1"/><path d="M14 11a5 5 0 0 0-7.1-.1l-2 2A5 5 0 0 0 12 20l1.1-1.1"/></svg>
+            <span class="truncate"><span class="row-title">Add podcast from URL</span><span class="row-meta">${escapeHtml(url)}</span></span>
+        </button>`;
 }
 
 async function searchItunes(query) {
     const resultsDiv = document.getElementById('feedResults');
-    resultsDiv.innerHTML = '<div class="itunes-search-loading">Searching...</div>';
-
+    resultsDiv.innerHTML = '<div class="dialog-state">Searching…</div>';
     try {
         const response = await fetch(`/api/itunes/search?q=${encodeURIComponent(query)}&limit=10`);
-        if (!response.ok) {
-            throw new Error('Search failed');
-        }
-        const data = await response.json();
-        renderSearchResults(data.results);
+        if (!response.ok) throw new Error('Search failed');
+        renderSearchResults((await response.json()).results);
     } catch (error) {
-        resultsDiv.innerHTML = '<div class="itunes-search-empty">Search failed. Please try again.</div>';
+        resultsDiv.innerHTML = '<div class="dialog-state accent">Search failed. Please try again.</div>';
     }
 }
 
 function renderSearchResults(results) {
     const resultsDiv = document.getElementById('feedResults');
-
     if (results.length === 0) {
-        resultsDiv.innerHTML = '<div class="itunes-search-empty">No podcasts found</div>';
+        resultsDiv.innerHTML = '<div class="dialog-state">No podcasts found</div>';
         return;
     }
-
-    resultsDiv.innerHTML = results.map(r => `
-        <div class="itunes-search-result" onclick="addFromSearch('${escapeHtml(r.feed_url)}')">
-            ${r.artwork_url
-                ? `<img src="${escapeHtml(r.artwork_url)}" alt="" onerror="this.outerHTML='<div class=\\'no-artwork\\'>🎙</div>'">`
-                : '<div class="no-artwork">🎙</div>'
-            }
-            <div class="itunes-result-info">
-                <p class="itunes-result-title">${escapeHtml(r.title)}</p>
-                <p class="itunes-result-author">${escapeHtml(r.author)}</p>
-            </div>
-        </div>
-    `).join('');
+    resultsDiv.innerHTML = results.map((result) => `
+        <button class="row" type="button" onclick="addFromSearch('${escapeHtml(result.feed_url)}')">
+            ${result.artwork_url ? `<img class="artwork-sm" src="${escapeHtml(result.artwork_url)}" alt="">` : '<span class="artwork-sm"></span>'}
+            <span class="truncate"><span class="row-title">${escapeHtml(result.title)}</span><span class="row-meta">${escapeHtml(result.author)}</span></span>
+        </button>`).join('');
 }
 
 async function addFromSearch(feedUrl) {
     if (isAddingFeed) return;
     isAddingFeed = true;
-
-    // Show loading state
     const resultsDiv = document.getElementById('feedResults');
-    resultsDiv.innerHTML = '<div class="itunes-search-loading">Adding podcast...</div>';
+    resultsDiv.innerHTML = '<div class="dialog-state">Adding podcast…</div>';
     document.getElementById('feedInput').disabled = true;
-
     try {
-        const response = await fetch('/api/feeds', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({url: feedUrl})
-        });
-
+        const response = await fetch('/api/feeds', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({url: feedUrl})});
         if (response.ok) {
-            resultsDiv.innerHTML = '<div class="itunes-search-loading">Done! Redirecting...</div>';
+            resultsDiv.innerHTML = '<div class="dialog-state">Done. Redirecting…</div>';
             window.location.reload();
         } else {
             const data = await response.json();
-            resultsDiv.innerHTML = `<div class="itunes-search-error">${escapeHtml(data.detail)}</div>`;
+            resultsDiv.innerHTML = `<div class="dialog-state accent">${escapeHtml(data.detail)}</div>`;
             isAddingFeed = false;
             document.getElementById('feedInput').disabled = false;
         }
     } catch (error) {
-        resultsDiv.innerHTML = `<div class="itunes-search-error">${escapeHtml(error.message)}</div>`;
+        resultsDiv.innerHTML = `<div class="dialog-state accent">${escapeHtml(error.message)}</div>`;
         isAddingFeed = false;
         document.getElementById('feedInput').disabled = false;
     }
@@ -222,13 +185,10 @@ async function refreshFeed(feedId) {
     try {
         const response = await fetch(`/api/feeds/${feedId}/refresh`, {method: 'POST'});
         const data = await response.json();
-
         if (response.ok) {
             showSuccess(data.message);
             setTimeout(() => window.location.reload(), 1500);
-        } else {
-            showError(data.detail);
-        }
+        } else showError(data.detail);
     } catch (error) {
         showError(error.message);
     }

@@ -1,1054 +1,93 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="auto">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#f3f2f2" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#171615" media="(prefers-color-scheme: dark)">
     <title>{% block title %}cast2md{% endblock %}</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@2/css/pico.min.css">
-    <style>
-        :root {
-            --pico-font-size: 16px;
-        }
-        body {
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-        }
-        main.container {
-            flex: 1;
-        }
-        footer.container {
-            padding-bottom: 1.5rem;
-        }
-        nav {
-            margin-bottom: 2rem;
-        }
-        #theme-toggle svg,
-        #admin-link svg {
-            vertical-align: middle;
-            position: relative;
-            top: -1px;
-        }
-        .status-badge {
-            display: inline-block;
-            padding: 0.25rem 0.5rem;
-            border-radius: 0.25rem;
-            font-size: 0.75rem;
-            font-weight: bold;
-            text-transform: uppercase;
-        }
-        /* Status badges - use CSS variables for dark mode compatibility */
-        .status-new {
-            background: color-mix(in srgb, var(--pico-color) 10%, transparent);
-            color: var(--pico-color);
-            border: 1px solid color-mix(in srgb, var(--pico-color) 30%, transparent);
-        }
-        .status-awaiting_transcript {
-            background: color-mix(in srgb, #fbbf24 15%, transparent);
-            color: #f59e0b;
-            border: 1px solid color-mix(in srgb, #fbbf24 40%, transparent);
-        }
-        .status-needs_audio {
-            background: color-mix(in srgb, #9ca3af 15%, transparent);
-            color: #9ca3af;
-            border: 1px solid color-mix(in srgb, #9ca3af 40%, transparent);
-        }
-        .status-downloading {
-            background: color-mix(in srgb, var(--pico-primary) 15%, transparent);
-            color: var(--pico-primary);
-            border: 1px solid color-mix(in srgb, var(--pico-primary) 40%, transparent);
-        }
-        .status-audio_ready {
-            background: color-mix(in srgb, var(--pico-secondary) 15%, transparent);
-            color: var(--pico-secondary);
-            border: 1px solid color-mix(in srgb, var(--pico-secondary) 40%, transparent);
-        }
-        .status-transcribing {
-            background: color-mix(in srgb, #9d174d 15%, transparent);
-            color: #d946ef;
-            border: 1px solid color-mix(in srgb, #9d174d 40%, transparent);
-        }
-        .status-completed {
-            background: color-mix(in srgb, #22c55e 15%, transparent);
-            color: #22c55e;
-            border: 1px solid color-mix(in srgb, #22c55e 40%, transparent);
-        }
-        .status-failed {
-            background: color-mix(in srgb, #ef4444 15%, transparent);
-            color: #ef4444;
-            border: 1px solid color-mix(in srgb, #ef4444 40%, transparent);
-        }
-        /* Progress dots for pipeline visualization */
-        .progress-dots {
-            font-family: system-ui, -apple-system, sans-serif;
-            font-size: 1rem;
-            letter-spacing: 0.15em;
-            cursor: help;
-            white-space: nowrap;
-            position: relative;
-        }
-        .progress-dots .dot {
-            display: inline-block;
-            width: 1.1em;
-            text-align: center;
-        }
-        .progress-dots .dot-empty { color: var(--pico-primary); opacity: 0.35; }
-        .progress-dots .dot-half { color: var(--pico-primary); }
-        .progress-dots .dot-done { color: var(--pico-primary); }
-        .progress-dots .dot-fail { color: #ef4444; }
-        /* Custom CSS tooltip for progress dots */
-        .progress-dots::after {
-            content: attr(title);
-            position: absolute;
-            bottom: 100%;
-            left: 50%;
-            transform: translateX(-50%);
-            padding: 0.4rem 0.6rem;
-            background: var(--pico-card-background-color, #1a1a2e);
-            color: var(--pico-color, #fff);
-            font-size: 0.75rem;
-            font-family: var(--pico-font-family);
-            letter-spacing: normal;
-            border-radius: 4px;
-            white-space: nowrap;
-            opacity: 0;
-            visibility: hidden;
-            transition: opacity 0.15s, visibility 0.15s;
-            z-index: 1000;
-            pointer-events: none;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-        }
-        .progress-dots:hover::after {
-            opacity: 1;
-            visibility: visible;
-        }
-        /* Generic CSS tooltip */
-        .css-tooltip {
-            position: relative;
-            cursor: help;
-        }
-        .css-tooltip::after {
-            content: attr(title);
-            position: absolute;
-            bottom: 100%;
-            left: 50%;
-            transform: translateX(-50%);
-            padding: 0.4rem 0.6rem;
-            background: var(--pico-card-background-color, #1a1a2e);
-            color: var(--pico-color, #fff);
-            font-size: 0.75rem;
-            font-family: var(--pico-font-family);
-            border-radius: 4px;
-            white-space: nowrap;
-            opacity: 0;
-            visibility: hidden;
-            transition: opacity 0.15s, visibility 0.15s;
-            z-index: 1000;
-            pointer-events: none;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-        }
-        .css-tooltip:hover::after {
-            opacity: 1;
-            visibility: visible;
-        }
-        /* Mobile responsive navigation */
-        @media (max-width: 600px) {
-            nav.container {
-                overflow-x: auto;
-                -webkit-overflow-scrolling: touch;
-            }
-            nav.container > ul {
-                flex-wrap: nowrap;
-                gap: 0.5rem;
-            }
-            nav.container > ul > li > a,
-            nav.container > ul > li > strong > a {
-                white-space: nowrap;
-                padding: 0.5rem;
-                font-size: 0.875rem;
-            }
-        }
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-            gap: 1rem;
-            margin-bottom: 2rem;
-        }
-        .stat-card {
-            text-align: center;
-            padding: 1rem;
-            background: var(--pico-card-background-color);
-            border-radius: 0.5rem;
-            border: 1px solid var(--pico-muted-border-color);
-        }
-        .stat-card h3 {
-            margin: 0;
-            font-size: 2rem;
-        }
-        .stat-card p {
-            margin: 0;
-            color: var(--pico-muted-color);
-            font-size: 0.875rem;
-        }
-        .truncate {
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            max-width: 300px;
-        }
-        .actions {
-            display: flex;
-            gap: 0.5rem;
-            align-items: center;
-            min-height: 2.25rem;
-        }
-        .actions button, .actions a {
-            padding: 0.25rem 0.5rem;
-            font-size: 0.875rem;
-        }
-        pre.transcript {
-            white-space: pre-wrap;
-            word-wrap: break-word;
-            max-height: 600px;
-            overflow-y: auto;
-            background: var(--pico-card-background-color);
-            padding: 1rem;
-            border-radius: 0.5rem;
-        }
-        .transcript-container {
-            max-height: 600px;
-            overflow-y: auto;
-            background: var(--pico-card-background-color);
-            padding: 1rem;
-            border-radius: 0.5rem;
-        }
-        .transcript-title {
-            margin-bottom: 0.5rem;
-        }
-        .transcript-meta {
-            font-size: 0.875rem;
-            color: var(--pico-muted-color);
-            margin-bottom: 1rem;
-        }
-        .transcript-segment {
-            display: flex;
-            gap: 1rem;
-            padding: 0.5rem 0;
-            border-bottom: 1px solid var(--pico-muted-border-color);
-            scroll-margin-top: 1rem;
-        }
-        .transcript-segment:last-child {
-            border-bottom: none;
-        }
-        .transcript-segment:target,
-        .transcript-segment.highlight {
-            background: rgba(255, 220, 100, 0.3);
-            transition: background 0.3s ease;
-        }
-        .transcript-timestamp {
-            font-family: monospace;
-            font-size: 0.875rem;
-            color: var(--pico-primary);
-            white-space: nowrap;
-            text-decoration: none;
-        }
-        .transcript-timestamp:hover {
-            text-decoration: underline;
-        }
-        .transcript-text {
-            flex: 1;
-        }
-        .episode-meta {
-            color: var(--pico-muted-color);
-            font-size: 0.875rem;
-            margin-bottom: 1rem;
-        }
-        /* Progress bar styles */
-        .progress-container {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            min-width: 220px;
-        }
-        .progress-text {
-            min-width: 32px;
-        }
-        progress {
-            width: 100px;
-            height: 8px;
-            vertical-align: middle;
-            border-radius: 4px;
-            overflow: hidden;
-        }
-        progress::-webkit-progress-bar {
-            background-color: var(--pico-muted-border-color);
-            border-radius: 4px;
-        }
-        progress::-webkit-progress-value {
-            background-color: var(--pico-primary);
-            border-radius: 4px;
-        }
-        progress::-moz-progress-bar {
-            background-color: var(--pico-primary);
-            border-radius: 4px;
-        }
-        progress.indeterminate {
-            background: linear-gradient(90deg, var(--pico-muted-border-color) 40%, var(--pico-primary) 50%, var(--pico-muted-border-color) 60%);
-            background-size: 200% 100%;
-            animation: indeterminate 1.5s infinite linear;
-        }
-        progress.indeterminate::-webkit-progress-bar {
-            background: transparent;
-        }
-        progress.indeterminate::-webkit-progress-value {
-            background: transparent;
-        }
-        @keyframes indeterminate {
-            0% { background-position: 200% 0; }
-            100% { background-position: -200% 0; }
-        }
-        /* Search results styles */
-        .search-results {
-            display: flex;
-            flex-direction: column;
-            gap: 0.75rem;
-        }
-        .search-result {
-            padding: 1rem;
-            transition: background-color 0.15s ease;
-            border: 1px solid var(--pico-muted-border-color);
-        }
-        .search-result:hover {
-            background-color: var(--pico-secondary-background);
-            border-color: var(--pico-primary);
-        }
-        .match-badge {
-            display: inline-block;
-            padding: 0.15rem 0.4rem;
-            border-radius: 0.25rem;
-            font-size: 0.7rem;
-            font-weight: 600;
-            text-transform: uppercase;
-        }
-        .match-episode {
-            background: color-mix(in srgb, var(--pico-primary) 15%, transparent);
-            color: var(--pico-primary);
-        }
-        .match-transcript {
-            background: color-mix(in srgb, #22c55e 15%, transparent);
-            color: #22c55e;
-        }
-        .match-keyword {
-            background: color-mix(in srgb, #3b82f6 15%, transparent);
-            color: #3b82f6;
-        }
-        .match-semantic {
-            background: color-mix(in srgb, #a855f7 15%, transparent);
-            color: #a855f7;
-        }
-        .match-whisper {
-            background: color-mix(in srgb, #6b7280 15%, transparent);
-            color: #6b7280;
-        }
-        .match-text mark {
-            background: rgba(255, 220, 100, 0.4);
-            padding: 0 0.1rem;
-        }
-        .match-both {
-            background: color-mix(in srgb, #22c55e 15%, transparent);
-            color: #22c55e;
-        }
-        .match-count {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            min-width: 1.5rem;
-            height: 1.5rem;
-            padding: 0 0.4rem;
-            border-radius: 50%;
-            font-size: 0.75rem;
-            font-weight: 600;
-            background: var(--pico-primary);
-            color: var(--pico-primary-inverse);
-        }
-        /* Modal styles */
-        dialog#episodeDetailModal {
-            width: min(90vw, 800px);
-            max-height: 85vh;
-            padding: 0;
-            border: none;
-            border-radius: 0.5rem;
-            box-shadow: 0 25px 50px -12px rgb(0 0 0 / 0.25);
-        }
-        dialog#episodeDetailModal::backdrop {
-            background: rgba(0, 0, 0, 0.5);
-        }
-        dialog#episodeDetailModal .modal-content {
-            margin: 0;
-            padding: 0;
-            background: var(--pico-card-background-color);
-            display: flex;
-            flex-direction: column;
-            max-height: 85vh;
-        }
-        dialog#episodeDetailModal .modal-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-start;
-            padding: 1.25rem;
-            border-bottom: 1px solid var(--pico-muted-border-color);
-            background: var(--pico-card-background-color);
-        }
-        dialog#episodeDetailModal .close-btn {
-            background: none;
-            border: none;
-            font-size: 1.5rem;
-            cursor: pointer;
-            padding: 0;
-            margin: 0;
-            width: auto;
-            line-height: 1;
-            color: var(--pico-muted-color);
-        }
-        dialog#episodeDetailModal .close-btn:hover {
-            color: var(--pico-color);
-        }
-        dialog#episodeDetailModal .modal-section {
-            padding: 1rem 1.25rem;
-            border-bottom: 1px solid var(--pico-muted-border-color);
-        }
-        dialog#episodeDetailModal .modal-section:last-of-type {
-            border-bottom: none;
-        }
-        dialog#episodeDetailModal .modal-section h4 {
-            margin: 0 0 0.75rem;
-            font-size: 0.9rem;
-            font-weight: 600;
-            color: var(--pico-muted-color);
-        }
-        dialog#episodeDetailModal #modalBody {
-            flex: 1;
-            overflow-y: auto;
-        }
-        dialog#episodeDetailModal .shownotes-container {
-            font-size: 0.9rem;
-            line-height: 1.6;
-            max-height: 10em;
-            overflow: hidden;
-            position: relative;
-        }
-        dialog#episodeDetailModal .shownotes-container::after {
-            content: "";
-            position: absolute;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            height: 3em;
-            background: linear-gradient(transparent, var(--pico-card-background-color));
-            pointer-events: none;
-        }
-        dialog#episodeDetailModal .transcript-matches {
-            display: flex;
-            flex-direction: column;
-            gap: 0.5rem;
-        }
-        dialog#episodeDetailModal .transcript-match {
-            display: flex;
-            gap: 0.75rem;
-            padding: 0.5rem;
-            background: var(--pico-background-color);
-            border-radius: 0.25rem;
-        }
-        dialog#episodeDetailModal .match-timestamp {
-            font-family: monospace;
-            font-size: 0.85rem;
-            color: var(--pico-primary);
-            white-space: nowrap;
-            text-decoration: none;
-        }
-        dialog#episodeDetailModal .match-timestamp:hover {
-            text-decoration: underline;
-        }
-        dialog#episodeDetailModal .match-text {
-            font-size: 0.9rem;
-            flex: 1;
-        }
-        dialog#episodeDetailModal .match-text mark {
-            background: rgba(255, 220, 100, 0.4);
-            padding: 0 0.1rem;
-        }
-        dialog#episodeDetailModal .modal-footer {
-            padding: 1rem 1.25rem;
-            border-top: 1px solid var(--pico-muted-border-color);
-            text-align: center;
-            background: var(--pico-card-background-color);
-        }
-        dialog#episodeDetailModal .modal-footer a {
-            margin: 0;
-        }
-        /* Toast notification styles */
-        .toast-container {
-            position: fixed;
-            top: 1rem;
-            right: 1rem;
-            z-index: 9999;
-            display: flex;
-            flex-direction: column;
-            gap: 0.5rem;
-            max-width: 400px;
-        }
-        .toast {
-            padding: 1rem 1.25rem;
-            border-radius: 0.5rem;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-            display: flex;
-            align-items: flex-start;
-            gap: 0.75rem;
-            animation: toast-in 0.3s ease-out;
-            cursor: pointer;
-        }
-        .toast.toast-out {
-            animation: toast-out 0.3s ease-in forwards;
-        }
-        @keyframes toast-in {
-            from { opacity: 0; transform: translateX(100%); }
-            to { opacity: 1; transform: translateX(0); }
-        }
-        @keyframes toast-out {
-            from { opacity: 1; transform: translateX(0); }
-            to { opacity: 0; transform: translateX(100%); }
-        }
-        .toast-success {
-            background: color-mix(in srgb, #22c55e 15%, var(--pico-card-background-color));
-            border: 1px solid #22c55e;
-            color: var(--pico-color);
-        }
-        .toast-error {
-            background: color-mix(in srgb, #ef4444 15%, var(--pico-card-background-color));
-            border: 1px solid #ef4444;
-            color: var(--pico-color);
-        }
-        .toast-info {
-            background: color-mix(in srgb, var(--pico-primary) 15%, var(--pico-card-background-color));
-            border: 1px solid var(--pico-primary);
-            color: var(--pico-color);
-        }
-        .toast-icon {
-            font-size: 1.25rem;
-            line-height: 1;
-            flex-shrink: 0;
-        }
-        .toast-content {
-            flex: 1;
-            font-size: 0.9rem;
-            line-height: 1.4;
-        }
-        .toast-close {
-            background: none;
-            border: none;
-            font-size: 1.25rem;
-            cursor: pointer;
-            padding: 0;
-            margin: 0;
-            width: auto;
-            line-height: 1;
-            color: var(--pico-muted-color);
-            flex-shrink: 0;
-        }
-        .toast-close:hover {
-            color: var(--pico-color);
-        }
-        /* Dialog tabs */
-        .dialog-tabs {
-            display: flex;
-            gap: 0;
-            margin-bottom: 1rem;
-            border-bottom: 1px solid var(--pico-muted-border-color);
-        }
-        .dialog-tab {
-            padding: 0.5rem 1rem;
-            background: none;
-            border: none;
-            border-bottom: 2px solid transparent;
-            cursor: pointer;
-            font-size: 0.9rem;
-            color: var(--pico-muted-color);
-            margin: 0;
-            width: auto;
-        }
-        .dialog-tab:hover {
-            color: var(--pico-color);
-        }
-        .dialog-tab.active {
-            color: var(--pico-primary);
-            border-bottom-color: var(--pico-primary);
-        }
-        .tab-content {
-            display: none;
-        }
-        .tab-content.active {
-            display: block;
-        }
-        /* iTunes search results */
-        .itunes-search-results {
-            min-height: 200px;
-            max-height: 300px;
-            overflow-y: auto;
-            margin-top: 1rem;
-        }
-        .itunes-search-result {
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-            padding: 0.75rem;
-            border: 1px solid var(--pico-muted-border-color);
-            border-radius: 0.25rem;
-            margin-bottom: 0.5rem;
-            cursor: pointer;
-            transition: background-color 0.15s ease, border-color 0.15s ease;
-        }
-        .itunes-search-result:hover {
-            background-color: var(--pico-secondary-background);
-            border-color: var(--pico-primary);
-        }
-        .itunes-search-result img {
-            width: 50px;
-            height: 50px;
-            border-radius: 0.25rem;
-            object-fit: cover;
-            flex-shrink: 0;
-        }
-        .itunes-search-result .no-artwork {
-            width: 50px;
-            height: 50px;
-            border-radius: 0.25rem;
-            background: var(--pico-muted-border-color);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.5rem;
-            flex-shrink: 0;
-        }
-        .itunes-result-info {
-            flex: 1;
-            min-width: 0;
-        }
-        .itunes-result-title {
-            font-weight: 600;
-            margin: 0;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-        .itunes-result-author {
-            color: var(--pico-muted-color);
-            font-size: 0.85rem;
-            margin: 0;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-        .itunes-search-empty {
-            text-align: center;
-            padding: 2rem;
-            color: var(--pico-muted-color);
-        }
-        .itunes-search-loading {
-            text-align: center;
-            padding: 2rem;
-            color: var(--pico-muted-color);
-        }
-        .itunes-search-error {
-            text-align: center;
-            padding: 2rem;
-            color: var(--pico-del-color);
-        }
-        /* Feed URL option (unified add dialog) */
-        .feed-url-option {
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-            padding: 0.75rem;
-            border: 1px solid var(--pico-muted-border-color);
-            border-radius: 0.25rem;
-            cursor: pointer;
-            transition: background-color 0.15s, border-color 0.15s;
-        }
-        .feed-url-option:hover {
-            background-color: var(--pico-secondary-background);
-            border-color: var(--pico-primary);
-        }
-        .feed-url-option .url-icon {
-            width: 50px;
-            height: 50px;
-            border-radius: 0.25rem;
-            background: var(--pico-muted-border-color);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.5rem;
-            flex-shrink: 0;
-        }
-        .feed-url-option .url-info {
-            flex: 1;
-            min-width: 0;
-        }
-        .feed-url-option .url-label {
-            font-weight: 600;
-            margin: 0;
-        }
-        .feed-url-option .url-value {
-            color: var(--pico-muted-color);
-            font-size: 0.85rem;
-            margin: 0;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-        /* Unified page header pattern */
-        .page-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 1.5rem;
-            flex-wrap: wrap;
-            gap: 1rem;
-        }
-        .page-header hgroup {
-            margin: 0;
-        }
-        .page-header h1 {
-            margin: 0;
-        }
-        .page-header p {
-            margin: 0;
-            color: var(--pico-muted-color);
-        }
-        .page-header .header-actions {
-            display: flex;
-            gap: 0.5rem;
-            flex-wrap: wrap;
-        }
-        .action-bar {
-            display: flex;
-            gap: 0.5rem;
-            flex-wrap: wrap;
-            margin-bottom: 1rem;
-        }
-        /* Fix details/summary styling - left-align arrow, bold summary */
-        details summary {
-            display: list-item;
-            list-style: disclosure-closed inside;
-            font-weight: 600;
-            cursor: pointer;
-        }
-        details summary::after {
-            display: none; /* Hide PicoCSS right-side chevron */
-        }
-        details[open] summary {
-            list-style-type: disclosure-open;
-            margin-bottom: 0.5rem;
-        }
-        /* Worker cards */
-        .worker-cards {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-            gap: 1rem;
-            margin-bottom: 2rem;
-        }
-        .worker-cards-small {
-            grid-template-columns: repeat(3, 1fr);
-        }
-        .worker-cards-large {
-            grid-template-columns: repeat(2, 1fr);
-        }
-        @media (max-width: 900px) {
-            .worker-cards-small,
-            .worker-cards-large {
-                grid-template-columns: 1fr;
-            }
-        }
-        .worker-card {
-            border: 1px solid var(--pico-muted-border-color);
-            border-radius: var(--pico-border-radius);
-            padding: 1rem;
-            background: var(--pico-card-background-color);
-        }
-        .worker-card h4 {
-            margin: 0 0 0.75rem 0;
-            font-size: 1rem;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-        .worker-card .card-section {
-            margin-bottom: 0.75rem;
-        }
-        .worker-card .card-section:last-child {
-            margin-bottom: 0;
-        }
-        .worker-card .section-label {
-            font-size: 0.75rem;
-            color: var(--pico-muted-color);
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            margin-bottom: 0.25rem;
-        }
-        .worker-card .workers-row {
-            display: flex;
-            gap: 0.5rem;
-            align-items: center;
-            flex-wrap: wrap;
-        }
-        .worker-card .worker-dot {
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-            display: inline-block;
-            flex-shrink: 0;
-        }
-        .worker-card .dot-idle { background: #22c55e; }
-        .worker-card .dot-busy { background: #3b82f6; }
-        .worker-card .dot-online { background: #22c55e; }
-        .worker-card .dot-offline { background: #ef4444; }
-        .worker-card .dot-stuck { background: #ef4444; }
-        .worker-card .divider {
-            border-top: 1px solid var(--pico-muted-border-color);
-            margin: 0.75rem 0;
-        }
-        .worker-card .queued-count {
-            font-size: 1rem;
-            font-weight: 500;
-        }
-        .worker-card .worker-row {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            padding: 0.25rem 0;
-            min-height: 1.375rem;
-        }
-        .worker-card .worker-row.dots-only {
-            padding-top: 0.45rem;
-            padding-bottom: 0.45rem;
-        }
-        .worker-card .worker-name {
-            font-size: 0.875rem;
-        }
-        .worker-card .worker-job {
-            font-size: 0.8rem;
-            color: var(--pico-muted-color);
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            max-width: 120px;
-            margin-left: auto;
-        }
-        .worker-card .worker-job a {
-            color: var(--pico-primary);
-        }
-        .worker-card .worker-progress {
-            font-size: 0.75rem;
-            color: var(--pico-muted-color);
-            font-family: monospace;
-        }
-        .worker-card .muted {
-            color: var(--pico-muted-color);
-            font-size: 0.8rem;
-        }
-        /* Transcript carousel for search page */
-        .carousel-container {
-            position: relative;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-        .carousel-arrow {
-            flex-shrink: 0;
-            width: 44px;
-            height: 44px;
-            border-radius: 50%;
-            border: 1px solid var(--pico-muted-border-color);
-            background: var(--pico-card-background-color);
-            color: var(--pico-color);
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: border-color 0.2s, background-color 0.2s;
-            padding: 0;
-            margin: 0;
-            line-height: 1;
-        }
-        .carousel-arrow:hover {
-            border-color: var(--pico-primary);
-            background-color: var(--pico-secondary-background);
-        }
-        .carousel-arrow svg polyline {
-            stroke: #666;
-        }
-        [data-theme="dark"] .carousel-arrow svg polyline {
-            stroke: #aaa;
-        }
-        .carousel-track {
-            flex: 1;
-            display: flex;
-            gap: 1rem;
-            overflow-x: auto;
-            scroll-snap-type: x mandatory;
-            -webkit-overflow-scrolling: touch;
-            scrollbar-width: none; /* Firefox */
-            -ms-overflow-style: none; /* IE/Edge */
-        }
-        .carousel-track::-webkit-scrollbar {
-            display: none; /* Chrome/Safari */
-        }
-        .transcript-card-square {
-            flex: 0 0 280px;
-            scroll-snap-align: start;
-            display: flex;
-            flex-direction: column;
-            border: 1px solid var(--pico-muted-border-color);
-            border-radius: 0.5rem;
-            text-decoration: none;
-            color: inherit;
-            overflow: hidden;
-            transition: border-color 0.15s, box-shadow 0.15s;
-        }
-        .transcript-card-square:hover {
-            border-color: var(--pico-primary);
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-        }
-        .card-artwork-square {
-            width: 100%;
-            aspect-ratio: 1;
-            overflow: hidden;
-        }
-        .card-artwork-square img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-        }
-        .card-artwork-square .no-artwork-placeholder {
-            width: 100%;
-            height: 100%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: var(--pico-muted-border-color);
-            font-size: 4rem;
-        }
-        .card-content-square {
-            padding: 1rem;
-            display: flex;
-            flex-direction: column;
-            gap: 0.25rem;
-        }
-        .card-title-square {
-            margin: 0;
-            font-weight: 600;
-            font-size: 1rem;
-            line-height: 1.3;
-            display: -webkit-box;
-            -webkit-line-clamp: 2;
-            -webkit-box-orient: vertical;
-            overflow: hidden;
-        }
-        .card-feed-square {
-            margin: 0;
-            font-size: 0.85rem;
-            color: var(--pico-primary);
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-        .card-description {
-            margin: 0.5rem 0 0 0;
-            font-size: 0.8rem;
-            color: var(--pico-muted-color);
-            line-height: 1.4;
-            display: -webkit-box;
-            -webkit-line-clamp: 3;
-            -webkit-box-orient: vertical;
-            overflow: hidden;
-        }
-        .card-date-square {
-            margin: 0.5rem 0 0 0;
-            font-size: 0.75rem;
-            color: var(--pico-muted-color);
-        }
-    </style>
+    <script>
+        (function () {
+            const saved = localStorage.getItem('theme') || 'auto';
+            document.documentElement.setAttribute('data-theme', saved);
+        })();
+    </script>
+    <link rel="stylesheet" href="/static/homelab.css?v=modernist-2">
+    <link rel="stylesheet" href="/static/app.css?v=modernist-2">
+    {% block head %}{% endblock %}
 </head>
 <body>
-    <nav class="container">
-        <ul>
-            <li><strong><a href="/">cast2md</a></strong></li>
-            <li><a href="/feeds">Feeds</a></li>
-        </ul>
-        <ul>
-            <li><a href="/admin" title="Admin" id="admin-link"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></a></li>
-            <li><a href="#" onclick="toggleTheme(); return false;" title="Toggle theme" id="theme-toggle"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 0 20z" fill="currentColor"/></svg></a></li>
-        </ul>
+    {% set path = request.url.path %}
+    <nav class="nav" aria-label="Primary navigation">
+        <a class="nav-brand" href="/search">cast2md <span class="house">meltforce</span></a>
+        <a href="/feeds" {% if path.startswith('/feeds') or path.startswith('/episodes') %}aria-current="page"{% endif %}>Feeds</a>
+        <a href="/search" {% if path == '/' or path.startswith('/search') %}aria-current="page"{% endif %}>Search</a>
+        <span class="nav-end">
+            <a href="/admin" {% if path.startswith('/admin') %}aria-current="page"{% endif %}>Admin</a>
+        </span>
     </nav>
 
-    <!-- Toast notification container -->
-    <div id="toast-container" class="toast-container"></div>
+    <main class="app-main">
+        {% block content %}{% endblock %}
+    </main>
 
-    <!-- Confirm dialog -->
-    <dialog id="confirmDialog">
-        <article>
-            <header>
-                <button aria-label="Close" rel="prev" onclick="this.closest('dialog').close()"></button>
-                <h3 id="confirmDialogTitle">Confirm</h3>
-            </header>
-            <p id="confirmDialogMessage"></p>
-            <footer style="display: flex; gap: 0.5rem; justify-content: flex-end;">
-                <button type="button" class="secondary" onclick="resolveConfirm(false)">Cancel</button>
-                <button type="button" id="confirmDialogBtn" onclick="resolveConfirm(true)">Confirm</button>
-            </footer>
-        </article>
+    <footer class="footer">
+        <span class="note">cast2md — Podcast Transcription Service</span>
+        {% if app_version %}
+        <a class="btn btn-ghost spacer compact" href="https://github.com/meltforce/cast2md/releases/tag/{{ app_version }}" target="_blank" rel="noopener">v{{ app_version }}</a>
+        {% endif %}
+    </footer>
+
+    <div class="tab-spacer" aria-hidden="true"></div>
+    <nav class="tabs" aria-label="Mobile navigation">
+        <a href="/feeds" {% if path.startswith('/feeds') or path.startswith('/episodes') %}aria-current="page"{% endif %}>Feeds</a>
+        <a href="/search" {% if path == '/' or path.startswith('/search') %}aria-current="page"{% endif %}>Search</a>
+        <a href="/admin/queue" {% if path.startswith('/admin/queue') %}aria-current="page"{% endif %}>Queue</a>
+        <a href="/admin" {% if path.startswith('/admin') and not path.startswith('/admin/queue') %}aria-current="page"{% endif %}>Admin</a>
+    </nav>
+
+    <div id="toast-container" class="toast-container" aria-live="polite"></div>
+
+    <dialog id="confirmDialog" class="dialog">
+        <button type="button" class="btn btn-ghost btn-icon dialog-close" aria-label="Close" onclick="resolveConfirm(false)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+        <h2 class="dialog-title" id="confirmDialogTitle">Confirm</h2>
+        <p class="dialog-body" id="confirmDialogMessage"></p>
+        <div class="dialog-actions actions">
+            <button type="button" class="btn btn-secondary" onclick="resolveConfirm(false)">Cancel</button>
+            <button type="button" class="btn btn-primary" id="confirmDialogBtn" onclick="resolveConfirm(true)">Confirm</button>
+        </div>
     </dialog>
 
-    <!-- Prompt dialog -->
-    <dialog id="promptDialog">
-        <article>
-            <header>
-                <button aria-label="Close" rel="prev" onclick="this.closest('dialog').close()"></button>
-                <h3 id="promptDialogTitle">Input</h3>
-            </header>
-            <label>
-                <span id="promptDialogMessage"></span>
-                <input type="text" id="promptDialogInput" autocomplete="off">
-            </label>
-            <footer style="display: flex; gap: 0.5rem; justify-content: flex-end;">
-                <button type="button" class="secondary" onclick="resolvePrompt(null)">Cancel</button>
-                <button type="button" onclick="resolvePrompt(document.getElementById('promptDialogInput').value)">OK</button>
-            </footer>
-        </article>
+    <dialog id="promptDialog" class="dialog">
+        <button type="button" class="btn btn-ghost btn-icon dialog-close" aria-label="Close" onclick="resolvePrompt(null)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+        <h2 class="dialog-title" id="promptDialogTitle">Input</h2>
+        <div class="dialog-body field">
+            <label for="promptDialogInput" id="promptDialogMessage"></label>
+            <input class="input" type="text" id="promptDialogInput" autocomplete="off">
+        </div>
+        <div class="dialog-actions actions">
+            <button type="button" class="btn btn-secondary" onclick="resolvePrompt(null)">Cancel</button>
+            <button type="button" class="btn btn-primary" onclick="resolvePrompt(document.getElementById('promptDialogInput').value)">OK</button>
+        </div>
     </dialog>
 
     <script>
-        // Toast notification system
         function showToast(message, type = 'info', duration = 4000) {
             const container = document.getElementById('toast-container');
+            while (container.children.length >= 2) container.firstElementChild.remove();
             const toast = document.createElement('div');
             toast.className = `toast toast-${type}`;
-
-            const icons = { success: '✓', error: '✕', info: 'ℹ' };
-
-            toast.innerHTML = `
-                <span class="toast-icon">${icons[type] || icons.info}</span>
-                <span class="toast-content">${message}</span>
-                <button class="toast-close" onclick="dismissToast(this.parentElement)">×</button>
-            `;
-
-            container.appendChild(toast);
-
-            // Click anywhere on toast to dismiss
-            toast.addEventListener('click', (e) => {
-                if (e.target.className !== 'toast-close') dismissToast(toast);
+            toast.innerHTML = `<span class="toast-content"></span><button class="toast-close" aria-label="Dismiss"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>`;
+            toast.querySelector('.toast-content').textContent = message;
+            toast.querySelector('.toast-close').addEventListener('click', () => dismissToast(toast));
+            toast.addEventListener('click', (event) => {
+                if (!event.target.closest('button')) dismissToast(toast);
             });
-
-            // Auto-dismiss (longer for errors)
+            container.appendChild(toast);
             const timeout = type === 'error' ? Math.max(duration, 6000) : duration;
             setTimeout(() => dismissToast(toast), timeout);
         }
@@ -1056,14 +95,13 @@
         function dismissToast(toast) {
             if (!toast || toast.classList.contains('toast-out')) return;
             toast.classList.add('toast-out');
-            setTimeout(() => toast.remove(), 300);
+            setTimeout(() => toast.remove(), 150);
         }
 
         function showSuccess(message) { showToast(message, 'success'); }
         function showError(message) { showToast(message, 'error'); }
         function showInfo(message) { showToast(message, 'info'); }
 
-        // Confirm dialog system
         let confirmResolver = null;
         function showConfirm(message, title = 'Confirm', buttonText = 'Confirm') {
             return new Promise((resolve) => {
@@ -1077,18 +115,16 @@
         function resolveConfirm(value) {
             document.getElementById('confirmDialog').close();
             if (confirmResolver) {
-                confirmResolver(value);
+                const resolve = confirmResolver;
                 confirmResolver = null;
+                resolve(value);
             }
         }
-        document.getElementById('confirmDialog').addEventListener('close', () => {
-            if (confirmResolver) {
-                confirmResolver(false);
-                confirmResolver = null;
-            }
+        document.getElementById('confirmDialog').addEventListener('cancel', (event) => {
+            event.preventDefault();
+            resolveConfirm(false);
         });
 
-        // Prompt dialog system
         let promptResolver = null;
         function showPrompt(message, defaultValue = '', title = 'Input') {
             return new Promise((resolve) => {
@@ -1103,74 +139,39 @@
         function resolvePrompt(value) {
             document.getElementById('promptDialog').close();
             if (promptResolver) {
-                promptResolver(value);
+                const resolve = promptResolver;
                 promptResolver = null;
+                resolve(value);
             }
         }
-        document.getElementById('promptDialog').addEventListener('close', () => {
-            if (promptResolver) {
-                promptResolver(null);
-                promptResolver = null;
-            }
+        document.getElementById('promptDialog').addEventListener('cancel', (event) => {
+            event.preventDefault();
+            resolvePrompt(null);
         });
 
-        // Theme toggle functionality
+        function setTheme(theme) {
+            const value = ['auto', 'light', 'dark'].includes(theme) ? theme : 'auto';
+            document.documentElement.setAttribute('data-theme', value);
+            localStorage.setItem('theme', value);
+            document.querySelectorAll('[name="theme"]').forEach((input) => {
+                input.checked = input.value === value;
+            });
+        }
+
         function toggleTheme() {
-            const html = document.documentElement;
-            const current = html.getAttribute('data-theme');
-            let next;
-            if (current === 'dark') {
-                next = 'light';
-            } else if (current === 'light') {
-                next = '';  // Auto (OS preference)
-            } else {
-                next = 'dark';
-            }
-            if (next) {
-                html.setAttribute('data-theme', next);
-                localStorage.setItem('theme', next);
-            } else {
-                html.removeAttribute('data-theme');
-                localStorage.removeItem('theme');
-            }
-            updateThemeIcon();
+            const values = ['auto', 'light', 'dark'];
+            const current = document.documentElement.getAttribute('data-theme') || 'auto';
+            setTheme(values[(values.indexOf(current) + 1) % values.length]);
         }
-        function updateThemeIcon() {
-            const html = document.documentElement;
-            const current = html.getAttribute('data-theme');
-            const icon = document.getElementById('theme-toggle');
-            if (icon) {
-                const sunIcon = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>';
-                const moonIcon = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
-                const autoIcon = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 0 20z" fill="currentColor"/></svg>';
-                if (current === 'dark') icon.innerHTML = moonIcon;
-                else if (current === 'light') icon.innerHTML = sunIcon;
-                else icon.innerHTML = autoIcon;
-            }
-        }
-        // Restore saved theme on load
-        (function() {
-            const saved = localStorage.getItem('theme');
-            if (saved) {
-                document.documentElement.setAttribute('data-theme', saved);
-            }
-            // Update icon after DOM is ready
-            if (document.readyState === 'loading') {
-                document.addEventListener('DOMContentLoaded', updateThemeIcon);
-            } else {
-                updateThemeIcon();
-            }
-        })();
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const current = document.documentElement.getAttribute('data-theme') || 'auto';
+            document.querySelectorAll('[name="theme"]').forEach((input) => {
+                input.checked = input.value === current;
+                input.addEventListener('change', () => setTheme(input.value));
+            });
+        });
     </script>
-
-    <main class="container">
-        {% block content %}{% endblock %}
-    </main>
-
-    <footer class="container">
-        <small>cast2md - Podcast Transcription Service {% if app_version %}<a href="https://github.com/meltforce/cast2md/releases/tag/{{ app_version }}" target="_blank" style="color: var(--muted-color);">v{{ app_version }}</a>{% endif %}</small>
-    </footer>
-
     {% block scripts %}{% endblock %}
 </body>
 </html>

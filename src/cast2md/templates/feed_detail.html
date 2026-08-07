@@ -3,137 +3,116 @@
 {% block title %}{{ feed.display_title }} - cast2md{% endblock %}
 
 {% block content %}
-<p><a href="/feeds">&larr; Back to feeds</a></p>
+<div class="page-x"><a class="btn btn-ghost compact" href="/feeds">← Back to feeds</a></div>
+<header class="page-head feed-head">
+    {% if feed.image_url %}<img class="artwork" src="{{ feed.image_url }}" alt="">{% endif %}
+    <div class="page-head-main">
+        <div class="kick">Podcast · {{ total_all }} episodes · polled {{ feed.last_polled.strftime('%Y-%m-%d %H:%M') if feed.last_polled else 'never' }}</div>
+        <h1>{{ feed.display_title }}</h1>
+        {% if feed.author %}<div class="meta">{{ feed.author }}</div>{% endif %}
+    </div>
+    <div class="page-head-actions">
+        <button class="btn btn-secondary" type="button" onclick="queueAllDownloads({{ feed.id }})">Get All Transcripts</button>
+        <button class="btn btn-ghost" type="button" onclick="refreshFeed({{ feed.id }})">Refresh</button>
+        <button class="btn btn-ghost" type="button" onclick="document.getElementById('editTitleModal').showModal()">Settings</button>
+        <button class="btn btn-danger" type="button" onclick="document.getElementById('deleteFeedDialog').showModal()">Delete</button>
+    </div>
+</header>
 
-<div style="display: flex; gap: 1.5rem; align-items: flex-start; margin-bottom: 1rem;">
-    {% if feed.image_url %}
-    <img src="{{ feed.image_url }}" alt="{{ feed.display_title }}" style="width: 150px; height: 150px; object-fit: cover; border-radius: 8px; flex-shrink: 0;">
-    {% endif %}
-    <hgroup style="margin: 0;">
-        <h1 style="margin-bottom: 0.25rem;">
-            {{ feed.display_title }}
-            <button class="outline" style="padding: 0.25rem 0.5rem; font-size: 0.75rem; vertical-align: middle; margin-left: 0.5rem;" onclick="document.getElementById('editTitleModal').showModal()">Edit</button>
-        </h1>
-        {% if feed.author %}<p style="margin-bottom: 0.25rem;">by {{ feed.author }}</p>{% endif %}
-        {% set desc = feed.description|strip_html %}
-        <p style="margin-bottom: 0.5rem; color: var(--secondary);">{{ desc[:200] + '...' if desc and desc|length > 200 else desc or 'No description' }}</p>
-        {% if feed.category_list %}<p style="margin-bottom: 0;">{% for cat in feed.category_list %}<span style="display: inline-block; background: var(--muted-border-color); padding: 0.125rem 0.5rem; border-radius: 1rem; font-size: 0.75rem; margin-right: 0.25rem;">{{ cat }}</span>{% endfor %}</p>{% endif %}
-    </hgroup>
+<section class="hero">
+    <div><div class="kick">Episodes</div><div class="value">{{ total_all }}</div></div>
+    <div><div class="kick">Transcribed</div><div class="value">{{ transcript_stats.podcast20 + transcript_stats.pocketcasts + transcript_stats.whisper_only }}</div></div>
+    <div><div class="kick">Queued</div><div class="value">{{ needs_transcription_count + audio_ready_count }}</div></div>
+    <div><div class="kick">Failed</div><div class="value accent">{{ permanent_failure_count }}</div></div>
+</section>
+
+<div class="filters">
+    {% if transcript_stats.podcast20 > 0 %}<span class="tag tag-neutral">publisher {{ transcript_stats.podcast20 }}</span>{% endif %}
+    {% if transcript_stats.pocketcasts > 0 %}<span class="tag tag-neutral">pocketcasts {{ transcript_stats.pocketcasts }}</span>{% endif %}
+    {% if transcript_stats.whisper_only > 0 %}<span class="tag tag-neutral">whisper {{ transcript_stats.whisper_only }}</span>{% endif %}
+    {% if permanent_failure_count > 0 %}<span class="meta">{{ permanent_failure_count }} permanently failed · <a href="?status=failed">show</a></span>{% endif %}
 </div>
 
-<p>
-    {% if feed.link %}<a href="{{ feed.link }}" target="_blank">Website</a> | {% endif %}
-    <strong>{{ total_all }}</strong> episodes
-    &nbsp;|&nbsp;
-    Last polled: {{ feed.last_polled.strftime('%Y-%m-%d %H:%M') if feed.last_polled else 'Never' }}
-    &nbsp;|&nbsp;
-    <button class="outline" style="padding: 0.25rem 0.5rem; font-size: 0.875rem;" onclick="refreshFeed({{ feed.id }})">Refresh Feed</button>
-    <button class="outline" style="padding: 0.25rem 0.5rem; font-size: 0.875rem; display: none;" onclick="queueSelected()" id="queueSelectedBtn">Queue Selected (<span id="selectedCount">0</span>)</button>
-    <button class="outline secondary" style="padding: 0.25rem 0.5rem; font-size: 0.875rem;" onclick="document.getElementById('deleteFeedDialog').showModal()">Delete Feed</button>
-</p>
-
-<!-- Transcript source info -->
-<p style="font-size: 0.875rem; color: var(--muted-color);">
-    <strong>Transcripts:</strong>
-    {% if transcript_stats.podcast20 > 0 %}
-        <span class="match-keyword" style="padding: 0.125rem 0.375rem; border-radius: 3px; font-size: 0.75rem;">Podcast 2.0</span> {{ transcript_stats.podcast20 }}
-    {% endif %}
-    {% if transcript_stats.pocketcasts > 0 %}
-        <span class="match-semantic" style="padding: 0.125rem 0.375rem; border-radius: 3px; font-size: 0.75rem;">Pocket Casts</span> {{ transcript_stats.pocketcasts }}
-    {% endif %}
-    {% if transcript_stats.whisper_only > 0 %}
-        <span class="match-whisper" style="padding: 0.125rem 0.375rem; border-radius: 3px; font-size: 0.75rem;">Whisper</span> {{ transcript_stats.whisper_only }}
-    {% endif %}
-    {% if transcript_stats.podcast20 == 0 and transcript_stats.pocketcasts == 0 %}
-        No external transcripts available (Whisper required for all episodes)
-    {% endif %}
-    {% if permanent_failure_count > 0 %}
-        &nbsp;|&nbsp; <span style="color: var(--del-color);">{{ permanent_failure_count }} hidden</span> (permanent failures, use status filter "failed" to see)
-    {% endif %}
-</p>
-
-<dialog id="deleteFeedDialog">
-    <article>
+<dialog id="deleteFeedDialog" class="dialog">
+    <section class="section">
         <header>
-            <button aria-label="Close" rel="prev" onclick="this.closest('dialog').close()"></button>
+            <button class="btn btn-ghost btn-icon" type="button" aria-label="Close" onclick="this.closest('dialog').close()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
             <h3>Delete Feed</h3>
         </header>
         <p>Are you sure you want to delete <strong>{{ feed.display_title }}</strong>?</p>
         <p>This will remove all {{ total_all }} episodes from the database. Files will be moved to trash and automatically deleted after 30 days.</p>
         <label>
             Type <strong>delete</strong> to confirm
-            <input type="text" id="deleteConfirmInput" placeholder="delete" autocomplete="off">
+            <input class="input" type="text" id="deleteConfirmInput" placeholder="delete" autocomplete="off">
         </label>
-        <footer style="display: flex; gap: 0.5rem; justify-content: flex-end;">
-            <button type="button" class="secondary" onclick="this.closest('dialog').close()">Cancel</button>
-            <button type="button" class="contrast" id="deleteConfirmBtn" onclick="confirmDeleteFeed()" disabled>Delete Feed</button>
+        <footer>
+            <button type="button" class="btn btn-secondary" onclick="this.closest('dialog').close()">Cancel</button>
+            <button type="button" class="btn btn-danger" id="deleteConfirmBtn" onclick="confirmDeleteFeed()" disabled>Delete Feed</button>
         </footer>
-    </article>
+    </section>
 </dialog>
 
-<dialog id="editTitleModal">
-    <article>
+<dialog id="editTitleModal" class="dialog">
+    <section class="section">
         <header>
-            <button aria-label="Close" rel="prev" onclick="this.closest('dialog').close()"></button>
+            <button class="btn btn-ghost btn-icon" type="button" aria-label="Close" onclick="this.closest('dialog').close()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
             <h3>Edit Feed Title</h3>
         </header>
         <form onsubmit="saveFeedTitle(event)">
             <label>
                 Original RSS Title
-                <input value="{{ feed.title }}" disabled>
+                <input class="input" value="{{ feed.title }}" disabled>
             </label>
             <label>
                 Custom Title (leave blank to use RSS title)
-                <input type="text" id="customTitleInput" value="{{ feed.custom_title or '' }}" placeholder="{{ feed.title }}">
+                <input class="input" type="text" id="customTitleInput" value="{{ feed.custom_title or '' }}" placeholder="{{ feed.title }}">
             </label>
-            <footer style="display: flex; gap: 0.5rem; justify-content: flex-end;">
-                <button type="button" class="secondary" onclick="this.closest('dialog').close()">Cancel</button>
-                <button type="submit">Save</button>
+            <footer>
+                <button type="button" class="btn btn-secondary" onclick="this.closest('dialog').close()">Cancel</button>
+                <button class="btn btn-primary" type="submit">Save</button>
             </footer>
         </form>
-    </article>
+    </section>
 </dialog>
 
-<details style="margin-bottom: 1rem;">
-    <summary style="cursor: pointer; padding: 0.75rem 1rem; background: var(--card-background-color); border-radius: var(--border-radius); font-weight: 600;">
-        Actions (Batch Queue, Export)
-    </summary>
-    <div style="padding: 1rem; background: var(--card-background-color); border-top: 1px solid var(--muted-border-color);">
-        <div style="display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem;">
-            <strong style="min-width: 100px;">Batch Queue:</strong>
-            <div style="display: flex; align-items: center; gap: 0.5rem;">
-                <label style="margin: 0; font-size: 0.875rem;">Position</label>
-                <input type="number" id="posFrom" placeholder="From" min="1" style="width: 5rem; padding: 0.25rem 0.5rem; margin: 0;">
+<details class="disclose">
+    <summary class="kick">Batch operations</summary>
+    <div class="disclose-body">
+        <div>
+            <strong>Batch Queue:</strong>
+            <div>
+                <label>Position</label>
+                <input class="input" type="number" id="posFrom" placeholder="From" min="1">
                 <span>-</span>
-                <input type="number" id="posTo" placeholder="To" min="1" style="width: 5rem; padding: 0.25rem 0.5rem; margin: 0;">
-                <button class="outline" style="padding: 0.25rem 0.5rem; font-size: 0.875rem; margin: 0;" onclick="queueByPosition({{ feed.id }})">Queue</button>
+                <input class="input" type="number" id="posTo" placeholder="To" min="1">
+                <button class="btn btn-ghost" onclick="queueByPosition({{ feed.id }})">Queue</button>
             </div>
-            <div style="display: flex; align-items: center; gap: 0.5rem;">
-                <label style="margin: 0; font-size: 0.875rem;">Date</label>
-                <input type="date" id="dateFrom" style="padding: 0.25rem 0.5rem; margin: 0;">
+            <div>
+                <label>Date</label>
+                <input class="input" type="date" id="dateFrom">
                 <span>-</span>
-                <input type="date" id="dateTo" style="padding: 0.25rem 0.5rem; margin: 0;">
-                <button class="outline" style="padding: 0.25rem 0.5rem; font-size: 0.875rem; margin: 0;" onclick="queueByDate({{ feed.id }})">Queue</button>
+                <input class="input" type="date" id="dateTo">
+                <button class="btn btn-ghost" onclick="queueByDate({{ feed.id }})">Queue</button>
             </div>
             {% if needs_transcription_count > 0 %}
-            <button class="outline" style="padding: 0.25rem 0.5rem; font-size: 0.875rem; margin: 0;" onclick="queueAllDownloads({{ feed.id }})">Download & Transcribe All ({{ needs_transcription_count }})</button>
+            <button class="btn btn-ghost" onclick="queueAllDownloads({{ feed.id }})">Download & Transcribe All ({{ needs_transcription_count }})</button>
             {% endif %}
             {% if audio_ready_count > 0 %}
-            <button class="outline" style="padding: 0.25rem 0.5rem; font-size: 0.875rem; margin: 0;" onclick="queueAllTranscribe({{ feed.id }})">Transcribe All Audio Ready ({{ audio_ready_count }})</button>
+            <button class="btn btn-ghost" onclick="queueAllTranscribe({{ feed.id }})">Transcribe All Audio Ready ({{ audio_ready_count }})</button>
             {% endif %}
         </div>
 
-        <div style="display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem;">
-            <strong style="min-width: 100px;">Export:</strong>
-            <div style="display: flex; align-items: center; gap: 0.5rem;">
-                <select id="exportFormat" style="padding: 0.25rem 0.5rem; margin: 0; width: auto;">
+        <div>
+            <strong>Export:</strong>
+            <div>
+                <select class="select" id="exportFormat">
                     <option value="md">Markdown (.md)</option>
                     <option value="txt">Plain Text (.txt)</option>
                     <option value="srt">SRT Subtitles (.srt)</option>
                     <option value="vtt">WebVTT (.vtt)</option>
                     <option value="json">JSON (.json)</option>
                 </select>
-                <a id="exportLink" href="/api/feeds/{{ feed.id }}/export?format=md" role="button" class="outline" style="padding: 0.25rem 0.5rem; font-size: 0.875rem; margin: 0;">Download All (ZIP)</a>
+                <a id="exportLink" href="/api/feeds/{{ feed.id }}/export?format=md" role="button" class="btn btn-ghost">Download All (ZIP)</a>
             </div>
         </div>
 
@@ -141,14 +120,14 @@
 </details>
 
 <!-- Search and Filter Section -->
-<article style="margin-bottom: 1rem; padding: 1rem; background: var(--card-background-color);">
-    <form id="searchForm" method="get" style="display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;">
-        <div style="display: flex; align-items: center; gap: 0.5rem; flex: 1; min-width: 200px;">
-            <input type="text" name="q" id="searchInput" placeholder="Search episodes..."
-                   value="{{ query }}" style="margin: 0; padding: 0.5rem;">
+<section class="section">
+    <form id="searchForm" method="get" class="filters">
+        <div class="filter-query">
+            <input class="input" type="text" name="q" id="searchInput" placeholder="Search episodes..."
+                   value="{{ query }}">
         </div>
-        <div style="display: flex; align-items: center; gap: 0.5rem;">
-            <label style="margin: 0; font-size: 0.875rem;">Status:</label>
+        <div>
+            <label>Status:</label>
             {% set status_labels = {
                 'new': 'New',
                 'awaiting_transcript': 'Awaiting Transcript',
@@ -159,38 +138,38 @@
                 'completed': 'Completed',
                 'failed': 'Failed'
             } %}
-            <select name="status" id="statusFilter" style="padding: 0.25rem 0.5rem; margin: 0; width: auto;">
+            <select class="select" name="status" id="statusFilter">
                 <option value="">All</option>
                 {% for s in statuses %}
                 <option value="{{ s }}" {% if status_filter == s %}selected{% endif %}>{{ status_labels.get(s, s|capitalize) }}</option>
                 {% endfor %}
             </select>
         </div>
-        <input type="hidden" name="per_page" value="{{ per_page }}">
-        <button type="submit" style="padding: 0.5rem 1rem; margin: 0;">Search</button>
+        <input class="input" type="hidden" name="per_page" value="{{ per_page }}">
+        <button class="btn btn-primary" type="submit">Search</button>
         {% if query or status_filter %}
-        <a href="?per_page={{ per_page }}" role="button" class="outline secondary" style="padding: 0.5rem 1rem; margin: 0;">Clear Filters</a>
+        <a href="?per_page={{ per_page }}" role="button" class="btn btn-ghost">Clear Filters</a>
         {% endif %}
     </form>
     {% if query or status_filter %}
-    <p style="margin: 0.5rem 0 0 0; font-size: 0.875rem;">
+    <p>
         Showing <strong>{{ total }}</strong> results
         {% if query %} for "<strong>{{ query }}</strong>"{% endif %}
         {% if status_filter %} with status <strong>{{ status_filter }}</strong>{% endif %}
         ({{ total_all }} total episodes)
     </p>
     {% endif %}
-</article>
+</section>
 
-<table>
+<table class="table episode-table">
     <thead>
         <tr>
-            <th style="width: 2rem;"><input type="checkbox" id="selectAll" onchange="toggleSelectAll()"></th>
+            <th><input class="check" type="checkbox" id="selectAll" onchange="toggleSelectAll()"></th>
             <th>Episode</th>
-            <th style="white-space: nowrap;">Length</th>
-            <th style="white-space: nowrap;">Published</th>
-            <th style="white-space: nowrap;">Progress</th>
-            <th style="white-space: nowrap;">Actions</th>
+            <th>Length</th>
+            <th>Published</th>
+            <th>Progress</th>
+            <th>Actions</th>
         </tr>
     </thead>
     <tbody>
@@ -205,21 +184,21 @@
             </td>
             <td>
                 {% if episode.permanent_failure %}
-                <span class="truncate" style="display: block; color: var(--muted-color);">{{ episode.title }}</span>
+                <span class="truncate">{{ episode.title }}</span>
                 {% else %}
                 {% set ep_params = [] %}
                 {% if query %}{% set _ = ep_params.append('q=' ~ query|urlencode) %}{% endif %}
                 {% if status_filter %}{% set _ = ep_params.append('status=' ~ status_filter) %}{% endif %}
                 {% if per_page != 25 %}{% set _ = ep_params.append('per_page=' ~ per_page) %}{% endif %}
                 {% if page != 1 %}{% set _ = ep_params.append('page=' ~ page) %}{% endif %}
-                <a href="/episodes/{{ episode.id }}{% if ep_params %}?{{ ep_params|join('&') }}{% endif %}" class="truncate" style="display: block;">
+                <a href="/episodes/{{ episode.id }}{% if ep_params %}?{{ ep_params|join('&') }}{% endif %}" class="truncate">
                     {{ episode.title }}
                 </a>
                 {% endif %}
             </td>
-            <td style="white-space: nowrap;">{% if episode.duration_seconds %}{{ '%d:%02d' % (episode.duration_seconds // 60, episode.duration_seconds % 60) }}{% endif %}</td>
-            <td style="white-space: nowrap;">{{ episode.published_at.strftime('%Y-%m-%d') if episode.published_at else 'Unknown' }}</td>
-            <td style="white-space: nowrap;">
+            <td>{% if episode.duration_seconds %}{{ '%d:%02d' % (episode.duration_seconds // 60, episode.duration_seconds % 60) }}{% endif %}</td>
+            <td>{{ episode.published_at.strftime('%Y-%m-%d') if episode.published_at else 'Unknown' }}</td>
+            <td>
                 {% set status = 'queued' if (episode.id in queued_episode_ids and episode.status.value == 'new') else episode.status.value %}
                 {% set tooltips = {
                     'new': 'Ready to process',
@@ -232,46 +211,33 @@
                     'completed': 'Transcript available',
                     'failed': 'Processing failed'
                 } %}
-                <span class="progress-dots" data-status="{{ status }}" title="{{ tooltips.get(status, status) }}">
-                    {% if status == 'new' %}
-                    <span class="dot dot-empty">○</span><span class="dot dot-empty">○</span><span class="dot dot-empty">○</span><span class="dot dot-empty">○</span>
-                    {% elif status == 'queued' %}
-                    <span class="dot dot-half">◐</span><span class="dot dot-empty">○</span><span class="dot dot-empty">○</span><span class="dot dot-empty">○</span>
-                    {% elif status == 'awaiting_transcript' %}
-                    <span class="dot dot-half">◐</span><span class="dot dot-empty">○</span><span class="dot dot-empty">○</span><span class="dot dot-empty">○</span>
-                    {% elif status == 'needs_audio' %}
-                    <span class="dot dot-done">●</span><span class="dot dot-empty">○</span><span class="dot dot-empty">○</span><span class="dot dot-empty">○</span>
-                    {% elif status == 'downloading' %}
-                    <span class="dot dot-done">●</span><span class="dot dot-half">◐</span><span class="dot dot-empty">○</span><span class="dot dot-empty">○</span>
-                    {% elif status == 'audio_ready' %}
-                    <span class="dot dot-done">●</span><span class="dot dot-done">●</span><span class="dot dot-empty">○</span><span class="dot dot-empty">○</span>
-                    {% elif status == 'transcribing' %}
-                    <span class="dot dot-done">●</span><span class="dot dot-done">●</span><span class="dot dot-half">◐</span><span class="dot dot-empty">○</span>
-                    {% elif status == 'completed' %}
-                    <span class="dot dot-done">●</span><span class="dot dot-done">●</span><span class="dot dot-done">●</span><span class="dot dot-done">●</span>
-                    {% elif status == 'failed' %}
-                    <span class="dot dot-done">●</span><span class="dot dot-fail">✗</span><span class="dot dot-empty">○</span><span class="dot dot-empty">○</span>
-                    {% endif %}
+                {% set state_class = 'status-done' if status == 'completed' else 'status-running' if status in ['downloading', 'transcribing'] else 'status-failed' if status == 'failed' else 'status-queued' %}
+                <span class="status {{ state_class }} episode-status">{{ status }}</span>
+                <span class="pipe tip" data-status="{{ status }}" title="{{ tooltips.get(status, status) }}">
+                    <span class="{{ 'pipe-done' if status in ['needs_audio', 'downloading', 'audio_ready', 'transcribing', 'completed', 'failed'] else 'pipe-queued' }}"></span>
+                    <span class="{{ 'pipe-done' if status in ['audio_ready', 'transcribing', 'completed'] else 'pipe-running' if status == 'downloading' else 'pipe-failed' if status == 'failed' else 'pipe-queued' }}"></span>
+                    <span class="{{ 'pipe-done' if status == 'completed' else 'pipe-running' if status == 'transcribing' else 'pipe-queued' }}"></span>
+                    <span class="{{ 'pipe-done' if status == 'completed' else 'pipe-queued' }}"></span>
                 </span>
             </td>
-            <td class="actions" style="white-space: nowrap;">
+            <td class="actions">
                 {% if episode.id in queued_episode_ids %}
                     <span class="actions-spacer"></span>
                 {% elif episode.status.value == 'new' %}
                     {# NEW episodes auto-process, but show Download Audio as fallback #}
-                    <button class="outline secondary" onclick="downloadEpisode({{ episode.id }})">Download Audio</button>
+                    <button class="btn btn-ghost" onclick="downloadEpisode({{ episode.id }})">Download Audio</button>
                 {% elif episode.status.value == 'awaiting_transcript' %}
-                    <button class="outline secondary" onclick="downloadEpisode({{ episode.id }})" title="Transcript not ready yet - download audio for Whisper instead">Download Audio</button>
+                    <button class="btn btn-ghost" onclick="downloadEpisode({{ episode.id }})" title="Transcript not ready yet - download audio for Whisper instead">Download Audio</button>
                 {% elif episode.status.value == 'needs_audio' %}
-                    <button class="outline secondary" onclick="downloadEpisode({{ episode.id }})" title="No external transcript available - use Whisper">Download Audio</button>
+                    <button class="btn btn-ghost" onclick="downloadEpisode({{ episode.id }})" title="No external transcript available - use Whisper">Download Audio</button>
                 {% elif episode.status.value == 'downloading' or episode.status.value == 'transcribing' %}
                     <span class="actions-spacer"></span>
                 {% elif episode.status.value == 'audio_ready' %}
-                    <button class="outline secondary" onclick="transcribeEpisode({{ episode.id }}, this)">Transcribe</button>
+                    <button class="btn btn-ghost" onclick="transcribeEpisode({{ episode.id }}, this)">Transcribe</button>
                 {% elif episode.status.value == 'completed' and episode.transcript_path %}
-                    <a href="/episodes/{{ episode.id }}" class="outline secondary" role="button">View</a>
+                    <a href="/episodes/{{ episode.id }}" class="btn btn-ghost" role="button">View</a>
                 {% elif episode.status.value == 'failed' %}
-                    <button class="outline secondary" onclick="retryEpisode({{ episode.id }})">Retry</button>
+                    <button class="btn btn-ghost" onclick="retryEpisode({{ episode.id }})">Retry</button>
                 {% else %}
                     <span class="actions-spacer"></span>
                 {% endif %}
@@ -279,7 +245,7 @@
         </tr>
         {% else %}
         <tr>
-            <td colspan="6" style="text-align: center; padding: 2rem;">
+            <td colspan="6">
                 {% if query or status_filter %}
                 No episodes found matching your search criteria.
                 {% else %}
@@ -293,11 +259,11 @@
 
 <!-- Pagination Section -->
 {% if total_pages > 0 %}
-<nav style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 1rem; margin-top: 1rem;">
+<nav class="pagination">
     <!-- Items per page selector -->
-    <div style="display: flex; align-items: center; gap: 0.5rem;">
-        <label style="margin: 0; font-size: 0.875rem;">Items per page:</label>
-        <select id="perPageSelect" style="padding: 0.25rem 0.5rem; margin: 0; width: auto;">
+    <div>
+        <label>Items per page:</label>
+        <select class="select" id="perPageSelect">
             {% for pp in valid_per_page %}
             <option value="{{ pp }}" {% if per_page == pp %}selected{% endif %}>{{ pp }}</option>
             {% endfor %}
@@ -313,14 +279,14 @@
     {% set _ = base_params.append('per_page=' ~ per_page) %}
     {% set base_url = '?' ~ base_params|join('&') ~ '&page=' %}
 
-    <div style="display: flex; align-items: center; gap: 0.25rem; flex-wrap: wrap;">
+    <div>
         {# First and Previous buttons #}
         {% if page > 1 %}
-        <a href="{{ base_url }}1" role="button" class="outline" style="padding: 0.25rem 0.5rem; margin: 0;" title="First page">First</a>
-        <a href="{{ base_url }}{{ page - 1 }}" role="button" class="outline" style="padding: 0.25rem 0.5rem; margin: 0;">&larr; Prev</a>
+        <a href="{{ base_url }}1" role="button" class="btn btn-ghost" title="First page">First</a>
+        <a href="{{ base_url }}{{ page - 1 }}" role="button" class="btn btn-ghost">&larr; Prev</a>
         {% else %}
-        <button class="outline" style="padding: 0.25rem 0.5rem; margin: 0;" disabled>First</button>
-        <button class="outline" style="padding: 0.25rem 0.5rem; margin: 0;" disabled>&larr; Prev</button>
+        <button class="btn btn-ghost" disabled>First</button>
+        <button class="btn btn-ghost" disabled>&larr; Prev</button>
         {% endif %}
 
         {# Page numbers with ellipsis #}
@@ -334,33 +300,32 @@
         {% set prev_page = namespace(value=0) %}
         {% for p in show_pages %}
             {% if p > prev_page.value + 1 %}
-            <span style="padding: 0.25rem;">...</span>
+            <span>...</span>
             {% endif %}
             {% if p == page %}
-            <button style="padding: 0.25rem 0.5rem; margin: 0; font-weight: bold;">{{ p }}</button>
+            <button class="btn btn-primary">{{ p }}</button>
             {% else %}
-            <a href="{{ base_url }}{{ p }}" role="button" class="outline" style="padding: 0.25rem 0.5rem; margin: 0;">{{ p }}</a>
+            <a href="{{ base_url }}{{ p }}" role="button" class="btn btn-ghost">{{ p }}</a>
             {% endif %}
             {% set prev_page.value = p %}
         {% endfor %}
 
         {# Next and Last buttons #}
         {% if page < total_pages %}
-        <a href="{{ base_url }}{{ page + 1 }}" role="button" class="outline" style="padding: 0.25rem 0.5rem; margin: 0;">Next &rarr;</a>
-        <a href="{{ base_url }}{{ total_pages }}" role="button" class="outline" style="padding: 0.25rem 0.5rem; margin: 0;" title="Last page">Last</a>
+        <a href="{{ base_url }}{{ page + 1 }}" role="button" class="btn btn-ghost">Next &rarr;</a>
+        <a href="{{ base_url }}{{ total_pages }}" role="button" class="btn btn-ghost" title="Last page">Last</a>
         {% else %}
-        <button class="outline" style="padding: 0.25rem 0.5rem; margin: 0;" disabled>Next &rarr;</button>
-        <button class="outline" style="padding: 0.25rem 0.5rem; margin: 0;" disabled>Last</button>
+        <button class="btn btn-ghost" disabled>Next &rarr;</button>
+        <button class="btn btn-ghost" disabled>Last</button>
         {% endif %}
     </div>
 
     <!-- Go to page input -->
-    <div style="display: flex; align-items: center; gap: 0.5rem;">
-        <label style="margin: 0; font-size: 0.875rem;">Page:</label>
-        <input type="number" id="gotoPageInput" min="1" max="{{ total_pages }}" value="{{ page }}"
-               style="width: 4rem; padding: 0.25rem 0.5rem; margin: 0;">
-        <span style="font-size: 0.875rem;">of {{ total_pages }}</span>
-        <button class="outline" style="padding: 0.25rem 0.5rem; margin: 0;" onclick="gotoPage()">Go</button>
+    <div>
+        <label>Page:</label>
+        <input class="input" type="number" id="gotoPageInput" min="1" max="{{ total_pages }}" value="{{ page }}">
+        <span>of {{ total_pages }}</span>
+        <button class="btn btn-ghost" onclick="gotoPage()">Go</button>
     </div>
     {% endif %}
 </nav>
@@ -418,7 +383,7 @@ async function pollEpisodeStatus() {
             const row = document.querySelector(`tr input[value="${epId}"]`)?.closest('tr');
             if (!row) continue;
 
-            const progressDots = row.querySelector('.progress-dots');
+            const progressDots = row.querySelector('.pipe');
             const currentStatus = progressDots?.dataset.status || '';
 
             // Check if status changed
@@ -448,17 +413,24 @@ async function pollEpisodeStatus() {
 
 function getProgressDots(status) {
     const dots = {
-        'new': '<span class="dot dot-empty">○</span><span class="dot dot-empty">○</span><span class="dot dot-empty">○</span><span class="dot dot-empty">○</span>',
-        'queued': '<span class="dot dot-half">◐</span><span class="dot dot-empty">○</span><span class="dot dot-empty">○</span><span class="dot dot-empty">○</span>',
-        'awaiting_transcript': '<span class="dot dot-half">◐</span><span class="dot dot-empty">○</span><span class="dot dot-empty">○</span><span class="dot dot-empty">○</span>',
-        'needs_audio': '<span class="dot dot-done">●</span><span class="dot dot-empty">○</span><span class="dot dot-empty">○</span><span class="dot dot-empty">○</span>',
-        'downloading': '<span class="dot dot-done">●</span><span class="dot dot-half">◐</span><span class="dot dot-empty">○</span><span class="dot dot-empty">○</span>',
-        'audio_ready': '<span class="dot dot-done">●</span><span class="dot dot-done">●</span><span class="dot dot-empty">○</span><span class="dot dot-empty">○</span>',
-        'transcribing': '<span class="dot dot-done">●</span><span class="dot dot-done">●</span><span class="dot dot-half">◐</span><span class="dot dot-empty">○</span>',
-        'completed': '<span class="dot dot-done">●</span><span class="dot dot-done">●</span><span class="dot dot-done">●</span><span class="dot dot-done">●</span>',
-        'failed': '<span class="dot dot-done">●</span><span class="dot dot-fail">✗</span><span class="dot dot-empty">○</span><span class="dot dot-empty">○</span>'
+        'new': ['pipe-queued', 'pipe-queued', 'pipe-queued', 'pipe-queued'],
+        'queued': ['pipe-queued', 'pipe-queued', 'pipe-queued', 'pipe-queued'],
+        'awaiting_transcript': ['pipe-queued', 'pipe-queued', 'pipe-queued', 'pipe-queued'],
+        'needs_audio': ['pipe-done', 'pipe-queued', 'pipe-queued', 'pipe-queued'],
+        'downloading': ['pipe-done', 'pipe-running', 'pipe-queued', 'pipe-queued'],
+        'audio_ready': ['pipe-done', 'pipe-done', 'pipe-queued', 'pipe-queued'],
+        'transcribing': ['pipe-done', 'pipe-done', 'pipe-running', 'pipe-queued'],
+        'completed': ['pipe-done', 'pipe-done', 'pipe-done', 'pipe-done'],
+        'failed': ['pipe-done', 'pipe-failed', 'pipe-queued', 'pipe-queued']
     };
-    return dots[status] || dots['new'];
+    return (dots[status] || dots.new).map((className) => `<span class="${className}"></span>`).join('');
+}
+
+function getStatusClass(status) {
+    if (status === 'completed') return 'status-done';
+    if (['downloading', 'transcribing'].includes(status)) return 'status-running';
+    if (status === 'failed') return 'status-failed';
+    return 'status-queued';
 }
 
 function getStatusTooltip(status) {
@@ -477,7 +449,8 @@ function getStatusTooltip(status) {
 }
 
 function updateEpisodeRow(row, ep) {
-    const progressDots = row.querySelector('.progress-dots');
+    const progressDots = row.querySelector('.pipe');
+    const statusBadge = row.querySelector('.episode-status');
     const actionsCell = row.querySelector('.actions');
     const checkbox = row.querySelector('.episode-checkbox');
     const wasQueued = row.dataset.isQueued === 'true';
@@ -496,28 +469,32 @@ function updateEpisodeRow(row, ep) {
             row.dataset.isQueued = 'false';
         }
     }
+    if (statusBadge) {
+        statusBadge.className = `status ${getStatusClass(displayStatus)} episode-status`;
+        statusBadge.textContent = displayStatus;
+    }
 
     // Update actions based on new status
     if (isQueued) {
         actionsCell.innerHTML = '<span class="actions-spacer"></span>';
         if (checkbox) checkbox.disabled = true;
     } else if (ep.status === 'new') {
-        actionsCell.innerHTML = `<button class="outline secondary" onclick="downloadEpisode(${ep.id})">Download Audio</button>`;
+        actionsCell.innerHTML = `<button class="btn btn-ghost" onclick="downloadEpisode(${ep.id})">Download Audio</button>`;
         if (checkbox) checkbox.disabled = false;
     } else if (ep.status === 'awaiting_transcript') {
-        actionsCell.innerHTML = `<button class="outline secondary" onclick="downloadEpisode(${ep.id})" title="Transcript not ready yet - download audio for Whisper instead">Download Audio</button>`;
+        actionsCell.innerHTML = `<button class="btn btn-ghost" onclick="downloadEpisode(${ep.id})" title="Transcript not ready yet - download audio for Whisper instead">Download Audio</button>`;
         if (checkbox) checkbox.disabled = true;
     } else if (ep.status === 'needs_audio') {
-        actionsCell.innerHTML = `<button class="outline secondary" onclick="downloadEpisode(${ep.id})" title="No external transcript available - use Whisper">Download Audio</button>`;
+        actionsCell.innerHTML = `<button class="btn btn-ghost" onclick="downloadEpisode(${ep.id})" title="No external transcript available - use Whisper">Download Audio</button>`;
         if (checkbox) checkbox.disabled = true;
     } else if (ep.status === 'audio_ready') {
-        actionsCell.innerHTML = `<button class="outline secondary" onclick="transcribeEpisode(${ep.id}, this)">Transcribe</button>`;
+        actionsCell.innerHTML = `<button class="btn btn-ghost" onclick="transcribeEpisode(${ep.id}, this)">Transcribe</button>`;
         if (checkbox) checkbox.disabled = true;
     } else if (ep.status === 'completed') {
-        actionsCell.innerHTML = `<a href="/episodes/${ep.id}" class="outline secondary" role="button">View</a>`;
+        actionsCell.innerHTML = `<a href="/episodes/${ep.id}" class="btn btn-ghost" role="button">View</a>`;
         if (checkbox) checkbox.disabled = true;
     } else if (ep.status === 'failed') {
-        actionsCell.innerHTML = `<button class="outline secondary" onclick="retryEpisode(${ep.id})">Retry</button>`;
+        actionsCell.innerHTML = `<button class="btn btn-ghost" onclick="retryEpisode(${ep.id})">Retry</button>`;
         if (checkbox) checkbox.disabled = true;
     } else {
         // downloading, transcribing - spacer to maintain row height
@@ -638,7 +615,7 @@ async function refreshFeed(feedId) {
 async function tryTranscript(episodeId, button) {
     // Immediately update UI to show queued state
     const row = button.closest('tr');
-    const progressDots = row.querySelector('.progress-dots');
+    const progressDots = row.querySelector('.pipe');
 
     button.disabled = true;
     button.textContent = 'Queuing...';
@@ -690,7 +667,7 @@ async function downloadEpisode(episodeId) {
 
 async function transcribeEpisode(episodeId, button) {
     const row = button.closest('tr');
-    const progressDots = row.querySelector('.progress-dots');
+    const progressDots = row.querySelector('.pipe');
 
     button.disabled = true;
     button.textContent = 'Queuing...';
@@ -735,7 +712,7 @@ async function queueAllDownloads(feedId) {
 
         if (response.ok) {
             // Update all new rows to show queued status
-            document.querySelectorAll('.progress-dots[data-status="new"]').forEach(dots => {
+            document.querySelectorAll('.pipe[data-status="new"]').forEach(dots => {
                 const row = dots.closest('tr');
                 const btn = row.querySelector('.actions button');
                 dots.dataset.status = 'queued';
@@ -768,7 +745,7 @@ async function queueAllTranscribe(feedId) {
 
         if (response.ok) {
             // Update all audio_ready rows to show queued status
-            document.querySelectorAll('.progress-dots[data-status="audio_ready"]').forEach(dots => {
+            document.querySelectorAll('.pipe[data-status="audio_ready"]').forEach(dots => {
                 const row = dots.closest('tr');
                 const btn = row.querySelector('.actions button');
                 dots.dataset.status = 'queued';

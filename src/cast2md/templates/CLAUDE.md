@@ -56,6 +56,4 @@ Shows full episode info with transcript viewer and manual action buttons:
 
 ## Tooltips
 
-Always use custom CSS tooltips instead of native browser `title` attributes. Native tooltips are unreliable across browsers and have inconsistent display timing.
-
-The implementation pattern lives in `base.html` (`.element-with-tooltip`): the `title` attribute still holds the tooltip text for accessibility, and CSS `::after` with `content: attr(title)` renders it visually.
+Use one tooltip pattern: the square `.tip` CSS bubble with a `title` attribute. The attribute keeps the accessible text and `.tip::after` renders the visual treatment. Do not add another tooltip implementation.

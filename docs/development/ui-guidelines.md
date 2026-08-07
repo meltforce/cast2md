@@ -1,172 +1,55 @@
-# UI Guidelines
+# UI guidelines
 
-Design principles and patterns for the cast2md web interface.
+cast2md uses the shared Modernist homelab design language. The authoritative tokens and reusable components live in `src/cast2md/static/homelab.css`; app-specific additions live in `app.css`.
 
-## Page Layout Pattern
+## Page pattern
 
-All pages follow a consistent layout structure:
+Pages use the same structural sequence:
 
-```
-┌─────────────────────────────────────────────────────┐
-│  Page Title                        [Primary Action] │  ← Page Header
-│  Subtitle                                          │
-├─────────────────────────────────────────────────────┤
-│  ┌────┐ ┌────┐ ┌────┐ ┌────┐                       │  ← Stats Grid
-│  │ N1 │ │ N2 │ │ N3 │ │ N4 │                       │
-│  └────┘ └────┘ └────┘ └────┘                       │
-├─────────────────────────────────────────────────────┤
-│  [Secondary Action 1] [Secondary Action 2]          │  ← Action Bar
-├─────────────────────────────────────────────────────┤
-│                                                     │
-│  Main Content (table, list, form, etc.)            │
-│                                                     │
-└─────────────────────────────────────────────────────┘
-```
+1. `.page-head` with a `.kick`, `h1`, and optional `.page-head-actions`
+2. `.hero` for up to four informational metrics
+3. `.filters` for visible filters or `.actions` for commands
+4. `.table` on desktop and `.row` records on mobile
+5. `.footer` aligned to `--page-x`
 
----
+Hero metrics display information only. They are never links or filter controls. When a count also needs filtering, keep the count in the hero and provide separate `.chip` controls in `.filters`.
 
-## Components
+## Buttons
 
-### Page Header (`.page-header`)
+| Class | Use |
+| --- | --- |
+| `.btn .btn-primary` | The page's main action |
+| `.btn .btn-secondary` | A meaningful alternative |
+| `.btn .btn-ghost` | Navigation and compact row actions |
+| `.btn .btn-danger` | Destructive actions after confirmation |
 
-Title and primary action on the same row:
+Links navigate and buttons act. Do not add `role="button"` to links.
 
-```html
-<div class="page-header">
-    <hgroup>
-        <h1>Page Title</h1>
-        <p>Brief description of the page</p>
-    </hgroup>
-    <div class="header-actions">
-        <button>Primary Action</button>
-    </div>
-</div>
-```
+## Status
 
-- Title (h1) and subtitle on the left
-- Primary action button(s) on the right
-- Responsive: wraps on mobile
+Eight episode states use four treatments while keeping the API state name as the visible label:
 
-### Stats Grid (`.stats-grid`)
+| Treatment | States |
+| --- | --- |
+| `.status .status-done` | `completed` |
+| `.status .status-running` | `downloading`, `transcribing` |
+| `.status .status-queued` | `new`, `awaiting_transcript`, `needs_audio`, `audio_ready` |
+| `.status .status-failed` | `failed` |
 
-At-a-glance metrics displayed as cards:
-
-```html
-<div class="stats-grid">
-    <div class="stat-card">
-        <h3>42</h3>
-        <p>Label</p>
-    </div>
-</div>
-```
-
-- Informational only, **not clickable**
-- Auto-fits to available width
-- Consistent sizing across pages
-
-### Action Bar (`.action-bar`)
-
-Secondary or contextual actions:
-
-```html
-{% if has_items %}
-<div class="action-bar">
-    <button onclick="doAction1()">Action 1</button>
-    <button class="secondary" onclick="doAction2()">Action 2</button>
-</div>
-{% endif %}
-```
-
-- Only shown when relevant actions exist
-- Buttons grouped with consistent spacing
-
----
-
-## Button Hierarchy
-
-| Level | Class | Usage |
-|-------|-------|-------|
-| Primary | (default) | Main action for the page |
-| Secondary | `.secondary` | Alternative actions |
-| Outline | `.outline` | Lower emphasis, table row actions |
-| Outline Secondary | `.outline.secondary` | Lowest emphasis |
-
----
-
-## Information vs. Navigation
-
-A key design principle: **separate display from interaction**.
-
-| Element | Purpose | Clickable? |
-|---------|---------|------------|
-| Stat cards | Show counts/metrics | No |
-| Buttons | Trigger actions | Yes |
-| Links | Navigate to pages | Yes |
-| Dropdowns | Filter/select options | Yes |
-
-When you need both counts AND filtering (like the queue page):
-
-- Use stat cards to show counts
-- Use a separate control (dropdown, tabs) for filtering
-
-This avoids the confusion of "is this a number or a button?"
-
----
+Do not assign a separate hue to each state. Weight, outline, and the written label carry the distinction.
 
 ## Tooltips
 
-Always use **CSS tooltips** instead of native browser `title` attributes. Native tooltips have inconsistent behavior across browsers.
+Use one tooltip pattern: `.tip` plus a `title` attribute. The attribute provides the accessible text; the square CSS bubble provides the visual treatment. Do not add a second tooltip implementation.
 
-```css
-.element-with-tooltip {
-    position: relative;
-    cursor: help;
-}
-.element-with-tooltip::after {
-    content: attr(title);
-    position: absolute;
-    bottom: 100%;
-    left: 50%;
-    transform: translateX(-50%);
-    padding: 0.4rem 0.6rem;
-    background: var(--pico-card-background-color);
-    color: var(--pico-color);
-    font-size: 0.75rem;
-    border-radius: 4px;
-    white-space: nowrap;
-    opacity: 0;
-    visibility: hidden;
-    transition: opacity 0.15s, visibility 0.15s;
-    z-index: 1000;
-    pointer-events: none;
-}
-.element-with-tooltip:hover::after {
-    opacity: 1;
-    visibility: visible;
-}
-```
+## Responsive behavior
 
-The `title` attribute holds the text (for accessibility), but CSS `::after` renders it visually.
+The only breakpoint is 768 px. The desktop navigation and tables apply from 768 px; below it the fixed four-item tab bar and `.row` lists apply. Controls must remain keyboard accessible, show the shared accent focus ring, and have at least a 44 px touch target where they are the row's primary action.
 
----
+## Visual rules
 
-## Responsive Behavior
-
-- Page header wraps on narrow screens (title above, actions below)
-- Stats grid auto-fits columns based on available width
-- Action bar wraps buttons as needed
-- Tables may require horizontal scroll on mobile
-
----
-
-## Color Usage
-
-Use CSS variables for dark mode compatibility:
-
-| Variable | Usage |
-|----------|-------|
-| `var(--pico-primary)` | Primary accent color |
-| `var(--pico-muted-color)` | Subdued text |
-| `var(--pico-card-background-color)` | Card backgrounds |
-
-Status colors use `color-mix()` for consistent opacity in both light and dark themes.
+- Use Archivo and the design tokens; do not introduce another font or hard-coded app color.
+- Use strong 2 px rules between sections and 1 px rules between records.
+- Use no radius, decorative shadow, or decorative motion. The toast shadow is the sole elevation exception.
+- Keep content flush to `--page-x`; cap only reading measures such as `.reader`.
+- Use Lucide-style inline icons only when a word would be less clear. Do not use emoji as interface symbols.

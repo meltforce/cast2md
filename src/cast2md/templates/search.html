@@ -3,376 +3,189 @@
 {% block title %}Search - cast2md{% endblock %}
 
 {% block content %}
-<div class="page-header">
-    <hgroup>
+<header class="page-head">
+    <div>
+        <div class="kick">Episodes and transcripts</div>
         <h1>Search</h1>
-        <p>Search episodes and transcripts</p>
-    </hgroup>
-    <small style="color: var(--pico-muted-color);">
-        {{ index_stats.indexed_episodes }} episodes indexed
-        {% if index_stats.embedded_episodes > 0 %}
-            ({{ index_stats.embedded_episodes }} with semantic search)
-        {% endif %}
-    </small>
-</div>
+    </div>
+</header>
 
-<article style="margin-bottom: 1.5rem; padding: 1rem; background: var(--card-background-color);">
-    <form id="search-form" method="get" style="display: flex; flex-wrap: wrap; gap: 1rem; align-items: flex-end;">
-        <div style="flex: 1; min-width: 250px;">
-            <label for="searchQuery">Search query</label>
-            <input type="text" id="searchQuery" name="q" value="{{ query }}"
-                   placeholder="Enter search terms..." autofocus>
+<section class="section">
+    <form id="search-form" method="get" class="stack">
+        <div class="cmdline">
+            <label class="visually-hidden" for="searchQuery">Search query</label>
+            <input class="input" type="search" id="searchQuery" name="q" value="{{ query }}" placeholder="Enter search terms…" autofocus>
+            <button class="btn btn-primary" type="submit">Search</button>
         </div>
-        <div style="min-width: 180px;">
-            <label for="feedFilter">Filter by feed</label>
-            <select id="feedFilter" name="feed_id">
-                <option value="">All feeds</option>
+        <div class="cluster compact">
+            <div class="seg" role="radiogroup" aria-label="Search mode">
+                {% for value in ['hybrid', 'keyword', 'semantic'] %}
+                <label class="seg-opt">
+                    <input class="input" type="radio" name="mode" value="{{ value }}" {% if mode == value %}checked{% endif %} onchange="this.form.submit()">
+                    {{ value }}
+                </label>
+                {% endfor %}
+            </div>
+            <label class="visually-hidden" for="feedFilter">Podcast</label>
+            <select class="select" id="feedFilter" name="feed_id" onchange="this.form.submit()">
+                <option value="">All podcasts</option>
                 {% for feed in feeds %}
                 <option value="{{ feed.id }}" {% if feed_id == feed.id %}selected{% endif %}>{{ feed.display_title }}</option>
                 {% endfor %}
             </select>
         </div>
-        <div>
-            <button type="submit">Search</button>
-        </div>
+        {% if actual_mode != mode %}
+        <div class="meta">{{ mode }} unavailable — showing {{ actual_mode }} results</div>
+        {% endif %}
+        {% if query %}
+        {% set episode_matches = results|selectattr('result_type', 'equalto', 'episode')|list|length %}
+        <div class="meta num">{{ total }} result{{ '' if total == 1 else 's' }} · {{ episode_matches }} episode{{ '' if episode_matches == 1 else 's' }} · {{ results|length - episode_matches }} transcript matches</div>
+        {% endif %}
     </form>
-    <details style="margin-top: 1rem;">
-        <summary style="cursor: pointer; font-size: 0.875rem;">Search options</summary>
-        <div style="padding: 0.5rem; font-size: 0.875rem; color: var(--muted-color);">
-            <p style="margin: 0 0 0.5rem;"><strong>Search mode:</strong></p>
-            <div style="margin-bottom: 0.75rem; display: flex; gap: 1.5rem; flex-wrap: wrap;">
-                <label style="display: flex; align-items: center; gap: 0.35rem; cursor: pointer;">
-                    <input type="radio" name="mode" value="hybrid" {% if mode == 'hybrid' %}checked{% endif %} form="search-form">
-                    <span>Hybrid (recommended)</span>
-                </label>
-                <label style="display: flex; align-items: center; gap: 0.35rem; cursor: pointer;">
-                    <input type="radio" name="mode" value="keyword" {% if mode == 'keyword' %}checked{% endif %} form="search-form">
-                    <span>Keyword only</span>
-                </label>
-                <label style="display: flex; align-items: center; gap: 0.35rem; cursor: pointer;">
-                    <input type="radio" name="mode" value="semantic" {% if mode == 'semantic' %}checked{% endif %} form="search-form">
-                    <span>Semantic only</span>
-                </label>
-            </div>
-            <p style="margin: 0 0 0.5rem;"><strong>Keyword syntax:</strong></p>
-            <ul style="margin: 0;">
-                <li><code>kubernetes</code> - Simple search</li>
-                <li><code>"machine learning"</code> - Exact phrase</li>
-                <li><code>python AND async</code> - Both terms required</li>
-                <li><code>docker OR kubernetes</code> - Either term</li>
-                <li><code>python NOT flask</code> - Exclude term</li>
-            </ul>
-        </div>
-    </details>
-</article>
+</section>
 
-{% if query %}
-<p style="font-size: 0.875rem; color: var(--muted-color);">
-    Found <strong>{{ total }}</strong> result{{ 's' if total != 1 else '' }}
-</p>
+{% if query and results %}
+<div class="desktop-only table-wrap">
+    <table class="table">
+        <thead><tr><th>Episode</th><th>Podcast</th><th>Match</th><th class="right">Published</th></tr></thead>
+        <tbody>
+        {% for result in results %}
+            {% set timestamp = ('?t=' ~ result.segment_start|int) if result.result_type != 'episode' else '' %}
+            {% set back_url = ('/search?q=' ~ query|urlencode ~ ('&feed_id=' ~ feed_id if feed_id else '') ~ '&mode=' ~ mode ~ '&page=' ~ page)|urlencode %}
+            <tr>
+                <td>
+                    <a href="/episodes/{{ result.episode_id }}{{ timestamp }}{% if timestamp %}&{% else %}?{% endif %}back=search&amp;back_url={{ back_url }}">{{ result.episode_title }}</a>
+                    {% if result.text %}<div class="meta">{{ result.text|search_snippet|safe }}</div>{% endif %}
+                </td>
+                <td>{{ result.feed_title }}</td>
+                <td><span class="tag {% if result.result_type == actual_mode %}tag-accent{% else %}tag-neutral{% endif %}">{{ 'title' if result.result_type == 'episode' else 'transcript' }}</span></td>
+                <td class="right num">{{ result.published_at.strftime('%Y-%m-%d') if result.published_at else '' }}</td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+<div class="mobile-only">
+    {% for result in results %}
+    {% set timestamp = ('?t=' ~ result.segment_start|int) if result.result_type != 'episode' else '' %}
+    <a class="row" href="/episodes/{{ result.episode_id }}{{ timestamp }}">
+        <span class="truncate">
+            <span class="row-title">{{ result.episode_title }}</span>
+            {% if result.text %}<span class="row-meta">{{ result.text|strip_html|truncate(120, True, '…') }}</span>{% endif %}
+            <span class="row-meta">{{ result.feed_title }} · {{ 'title' if result.result_type == 'episode' else 'transcript' }}</span>
+        </span>
+    </a>
+    {% endfor %}
+</div>
+
+{% if total_pages > 1 %}
+<nav class="pagination" aria-label="Search result pages">
+    {% if page > 1 %}<a class="btn btn-ghost compact" href="?q={{ query|urlencode }}{% if feed_id %}&amp;feed_id={{ feed_id }}{% endif %}&amp;mode={{ mode }}&amp;page={{ page - 1 }}">← Previous</a>{% endif %}
+    <span class="meta num">Page {{ page }} of {{ total_pages }}</span>
+    {% if page < total_pages %}<a class="btn btn-ghost compact" href="?q={{ query|urlencode }}{% if feed_id %}&amp;feed_id={{ feed_id }}{% endif %}&amp;mode={{ mode }}&amp;page={{ page + 1 }}">Next →</a>{% endif %}
+</nav>
 {% endif %}
 
-{% if query %}
-    {% if results %}
-    <div class="search-results">
-        {% for result in results %}
-        <article class="search-result" style="cursor: pointer;">
-            {% if result.result_type == 'episode' %}
-            {# Episode title/description match - link directly to episode #}
-            <a href="/episodes/{{ result.episode_id }}?back=search&amp;back_url={{ ('/search?q=' ~ query|urlencode ~ ('&feed_id=' ~ feed_id if feed_id else '') ~ '&mode=' ~ mode ~ '&page=' ~ page)|urlencode }}" style="text-decoration: none; color: inherit; display: block;">
-                <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 0.5rem;">
-                    <div style="flex: 1; min-width: 200px;">
-                        <strong>{{ result.episode_title }}</strong>
-                        <span style="color: var(--muted-color); font-size: 0.875rem;">
-                            &mdash; {{ result.feed_title }}
-                        </span>
-                    </div>
-                    <div style="display: flex; gap: 0.5rem; align-items: center;">
-                        {% if result.published_at %}
-                        <span style="font-size: 0.875rem; color: var(--muted-color);">
-                            {{ result.published_at.strftime('%Y-%m-%d') }}
-                        </span>
-                        {% endif %}
-                        <div style="display: flex; gap: 0.25rem;">
-                            <span class="match-badge match-episode">title</span>
-                        </div>
-                    </div>
-                </div>
-                {% if result.text %}
-                <div style="margin-top: 0.5rem; font-size: 0.875rem; color: var(--muted-color);">
-                    <span class="match-text">{{ result.text|search_snippet|safe }}</span>
-                </div>
-                {% endif %}
-            </a>
-            {% else %}
-            {# Transcript segment match - link to episode with timestamp #}
-            <a href="/episodes/{{ result.episode_id }}?t={{ result.segment_start|int }}&amp;back=search&amp;back_url={{ ('/search?q=' ~ query|urlencode ~ ('&feed_id=' ~ feed_id if feed_id else '') ~ '&mode=' ~ mode ~ '&page=' ~ page)|urlencode }}" style="text-decoration: none; color: inherit; display: block;">
-                <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 0.5rem;">
-                    <div style="flex: 1; min-width: 200px;">
-                        <strong>{{ result.episode_title }}</strong>
-                        <span style="color: var(--muted-color); font-size: 0.875rem;">
-                            &mdash; {{ result.feed_title }}
-                        </span>
-                    </div>
-                    <div style="display: flex; gap: 0.5rem; align-items: center;">
-                        {% if result.published_at %}
-                        <span style="font-size: 0.875rem; color: var(--muted-color);">
-                            {{ result.published_at.strftime('%Y-%m-%d') }}
-                        </span>
-                        {% endif %}
-                        <div style="display: flex; gap: 0.25rem;">
-                            <span class="match-badge match-transcript">transcript</span>
-                        </div>
-                    </div>
-                </div>
-                {% if result.text %}
-                <div style="margin-top: 0.5rem; font-size: 0.875rem; color: var(--muted-color);">
-                    {% set minutes = (result.segment_start|int) // 60 %}
-                    {% set seconds = (result.segment_start|int) % 60 %}
-                    <span class="match-timestamp" style="font-family: monospace; margin-right: 0.5rem;">[{{ '%02d'|format(minutes) }}:{{ '%02d'|format(seconds) }}]</span>
-                    <span class="match-text">{{ result.text|search_snippet|safe }}</span>
-                </div>
-                {% endif %}
-            </a>
-            {% endif %}
-        </article>
-        {% endfor %}
-    </div>
-
-    {# Pagination #}
-    {% if total_pages > 1 %}
-    <nav style="display: flex; justify-content: center; gap: 0.5rem; margin-top: 1.5rem;">
-        {% if page > 1 %}
-        <a href="?q={{ query|urlencode }}{% if feed_id %}&feed_id={{ feed_id }}{% endif %}&mode={{ mode }}&page={{ page - 1 }}" role="button" class="outline">&larr; Previous</a>
-        {% endif %}
-        <span style="padding: 0.5rem 1rem; display: flex; align-items: center;">Page {{ page }} of {{ total_pages }}</span>
-        {% if page < total_pages %}
-        <a href="?q={{ query|urlencode }}{% if feed_id %}&feed_id={{ feed_id }}{% endif %}&mode={{ mode }}&page={{ page + 1 }}" role="button" class="outline">Next &rarr;</a>
-        {% endif %}
-    </nav>
-    {% endif %}
-
-    {% else %}
-    <article style="text-align: center; padding: 3rem;">
-        <p>No results found for "<strong>{{ query }}</strong>"</p>
-        <p style="color: var(--muted-color);">Try different search terms.</p>
-    </article>
-    {% endif %}
+{% elif query %}
+<section class="empty">
+    <div class="kick">Search</div>
+    <h3>No results for “{{ query }}”.</h3>
+    <p>Try a shorter query, another mode, or all podcasts.</p>
+</section>
 
 {% else %}
-    {% if recent_transcripts %}
-    <section>
-        <h2 style="font-size: 1.25rem; margin-bottom: 1rem;">Latest Transcripts</h2>
-        <div class="carousel-container">
-            <div class="carousel-arrow carousel-arrow-left" onclick="scrollCarousel(-1)" role="button" aria-label="Previous">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
-            </div>
-            <div class="carousel-track" id="carouselTrack">
-                {% for episode, feed_title, image_url in recent_transcripts %}
-                <a href="/episodes/{{ episode.id }}?back=search" class="transcript-card-square">
-                    <div class="card-artwork-square">
-                        {% if image_url %}
-                        <img src="{{ image_url }}" alt="" loading="lazy">
-                        {% else %}
-                        <div class="no-artwork-placeholder">🎤</div>
-                        {% endif %}
-                    </div>
-                    <div class="card-content-square">
-                        <p class="card-title-square">{{ episode.title }}</p>
-                        <p class="card-feed-square">{{ feed_title }}</p>
-                        {% if episode.description %}
-                        <p class="card-description">{{ episode.description|strip_html|truncate(120, True, '...') }}</p>
-                        {% endif %}
-                        <p class="card-date-square">{{ episode.updated_at|timeago }}</p>
-                    </div>
-                </a>
-                {% endfor %}
-            </div>
-            <div class="carousel-arrow carousel-arrow-right" onclick="scrollCarousel(1)" role="button" aria-label="Next">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
-            </div>
-        </div>
-        <script>
-        function scrollCarousel(direction) {
-            const track = document.getElementById('carouselTrack');
-            const card = track.querySelector('.transcript-card-square');
-            if (!card) return;
+<section class="empty">
+    <div class="kick">Search</div>
+    <h3>Search episodes and transcripts.</h3>
+    <p>Use words, exact phrases, or semantic search across your podcast library.</p>
+</section>
 
-            const cardWidth = card.offsetWidth + 16; // card width + gap
-            const visibleWidth = track.offsetWidth;
-            const cardsPerPage = Math.floor(visibleWidth / cardWidth) || 1;
-            const scrollAmount = cardWidth * cardsPerPage;
-
-            track.scrollBy({ left: direction * scrollAmount, behavior: 'smooth' });
-        }
-
-        </script>
-    </section>
-    {% endif %}
-    <p style="text-align: center; color: var(--muted-color); margin-top: 2rem;">
-        {% if index_stats.indexed_episodes == 0 %}
-        No transcripts indexed yet. Run <code>cast2md reindex-transcripts</code> to index existing transcripts.
-        {% else %}
-        Search across {{ index_stats.indexed_episodes }} transcribed episodes.
-        {% endif %}
-    </p>
+{% if recent_transcripts %}
+<section class="section">
+    <div class="sec-head page-x"><div><div class="kick">Recently transcribed</div><h2>Latest transcripts</h2></div></div>
+    <div class="desktop-only table-wrap">
+        <table class="table">
+            <thead><tr><th>Episode</th><th>Podcast</th><th class="right">Transcribed</th></tr></thead>
+            <tbody>
+            {% for episode, feed_title, image_url in recent_transcripts %}
+            <tr><td><a href="/episodes/{{ episode.id }}?back=search">{{ episode.title }}</a></td><td>{{ feed_title }}</td><td class="right num">{{ episode.updated_at|timeago }}</td></tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div class="mobile-only">
+        {% for episode, feed_title, image_url in recent_transcripts %}
+        <a class="row" href="/episodes/{{ episode.id }}?back=search"><span class="truncate"><span class="row-title">{{ episode.title }}</span><span class="row-meta">{{ feed_title }} · {{ episode.updated_at|timeago }}</span></span></a>
+        {% endfor %}
+    </div>
+</section>
+{% endif %}
 {% endif %}
 
-<!-- Episode Detail Modal -->
-<dialog id="episodeDetailModal">
-    <article class="modal-content">
-        <header class="modal-header">
-            <div>
-                <h3 id="modalTitle" style="margin: 0;"></h3>
-                <p id="modalMeta" style="margin: 0.25rem 0 0; color: var(--muted-color); font-size: 0.875rem;"></p>
-            </div>
-            <button class="close-btn" onclick="closeEpisodeModal()" aria-label="Close">&times;</button>
-        </header>
+<details class="disclose">
+    <summary class="kick">Index</summary>
+    <div class="disclose-body meta num">{{ index_stats.indexed_episodes }} indexed episodes · {{ index_stats.embedded_episodes }} embedded episodes · {{ index_stats.total_segments }} segments</div>
+</details>
 
-        <div id="modalLoading" style="text-align: center; padding: 2rem;">
-            <p>Loading...</p>
+<dialog id="episodeDetailModal" class="dialog dialog-wide">
+    <button class="btn btn-ghost btn-icon dialog-close" type="button" onclick="closeEpisodeModal()" aria-label="Close">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+    </button>
+    <h2 class="dialog-title" id="modalTitle">Episode</h2>
+    <div class="kick" id="modalMeta"></div>
+    <div class="dialog-body" id="modalLoading">Loading…</div>
+    <div id="modalBody" hidden>
+        <div class="reader reader-clamp" id="modalShowNotes"></div>
+        <div id="transcriptSection">
+            <div class="kick">Transcript matches · <span id="transcriptMatchCount">0</span></div>
+            <div id="modalTranscriptMatches"></div>
         </div>
-
-        <div id="modalBody" style="display: none;">
-            <section class="modal-section">
-                <h4>Show Notes</h4>
-                <div id="modalShowNotes" class="shownotes-container"></div>
-            </section>
-
-            <section id="transcriptSection" class="modal-section">
-                <h4>Transcript Matches (<span id="transcriptMatchCount">0</span>)</h4>
-                <div id="modalTranscriptMatches" class="transcript-matches"></div>
-            </section>
-        </div>
-
-        <footer class="modal-footer">
-            <a id="modalEpisodeLink" href="#" role="button">Open Full Episode</a>
-        </footer>
-    </article>
+    </div>
+    <div class="dialog-actions actions"><a class="btn btn-secondary" id="modalEpisodeLink" href="#">Open episode</a></div>
 </dialog>
+{% endblock %}
 
+{% block scripts %}
 <script>
-let lastScrollPosition = 0;
-const modal = document.getElementById('episodeDetailModal');
-const modalTitle = document.getElementById('modalTitle');
-const modalMeta = document.getElementById('modalMeta');
-const modalLoading = document.getElementById('modalLoading');
-const modalBody = document.getElementById('modalBody');
-const modalShowNotes = document.getElementById('modalShowNotes');
-const modalTranscriptMatches = document.getElementById('modalTranscriptMatches');
-const transcriptMatchCount = document.getElementById('transcriptMatchCount');
-const transcriptSection = document.getElementById('transcriptSection');
-const modalEpisodeLink = document.getElementById('modalEpisodeLink');
+const episodeModal = document.getElementById('episodeDetailModal');
 
 async function openEpisodeModal(episodeId, query) {
-    lastScrollPosition = window.scrollY;
-
-    // Reset modal state
-    modalLoading.style.display = 'block';
-    modalBody.style.display = 'none';
-    modalTitle.textContent = 'Loading...';
-    modalMeta.textContent = '';
-    modalEpisodeLink.href = `/episodes/${episodeId}`;
-
-    // Show modal
-    modal.showModal();
-
+    document.getElementById('modalLoading').hidden = false;
+    document.getElementById('modalBody').hidden = true;
+    document.getElementById('modalEpisodeLink').href = `/episodes/${episodeId}`;
+    episodeModal.showModal();
     try {
         const response = await fetch(`/api/search/episode-detail/${episodeId}?q=${encodeURIComponent(query)}`);
-        if (!response.ok) {
-            throw new Error('Failed to load episode details');
-        }
-
+        if (!response.ok) throw new Error('Failed to load episode details');
         const data = await response.json();
-
-        // Update header
-        modalTitle.textContent = data.title;
-        const date = data.published_at ? data.published_at.substring(0, 10) : '';
-        modalMeta.textContent = `${data.feed_title}${date ? ' — ' + date : ''}`;
-
-        // Update show notes
-        if (data.description) {
-            modalShowNotes.innerHTML = sanitizeHtml(data.description);
-        } else {
-            modalShowNotes.innerHTML = '<p style="color: var(--muted-color); font-style: italic;">No show notes available.</p>';
-        }
-
-        // Update transcript matches
-        if (data.transcript_matches && data.transcript_matches.length > 0) {
-            transcriptSection.style.display = 'block';
-            transcriptMatchCount.textContent = data.transcript_matches.length;
-            modalTranscriptMatches.innerHTML = data.transcript_matches.map(match => {
-                const minutes = Math.floor(match.segment_start / 60);
-                const seconds = Math.floor(match.segment_start % 60);
-                const timestamp = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-                const ts = Math.floor(match.segment_start);
-                return `
-                    <div class="transcript-match">
-                        <a href="/episodes/${episodeId}?t=${ts}" class="match-timestamp">[${timestamp}]</a>
-                        <span class="match-text">${match.snippet}</span>
-                    </div>
-                `;
-            }).join('');
-        } else {
-            transcriptSection.style.display = 'none';
-        }
-
-        // Show content
-        modalLoading.style.display = 'none';
-        modalBody.style.display = 'block';
-
+        document.getElementById('modalTitle').textContent = data.title;
+        document.getElementById('modalMeta').textContent = `${data.feed_title}${data.published_at ? ' · ' + data.published_at.substring(0, 10) : ''}`;
+        document.getElementById('modalShowNotes').innerHTML = data.description ? sanitizeHtml(data.description) : '<p class="muted">No show notes available.</p>';
+        const matches = data.transcript_matches || [];
+        document.getElementById('transcriptMatchCount').textContent = matches.length;
+        document.getElementById('modalTranscriptMatches').innerHTML = matches.map((match) => {
+            const timestamp = `${String(Math.floor(match.segment_start / 60)).padStart(2, '0')}:${String(Math.floor(match.segment_start % 60)).padStart(2, '0')}`;
+            return `<div class="cue"><time>${timestamp}</time><span>${match.snippet}</span></div>`;
+        }).join('');
+        document.getElementById('modalLoading').hidden = true;
+        document.getElementById('modalBody').hidden = false;
     } catch (error) {
-        console.error('Error loading episode details:', error);
-        modalLoading.innerHTML = '<p style="color: var(--del-color);">Failed to load episode details.</p>';
+        document.getElementById('modalLoading').textContent = error.message;
     }
 }
 
-function closeEpisodeModal() {
-    modal.close();
-    window.scrollTo(0, lastScrollPosition);
-}
+function closeEpisodeModal() { episodeModal.close(); }
 
-// Close modal on backdrop click
-modal.addEventListener('click', (e) => {
-    if (e.target === modal) {
-        closeEpisodeModal();
-    }
-});
-
-// Close modal on Escape key
-modal.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') {
-        closeEpisodeModal();
-    }
-});
-
-// Simple HTML sanitizer (allows basic formatting tags)
 function sanitizeHtml(html) {
     const allowedTags = ['a', 'p', 'br', 'strong', 'b', 'em', 'i', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4'];
     const div = document.createElement('div');
     div.innerHTML = html;
-
-    // Remove disallowed tags but keep their content
-    const allElements = div.querySelectorAll('*');
-    allElements.forEach(el => {
-        if (!allowedTags.includes(el.tagName.toLowerCase())) {
-            el.replaceWith(...el.childNodes);
-        } else {
-            // Remove all attributes except href on links
-            const attrs = Array.from(el.attributes);
-            attrs.forEach(attr => {
-                if (!(el.tagName.toLowerCase() === 'a' && attr.name === 'href')) {
-                    el.removeAttribute(attr.name);
-                }
-            });
-            // Make links open in new tab
-            if (el.tagName.toLowerCase() === 'a') {
-                el.setAttribute('target', '_blank');
-                el.setAttribute('rel', 'noopener noreferrer');
-            }
-        }
+    div.querySelectorAll('*').forEach((element) => {
+        if (!allowedTags.includes(element.tagName.toLowerCase())) element.replaceWith(...element.childNodes);
+        else Array.from(element.attributes).forEach((attribute) => {
+            if (!(element.tagName.toLowerCase() === 'a' && attribute.name === 'href')) element.removeAttribute(attribute.name);
+        });
     });
-
     return div.innerHTML;
 }
 </script>

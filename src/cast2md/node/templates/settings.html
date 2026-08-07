@@ -3,32 +3,36 @@
 {% block title %}Settings - Transcriber Node{% endblock %}
 
 {% block content %}
-<hgroup>
-    <h1>Settings</h1>
-    <p>{{ config.name if config else 'Unknown Node' }}</p>
-</hgroup>
+<header class="page-head"><div><div class="kick">{{ config.name if config else 'Unknown node' }}</div><h1>Settings</h1></div></header>
+
+<section class="section">
+    <div class="sec-head"><div><div class="kick">Appearance</div><h2>Theme</h2></div></div>
+    <div class="seg" role="radiogroup" aria-label="Theme">
+        {% for value in ['auto', 'light', 'dark'] %}<label class="seg-opt"><input type="radio" name="theme" value="{{ value }}">{{ value }}</label>{% endfor %}
+    </div>
+</section>
 
 {% if saved %}
-<article style="background: #d4edda; border-color: #c3e6cb;">
-    <p style="margin: 0; color: #155724;">Settings saved. Restart the node worker to apply whisper changes.</p>
-</article>
+<section class="section">
+    <p>Settings saved. Restart the node worker to apply whisper changes.</p>
+</section>
 {% endif %}
 
 {% if not config %}
-<article>
+<section class="section">
     <header>
         <h3>Not Configured</h3>
     </header>
     <p>This node is not registered with a server.</p>
     <p>Run <code>cast2md node register --server &lt;server_url&gt; --name "Node Name"</code> to register.</p>
-</article>
+</section>
 {% else %}
 
-<article>
+<section class="section">
     <header>
         <h3>System Information</h3>
     </header>
-    <table>
+    <table class="table">
         <tbody>
             <tr>
                 <td><strong>Platform</strong></td>
@@ -50,25 +54,25 @@
             {% endif %}
         </tbody>
     </table>
-</article>
+</section>
 
 <form method="post" action="/settings">
-<article>
+<section class="section">
     <header>
         <h3>Whisper Configuration</h3>
     </header>
-    <div class="grid">
-        <label>
+    <div class="form-grid">
+        <label class="field">
             Model
-            <select name="whisper_model">
+            <select class="select" name="whisper_model">
                 {% for value, label in whisper_models %}
                 <option value="{{ value }}" {% if settings.whisper_model == value %}selected{% endif %}>{{ label }}</option>
                 {% endfor %}
             </select>
         </label>
-        <label>
+        <label class="field">
             Backend
-            <select name="whisper_backend">
+            <select class="select" name="whisper_backend">
                 {% for value, label in whisper_backends %}
                 <option value="{{ value }}" {% if settings.whisper_backend == value %}selected{% endif %}>{{ label }}</option>
                 {% endfor %}
@@ -76,21 +80,21 @@
         </label>
     </div>
     <small>Changes require a node restart to take effect.</small>
-</article>
+</section>
 
-<article>
+<section class="section">
     <header>
         <h3>Node Configuration</h3>
     </header>
-    <label>
+    <label class="field">
         Server URL
-        <input type="url" name="server_url" value="{{ config.server_url }}" required>
+        <input class="input" type="url" name="server_url" value="{{ config.server_url }}" required>
     </label>
-    <table>
+    <table class="table">
         <tbody>
             <tr>
                 <td><strong>Node ID</strong></td>
-                <td><code style="font-size: 0.85em;">{{ config.node_id }}</code></td>
+                <td><code>{{ config.node_id }}</code></td>
             </tr>
             <tr>
                 <td><strong>Name</strong></td>
@@ -98,9 +102,9 @@
             </tr>
         </tbody>
     </table>
-</article>
+</section>
 
-<button type="submit">Save Settings</button>
+<button class="btn btn-primary" type="submit">Save Settings</button>
 </form>
 
 {% endif %}

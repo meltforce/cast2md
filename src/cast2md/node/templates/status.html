@@ -3,30 +3,27 @@
 {% block title %}Status - Transcriber Node{% endblock %}
 
 {% block content %}
-<hgroup>
-    <h1>Node Status</h1>
-    <p>{{ config.name if config else 'Unknown Node' }}</p>
-</hgroup>
+<header class="page-head"><div><div class="kick">{{ config.name if config else 'Unknown node' }}</div><h1>Node Status</h1></div></header>
 
 {% if not config %}
-<article>
+<section class="section">
     <header>
         <h3>Not Configured</h3>
     </header>
     <p>This node is not registered with a server.</p>
     <p>Run <code>cast2md node register --server &lt;server_url&gt; --name "Node Name"</code> to register.</p>
-</article>
+</section>
 {% else %}
 
-<article>
+<section class="section">
     <header>
         <h3>Configuration</h3>
     </header>
-    <table>
+    <table class="table">
         <tbody>
             <tr>
                 <td><strong>Node ID</strong></td>
-                <td><code style="font-size: 0.85em;">{{ config.node_id }}</code></td>
+                <td><code>{{ config.node_id }}</code></td>
             </tr>
             <tr>
                 <td><strong>Server</strong></td>
@@ -36,39 +33,39 @@
                 <td><strong>Worker Status</strong></td>
                 <td>
                     {% if is_running %}
-                    <span class="status-badge status-online">Running</span>
+                    <span class="status status-done">Running</span>
                     {% else %}
-                    <span class="status-badge status-offline">Stopped</span>
+                    <span class="status status-failed">Stopped</span>
                     {% endif %}
                 </td>
             </tr>
         </tbody>
     </table>
-</article>
+</section>
 
 {% if current_job %}
-<article>
+<section class="section">
     <header>
         <h3>Current Job</h3>
     </header>
-    <div class="stat-card">
+    <div class="hero-cell">
         <h3>{{ current_job.episode_title }}</h3>
         <p>Job #{{ current_job.job_id }}</p>
-        <p><span class="status-badge status-busy">Transcribing...</span></p>
+        <p><span class="status status-running">Transcribing</span></p>
         {% if current_job.elapsed_seconds is not none %}
-        <p style="margin-top: 0.5rem;">
+        <p>
             <small>Elapsed: <span id="elapsed">{{ current_job.elapsed_seconds // 60 }}:{{ '%02d' % (current_job.elapsed_seconds % 60) }}</span></small>
         </p>
         {% endif %}
-        <progress style="margin-top: 1rem;"></progress>
+        <progress></progress>
     </div>
-</article>
+</section>
 {% else %}
-<article>
+<section class="section">
     <header>
         <h3>Current Job</h3>
     </header>
-    <div class="stat-card">
+    <div class="hero-cell">
         <p>
             {% if is_running %}
             Waiting for jobs...
@@ -77,7 +74,7 @@
             {% endif %}
         </p>
     </div>
-</article>
+</section>
 {% endif %}
 
 {% endif %}

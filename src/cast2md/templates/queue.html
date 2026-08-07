@@ -2,81 +2,76 @@
 
 {% block title %}Queue - Admin - cast2md{% endblock %}
 
-{% block content %}
-<div class="page-header">
+{% block admin_content %}
+<div class="page-head">
     <hgroup>
         <h1>Queue Management</h1>
         <p>View and manage job queue</p>
     </hgroup>
-    <div class="header-actions">
-        <select id="statusFilter" onchange="filterByStatus(this.value)" style="width: auto; margin: 0;">
-            <option value="all" {% if current_filter == 'all' %}selected{% endif %}>All jobs</option>
-            <option value="running" {% if current_filter == 'running' %}selected{% endif %}>Running</option>
-            <option value="stuck" {% if current_filter == 'stuck' %}selected{% endif %}>Stuck</option>
-            <option value="queued" {% if current_filter == 'queued' %}selected{% endif %}>Queued</option>
-            <option value="failed" {% if current_filter == 'failed' %}selected{% endif %}>Failed</option>
-            <option value="completed" {% if current_filter == 'completed' %}selected{% endif %}>Completed</option>
-        </select>
-        <button onclick="queueAllPending()">Queue All Pending</button>
-        <button class="secondary" onclick="cleanupCompleted()">Cleanup Old</button>
+    <div class="page-head-actions">
+        <button class="btn btn-primary" onclick="queueAllPending()">Queue All Pending</button>
+        <button class="btn btn-secondary" onclick="cleanupCompleted()">Cleanup Old</button>
     </div>
 </div>
 
 <!-- Stats Grid -->
-<div class="stats-grid">
-    <div class="stat-card">
+<div class="hero">
+    <div class="hero-cell">
         <h3>{{ job_counts.get('running', 0) }}</h3>
         <p>Running</p>
     </div>
-    <div class="stat-card">
-        <h3>{{ stuck_count }}</h3>
-        <p>Stuck</p>
-    </div>
-    <div class="stat-card">
+    <div class="hero-cell">
         <h3>{{ job_counts.get('queued', 0) }}</h3>
         <p>Queued</p>
     </div>
-    <div class="stat-card">
+    <div class="hero-cell">
         <h3>{{ job_counts.get('failed', 0) }}</h3>
         <p>Failed</p>
     </div>
-    <div class="stat-card">
+    <div class="hero-cell">
         <h3>{{ job_counts.get('completed', 0) }}</h3>
         <p>Completed</p>
     </div>
 </div>
 
+<nav class="filters" aria-label="Job filters">
+    {% for value, label in [('all', 'All'), ('running', 'Running'), ('stuck', 'Stuck'), ('queued', 'Queued'), ('failed', 'Failed'), ('completed', 'Completed')] %}
+    <a class="chip" href="{{ '/admin/queue' if value == 'all' else '/admin/queue?status=' ~ value }}" {% if current_filter == value %}aria-current="true"{% endif %}>{{ label }}</a>
+    {% endfor %}
+    {% if stuck_count > 0 %}<span class="meta">{{ stuck_count }} stuck</span>{% endif %}
+</nav>
+
 <!-- Alert for stuck jobs -->
 {% if stuck_count > 0 %}
-<article style="background: #fef3c7; border-color: #f59e0b; margin-bottom: 1rem;">
-    <strong style="color: #92400e;">Warning:</strong>
-    <span style="color: #92400e;">{{ stuck_count }} job{% if stuck_count > 1 %}s{% endif %} stuck (running > {{ stuck_threshold_minutes }}min)</span>
-    <button class="outline" style="margin-left: 1rem; padding: 0.25rem 0.5rem; font-size: 0.875rem;"
+<section class="section">
+    <strong>Warning:</strong>
+    <span>{{ stuck_count }} job{% if stuck_count > 1 %}s{% endif %} stuck (running > {{ stuck_threshold_minutes }}min)</span>
+    <button class="btn btn-ghost"
             onclick="resetAllStuck()">Reset All Stuck</button>
-</article>
+</section>
 {% endif %}
 
 <!-- Job Table -->
-<article>
+<section class="section">
     {% if stuck_count > 0 or job_counts.get('queued', 0) > 0 or job_counts.get('failed', 0) > 0 %}
-    <header style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
-        <h3 style="margin: 0;">Jobs{% if current_filter != 'all' %} ({{ current_filter }}){% endif %}</h3>
-        <div class="action-bar" style="margin: 0;">
+    <header>
+        <h3>Jobs{% if current_filter != 'all' %} ({{ current_filter }}){% endif %}</h3>
+        <div class="action-bar">
             {% if stuck_count > 0 %}
-            <button onclick="resetAllStuck()">Reset Stuck</button>
+            <button class="btn btn-primary" onclick="resetAllStuck()">Reset Stuck</button>
             {% endif %}
             {% if job_counts.get('queued', 0) > 0 %}
-            <button class="secondary" onclick="cancelAllQueued()">Cancel Queued</button>
+            <button class="btn btn-secondary" onclick="cancelAllQueued()">Cancel Queued</button>
             {% endif %}
             {% if job_counts.get('failed', 0) > 0 %}
-            <button class="secondary" onclick="retryAllFailed()">Retry Failed</button>
+            <button class="btn btn-secondary" onclick="retryAllFailed()">Retry Failed</button>
             {% endif %}
         </div>
     </header>
     {% endif %}
 
     {% if jobs %}
-    <table>
+    <table class="table">
     <thead>
         <tr>
             <th>Episode</th>
@@ -92,39 +87,39 @@
         {% for item in jobs %}
         <tr>
             <td>
-                <div style="max-width: 300px;">
+                <div>
                     <a href="/episodes/{{ item.episode.id }}">{{ item.episode.title[:50] }}{% if item.episode.title|length > 50 %}...{% endif %}</a>
                     <br>
-                    <small style="color: var(--pico-muted-color);">{{ item.feed.display_title if item.feed else 'Unknown' }}</small>
+                    <small>{{ item.feed.display_title if item.feed else 'Unknown' }}</small>
                 </div>
             </td>
             <td>
                 {% if item.job.job_type.value == 'download' %}
-                <span class="css-tooltip" title="Audio Download">DL</span>
+                <span class="tip" title="Audio Download">DL</span>
                 {% elif item.job.job_type.value == 'transcribe' %}
-                <span class="css-tooltip" title="Transcription (Whisper)">TX</span>
+                <span class="tip" title="Transcription (Whisper)">TX</span>
                 {% elif item.job.job_type.value == 'transcript_download' %}
-                <span class="css-tooltip" title="Transcript Fetch">TF</span>
+                <span class="tip" title="Transcript Fetch">TF</span>
                 {% elif item.job.job_type.value == 'embed' %}
-                <span class="css-tooltip" title="Embedding">EMB</span>
+                <span class="tip" title="Embedding">EMB</span>
                 {% else %}
-                <span class="css-tooltip" title="{{ item.job.job_type.value }}">{{ item.job.job_type.value[:3]|upper }}</span>
+                <span class="tip" title="{{ item.job.job_type.value }}">{{ item.job.job_type.value[:3]|upper }}</span>
                 {% endif %}
             </td>
             <td>
                 {% if item.is_stuck %}
-                <span class="status-badge" style="background: #fef3c7; color: #92400e;">STUCK</span>
+                <span class="status status-failed">STUCK</span>
                 {% elif item.job.status.value == 'running' %}
-                <span class="status-badge status-downloading">RUNNING</span>
+                <span class="status status-running">RUNNING</span>
                 {% elif item.job.status.value == 'queued' %}
-                <span class="status-badge status-new">QUEUED</span>
+                <span class="status status-queued">QUEUED</span>
                 {% elif item.job.status.value == 'failed' %}
-                <span class="status-badge status-failed">FAILED</span>
+                <span class="status status-failed">FAILED</span>
                 {% if item.episode.permanent_failure %}
-                <span class="status-badge" style="background: var(--del-color); color: white; font-size: 0.65rem;">PERMANENT</span>
+                <span class="status status-failed">PERMANENT</span>
                 {% endif %}
                 {% elif item.job.status.value == 'completed' %}
-                <span class="status-badge status-completed">DONE</span>
+                <span class="status status-done">DONE</span>
                 {% endif %}
             </td>
             <td>
@@ -147,17 +142,17 @@
             <td>
                 <div class="actions">
                     {% if item.job.status.value == 'queued' %}
-                    <button class="outline secondary" onclick="cancelJob({{ item.job.id }})">Cancel</button>
+                    <button class="btn btn-ghost" onclick="cancelJob({{ item.job.id }})">Cancel</button>
                     {% endif %}
                     {% if item.job.status.value == 'running' %}
-                    <button class="outline" onclick="resetJob({{ item.job.id }})">Reset</button>
+                    <button class="btn btn-ghost" onclick="resetJob({{ item.job.id }})">Reset</button>
                     {% endif %}
                     {% if item.job.status.value == 'failed' %}
-                    <button class="outline" onclick="retryJob({{ item.job.id }})">Retry</button>
+                    <button class="btn btn-ghost" onclick="retryJob({{ item.job.id }})">Retry</button>
                     {% endif %}
-                    <button class="outline secondary" onclick="deleteJob({{ item.job.id }})" title="Delete job">Del</button>
+                    <button class="btn btn-ghost" onclick="deleteJob({{ item.job.id }})" title="Delete job">Del</button>
                     {% if item.job.error_message %}
-                    <button class="outline secondary" onclick="showJobError({{ item.job.id }}, `{{ item.job.error_message | replace('`', '\\`') | replace('\n', '\\n') }}`)" title="View error">Err</button>
+                    <button class="btn btn-ghost" onclick="showJobError({{ item.job.id }}, `{{ item.job.error_message | replace('`', '\\`') | replace('\n', '\\n') }}`)" title="View error">Err</button>
                     {% endif %}
                 </div>
             </td>
@@ -169,17 +164,17 @@
     {% else %}
     <p>No jobs found{% if current_filter != 'all' %} with status "{{ current_filter }}"{% endif %}.</p>
     {% endif %}
-</article>
+</section>
 
 <!-- Error Modal -->
-<dialog id="error-modal">
-    <article>
+<dialog id="error-modal" class="dialog dialog-wide">
+    <section class="section">
         <header>
-            <button aria-label="Close" rel="prev" onclick="document.getElementById('error-modal').close()"></button>
+            <button class="btn btn-ghost btn-icon" type="button" aria-label="Close" onclick="document.getElementById('error-modal').close()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
             <h3>Error Details</h3>
         </header>
-        <pre id="error-content" style="white-space: pre-wrap; word-break: break-word; max-height: 400px; overflow-y: auto;"></pre>
-    </article>
+        <pre id="error-content"></pre>
+    </section>
 </dialog>
 {% endblock %}
 

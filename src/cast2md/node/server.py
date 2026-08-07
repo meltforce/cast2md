@@ -6,6 +6,7 @@ from pathlib import Path
 import httpx
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from cast2md.node.config import NodeConfig, load_config, save_config
@@ -50,6 +51,8 @@ def create_app(worker: TranscriberNodeWorker | None = None) -> FastAPI:
     )
 
     templates = Jinja2Templates(directory=str(templates_path))
+    static_path = Path(__file__).parent.parent / "static"
+    app.mount("/static", StaticFiles(directory=str(static_path)), name="static")
 
     # Store worker reference
     app.state.worker = worker

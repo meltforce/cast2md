@@ -3,53 +3,50 @@
 {% block title %}Queue - Transcriber Node{% endblock %}
 
 {% block content %}
-<hgroup>
-    <h1>Transcription Queue</h1>
-    <p>Jobs from {{ config.server_url if config else 'server' }}</p>
-</hgroup>
+<header class="page-head"><div><div class="kick">Jobs from {{ config.server_url if config else 'server' }}</div><h1>Transcription Queue</h1></div></header>
 
 {% if not config %}
-<article>
+<section class="section">
     <header>
         <h3>Not Configured</h3>
     </header>
     <p>This node is not registered with a server.</p>
     <p>Run <code>cast2md node register --server &lt;server_url&gt; --name "Node Name"</code> to register.</p>
-</article>
+</section>
 {% elif error %}
-<article>
+<section class="section">
     <header>
         <h3>Error Loading Queue</h3>
     </header>
     <p>{{ error }}</p>
-</article>
+</section>
 {% elif queue %}
 
-<div class="grid">
-    <article class="stat-card">
+<div class="hero">
+    <section class="hero-cell">
         <h3>{{ queue.transcribe_queue.queued }}</h3>
         <p>Queued</p>
-    </article>
-    <article class="stat-card">
+    </section>
+    <section class="hero-cell">
         <h3>{{ queue.transcribe_queue.running }}</h3>
         <p>Running</p>
-    </article>
-    <article class="stat-card">
+    </section>
+    <section class="hero-cell">
         <h3>{{ queue.transcribe_queue.completed }}</h3>
         <p>Completed</p>
-    </article>
-    <article class="stat-card">
+    </section>
+    <section class="hero-cell">
         <h3>{{ queue.transcribe_queue.failed }}</h3>
         <p>Failed</p>
-    </article>
+    </section>
 </div>
 
 {% if queue.transcribe_queue.running_jobs %}
-<article>
+<section class="section">
     <header>
         <h3>Running Jobs</h3>
     </header>
-    <table>
+    <table class="table">
         <thead>
             <tr>
                 <th>Job ID</th>
@@ -67,15 +64,15 @@
             {% endfor %}
         </tbody>
     </table>
-</article>
+</section>
 {% endif %}
 
 {% if queue.transcribe_queue.queued_jobs %}
-<article>
+<section class="section">
     <header>
         <h3>Queued Jobs</h3>
     </header>
-    <table>
+    <table class="table">
         <thead>
             <tr>
                 <th>Job ID</th>
@@ -93,24 +90,24 @@
             {% endfor %}
         </tbody>
     </table>
-</article>
+</section>
 {% endif %}
 
 {% if not queue.transcribe_queue.running_jobs and not queue.transcribe_queue.queued_jobs %}
-<article>
-    <div class="stat-card">
+<section class="section">
+    <div class="hero-cell">
         <p>No transcription jobs in queue</p>
     </div>
-</article>
+</section>
 {% endif %}
 
 {% else %}
-<article>
+<section class="section">
     <header>
         <h3>Loading...</h3>
     </header>
     <p>Unable to load queue status.</p>
-</article>
+</section>
 {% endif %}
 {% endblock %}
 

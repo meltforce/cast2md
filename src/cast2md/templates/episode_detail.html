@@ -3,140 +3,81 @@
 {% block title %}{{ episode.title }} - cast2md{% endblock %}
 
 {% block content %}
-<p><a href="{{ back_href }}">&larr; {{ back_label }}</a></p>
+<div class="page-x"><a class="btn btn-ghost compact" href="{{ back_href }}">← {{ back_label }}</a></div>
 
-<article class="episode-header">
-    <div style="display: flex; gap: 1.5rem;">
-        {% if feed.image_url %}
-        <img src="{{ feed.image_url }}" alt="{{ feed.display_title }}" style="width: 150px; height: 150px; border-radius: 8px; object-fit: cover;">
-        {% endif %}
-        <div style="flex: 1;">
-            <h1 style="margin-bottom: 0.5rem;">{{ episode.title }}</h1>
-            <p style="margin-bottom: 0.5rem;">
-                <a href="/feeds/{{ feed.id }}">{{ feed.display_title }}</a>
-                {% if feed.author %}<span class="muted" style="color: var(--muted-color);"> by {{ feed.author }}</span>{% endif %}
-            </p>
-            <div class="episode-meta">
-                <span class="status-badge status-{{ episode.status.value }}">{{ episode.status.value }}</span>
-                &nbsp;|&nbsp;
-                {{ episode.published_at.strftime('%B %d, %Y') if episode.published_at else 'Unknown date' }}
-                {% if episode.duration_seconds %}
-                &nbsp;|&nbsp;
-                {{ '%d:%02d' % (episode.duration_seconds // 60, episode.duration_seconds % 60) }}
-                {% endif %}
-            </div>
-            <div style="margin-top: 0.75rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
-                {% if episode.link %}
-                <a href="{{ episode.link }}" target="_blank" role="button" class="outline secondary" style="padding: 0.25rem 0.75rem; font-size: 0.875rem;">Original Episode</a>
-                {% endif %}
-                {% if feed.link %}
-                <a href="{{ feed.link }}" target="_blank" role="button" class="outline secondary" style="padding: 0.25rem 0.75rem; font-size: 0.875rem;">Podcast Website</a>
-                {% endif %}
-                {# vimmary pulls the transcript itself; this link only carries the episode ID. #}
-                {% if vimmary_url and episode.status.value == 'completed' %}
-                <a href="{{ vimmary_url }}/podcasts/new?episode={{ episode.id }}" target="_blank" role="button" class="outline" style="padding: 0.25rem 0.75rem; font-size: 0.875rem;">Summarize in vimmary</a>
-                {% endif %}
-            </div>
+<header class="page-head feed-head">
+    {% if feed.image_url %}<img class="artwork" src="{{ feed.image_url }}" alt="">{% endif %}
+    <div class="page-head-main">
+        <div class="kick">
+            <a href="/feeds/{{ feed.id }}">{{ feed.display_title }}</a> ·
+            {{ episode.published_at.strftime('%B %d, %Y') if episode.published_at else 'Unknown date' }}
+            {% if episode.duration_seconds %} · {{ '%d:%02d' % (episode.duration_seconds // 60, episode.duration_seconds % 60) }}{% endif %}
         </div>
+        <h1>{{ episode.title }}</h1>
     </div>
-</article>
+    {% set state_class = 'status-done' if episode.status.value == 'completed' else 'status-running' if episode.status.value in ['downloading', 'transcribing'] else 'status-failed' if episode.status.value == 'failed' else 'status-queued' %}
+    <span class="status {{ state_class }}">{{ episode.status.value }}</span>
+</header>
+
+<div class="actions page-x">
+    {% if episode.status.value == 'new' %}
+        <button class="btn btn-primary" type="button" onclick="queueTranscriptDownload({{ episode.id }})">Try Transcript Download</button>
+        <button class="btn btn-secondary" type="button" onclick="queueProcess({{ episode.id }})">Download Audio</button>
+    {% elif episode.status.value in ['awaiting_transcript', 'needs_audio'] %}
+        <button class="btn btn-primary" type="button" onclick="queueProcess({{ episode.id }})">Download Audio</button>
+    {% elif episode.status.value == 'audio_ready' %}
+        <button class="btn btn-primary" type="button" onclick="queueTranscribe({{ episode.id }})">Queue Transcription</button>
+    {% elif episode.status.value == 'failed' %}
+        <button class="btn btn-primary" type="button" onclick="queueProcess({{ episode.id }})">Retry</button>
+    {% endif %}
+    {% if episode.link %}<a class="btn btn-secondary" href="{{ episode.link }}" target="_blank" rel="noopener">Original Episode</a>{% endif %}
+    {% if feed.link %}<a class="btn btn-secondary" href="{{ feed.link }}" target="_blank" rel="noopener">Podcast Website</a>{% endif %}
+    {% if vimmary_url and episode.status.value == 'completed' %}<a class="btn btn-secondary" href="{{ vimmary_url }}/podcasts/new?episode={{ episode.id }}" target="_blank" rel="noopener">Summarize in vimmary</a>{% endif %}
+    {% if episode.audio_path %}<a class="btn btn-secondary" href="{{ episode.audio_url }}" target="_blank" rel="noopener">Download Original</a>{% endif %}
+    {% if episode.transcript_path and episode.audio_path %}<button class="btn btn-danger" type="button" onclick="confirmDeleteAudio({{ episode.id }})">Delete Audio</button>{% endif %}
+    {% if episode.transcript_path and not episode.audio_path and episode.audio_url and episode.status.value == 'completed' %}<button class="btn btn-secondary" type="button" onclick="queueDownloadAudio({{ episode.id }})">Download Audio</button>{% endif %}
+</div>
+
+{% if episode.error_message %}
+<div class="banner">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m21.7 18-8-14a2 2 0 0 0-3.4 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.7-3Z"/><path d="M12 9v4M12 17h.01"/></svg>
+    <span class="mono">{{ episode.error_message }}</span>
+</div>
+{% endif %}
 
 {% if episode.description %}
-<article>
-    <header><h3>Show Notes</h3></header>
-    <div class="shownotes-preview" style="color: var(--secondary); margin-bottom: 1rem;">
-        {{ episode.description|truncate_html(300) }}
-    </div>
-    <button class="outline secondary" onclick="document.getElementById('shownotesModal').showModal()">
-        Read full show notes
-    </button>
-</article>
+<section class="section">
+    <div class="sec-head"><div><div class="kick">Episode</div><h2>Show notes</h2></div></div>
+    <div class="reader reader-clamp">{{ episode.description|truncate_html(300) }}</div>
+    <button class="btn btn-ghost compact" type="button" onclick="document.getElementById('shownotesModal').showModal()">Read full show notes</button>
+</section>
 
-<dialog id="shownotesModal">
-    <article style="max-width: 800px; max-height: 80vh; overflow-y: auto;">
-        <header>
-            <button aria-label="Close" rel="prev" onclick="this.closest('dialog').close()"></button>
-            <h3>Show Notes</h3>
-        </header>
-        <div class="shownotes">
-            {{ episode.description|sanitize_html|safe }}
-        </div>
-    </article>
+<dialog id="shownotesModal" class="dialog dialog-wide">
+    <button class="btn btn-ghost btn-icon dialog-close" type="button" aria-label="Close" onclick="this.closest('dialog').close()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+    <h2 class="dialog-title">Show notes</h2>
+    <div class="dialog-body reader">{{ episode.description|sanitize_html|safe }}</div>
 </dialog>
 {% endif %}
 
-<article>
-    <header>
-        <h3>Actions</h3>
-    </header>
-
-    <div class="actions" style="gap: 1rem;">
-        {% if episode.status.value == 'new' %}
-            <button onclick="queueTranscriptDownload({{ episode.id }})">Try Transcript Download</button>
-            <button class="outline secondary" onclick="queueProcess({{ episode.id }})">Download Audio</button>
-        {% elif episode.status.value == 'awaiting_transcript' %}
-            <button onclick="queueProcess({{ episode.id }})">Download Audio</button>
-        {% elif episode.status.value == 'needs_audio' %}
-            <button onclick="queueProcess({{ episode.id }})">Download Audio</button>
-        {% elif episode.status.value == 'audio_ready' %}
-            <button onclick="queueTranscribe({{ episode.id }})">Queue Transcription</button>
-        {% elif episode.status.value == 'failed' %}
-            <button onclick="queueProcess({{ episode.id }})" class="secondary">Retry</button>
-        {% endif %}
-
-        {% if episode.audio_path %}
-            <a href="{{ episode.audio_url }}" target="_blank" role="button" class="outline secondary">Download Original</a>
-        {% endif %}
-
-        {# Audio management: Only show when transcript exists #}
-        {% if episode.transcript_path %}
-            {% if episode.audio_path %}
-                <button class="outline secondary" onclick="confirmDeleteAudio({{ episode.id }})">Delete Audio</button>
-            {% elif episode.audio_url and episode.status.value == 'completed' %}
-                <button class="outline secondary" onclick="queueDownloadAudio({{ episode.id }})">Download Audio</button>
-            {% endif %}
-        {% endif %}
-    </div>
-
-    {% if episode.error_message %}
-    <footer>
-        <details open>
-            <summary>Error Details</summary>
-            <pre>{{ episode.error_message }}</pre>
-        </details>
-    </footer>
-    {% endif %}
-</article>
-
 {% if transcript_content %}
-<article>
-    <header style="display: flex; justify-content: space-between; align-items: center;">
-        <h3 style="margin: 0;">
-            Transcript
-            {% if episode.transcript_source %}
-                {% if episode.transcript_source.startswith('podcast2.0') %}
-                <span style="font-size: 0.75rem; font-weight: normal; color: var(--muted-color);" title="Downloaded from {{ episode.transcript_url }}">(Publisher provided)</span>
-                {% elif episode.transcript_source == 'pocketcasts' %}
-                <span style="font-size: 0.75rem; font-weight: normal; color: var(--muted-color);" title="Auto-generated by Pocket Casts">(Auto-generated)</span>
-                {% elif episode.transcript_source == 'whisper' %}
-                <span style="font-size: 0.75rem; font-weight: normal; color: var(--muted-color);">(Created by cast2md{% if episode.transcript_model %} - {{ episode.transcript_model }}{% endif %})</span>
-                {% endif %}
-            {% elif episode.transcript_model %}
-            <span style="font-size: 0.75rem; font-weight: normal; color: var(--muted-color);">({{ episode.transcript_model }})</span>
-            {% endif %}
-        </h3>
-        <div style="display: flex; gap: 0.5rem;">
-            <a href="/api/episodes/{{ episode.id }}/transcript?format=md" role="button" class="outline secondary" style="padding: 0.25rem 0.5rem; font-size: 0.875rem;">MD</a>
-            <a href="/api/episodes/{{ episode.id }}/transcript?format=txt" role="button" class="outline secondary" style="padding: 0.25rem 0.5rem; font-size: 0.875rem;">TXT</a>
-            <a href="/api/episodes/{{ episode.id }}/transcript?format=srt" role="button" class="outline secondary" style="padding: 0.25rem 0.5rem; font-size: 0.875rem;">SRT</a>
-            <a href="/api/episodes/{{ episode.id }}/transcript?format=vtt" role="button" class="outline secondary" style="padding: 0.25rem 0.5rem; font-size: 0.875rem;">VTT</a>
-            <a href="/api/episodes/{{ episode.id }}/transcript?format=json" role="button" class="outline secondary" style="padding: 0.25rem 0.5rem; font-size: 0.875rem;">JSON</a>
+<section class="section">
+    <div class="sec-head">
+        <div>
+            <div class="kick">Transcript</div>
+            <h2>Transcript</h2>
+            <div class="meta">
+                {% if episode.transcript_source and episode.transcript_source.startswith('podcast2.0') %}Publisher provided
+                {% elif episode.transcript_source == 'pocketcasts' %}Auto-generated
+                {% elif episode.transcript_source == 'whisper' %}Created by cast2md{% if episode.transcript_model %} — {{ episode.transcript_model }}{% endif %}
+                {% elif episode.transcript_model %}{{ episode.transcript_model }}{% endif %}
+            </div>
         </div>
-    </header>
-    <div class="transcript-container" id="transcript">
-        {{ transcript_content|render_transcript|safe }}
+        <div class="seg" aria-label="Transcript downloads">
+            {% for format in ['md', 'txt', 'srt', 'vtt', 'json'] %}<a class="btn btn-ghost compact" href="/api/episodes/{{ episode.id }}/transcript?format={{ format }}">{{ format|upper }}</a>{% endfor %}
+        </div>
     </div>
-</article>
+    <div class="reader" id="transcript">{{ transcript_content|render_transcript|safe }}</div>
+</section>
 {% endif %}
 {% endblock %}
 
@@ -238,7 +179,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (element) {
             // Small delay to ensure layout is complete
             setTimeout(() => {
-                element.scrollIntoView({ behavior: 'instant', block: 'center' });
+                window.scrollTo({ top: element.offsetTop - 80 });
                 element.classList.add('highlight');
                 setTimeout(() => {
                     element.classList.remove('highlight');
