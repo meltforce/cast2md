@@ -116,10 +116,10 @@ progress::-webkit-progress-value, progress::-moz-progress-bar { background: var(
   .reading-col { padding-top: 24px; }
   .stream-head, .page-head { align-items: flex-start; flex-direction: column; gap: var(--space-3); }
   .stream-meta { text-align: left; }
-  .media-row { gap: 12px; padding-block: 15px; }
+  .media-row { flex-wrap: wrap; gap: 12px; padding-block: 15px; }
   .media-art, .feed-art, .media-lead .media-art { width: 64px; height: 64px; }
   .media-lead .media-title, .media-title { font-size: 17px; }
-  .media-side { max-width: 82px; }
+  .media-side { width: 100%; max-width: none; flex-direction: row; justify-content: flex-end; }
   .media-summary { -webkit-line-clamp: 3; }
   .transcript-segment { flex-direction: column; gap: 4px; }
   .transcript-timestamp { width: auto; }
