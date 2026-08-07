@@ -9,6 +9,8 @@ import re
 from dataclasses import dataclass
 from html import unescape
 
+from cast2md.search.parser import merge_word_level_segments
+
 logger = logging.getLogger(__name__)
 
 
@@ -30,103 +32,6 @@ def _format_timestamp(seconds: float) -> str:
     if hours > 0:
         return f"{hours:02d}:{minutes:02d}:{secs:02d}"
     return f"{minutes:02d}:{secs:02d}"
-
-
-def _merge_word_level_segments(
-    segments: list[TranscriptSegment],
-    min_phrase_chars: int = 40,
-    max_phrase_chars: int = 200,
-    pause_threshold: float = 1.5,
-) -> list[TranscriptSegment]:
-    """Merge word-level segments into phrase-level segments.
-
-    Transcripts (both external and Whisper) can have word-level timestamps
-    where each word is a separate cue. This function merges consecutive
-    short segments into natural phrases while preserving long segments.
-
-    Handles mixed transcripts where some portions are phrase-level and
-    others are word-level.
-
-    Merging stops when:
-    - The phrase reaches min_phrase_chars and ends with punctuation
-    - The phrase reaches max_phrase_chars
-    - There's a pause (gap) of pause_threshold seconds between segments
-    - The next segment is already long enough (>= min_phrase_chars)
-
-    Args:
-        segments: List of transcript segments (potentially word-level).
-        min_phrase_chars: Minimum characters before considering phrase complete.
-        max_phrase_chars: Maximum characters per phrase.
-        pause_threshold: Seconds of pause that indicates a natural break.
-
-    Returns:
-        List of merged transcript segments.
-    """
-    if not segments:
-        return []
-
-    merged = []
-    current_texts: list[str] = []
-    current_start = segments[0].start
-    current_end = segments[0].end
-
-    for seg in segments:
-        text = seg.text.strip()
-        if not text:
-            continue
-
-        seg_len = len(text)
-
-        # Check if we should start a new phrase
-        start_new = False
-
-        if current_texts:
-            # Check for pause between segments
-            gap = seg.start - current_end
-            if gap > pause_threshold:
-                start_new = True
-
-            # Check if phrase is getting too long
-            current_len = sum(len(t) for t in current_texts) + len(current_texts)  # +spaces
-            if current_len >= max_phrase_chars:
-                start_new = True
-
-            # Check if phrase is complete (min length + ends with punctuation)
-            if current_len >= min_phrase_chars:
-                last_text = current_texts[-1] if current_texts else ""
-                if last_text and last_text[-1] in ".!?":
-                    start_new = True
-
-            # If the incoming segment is already long, save current and start fresh
-            if seg_len >= min_phrase_chars and current_len >= min_phrase_chars:
-                start_new = True
-
-        if start_new and current_texts:
-            # Save the current phrase
-            merged.append(
-                TranscriptSegment(
-                    start=current_start,
-                    end=current_end,
-                    text=" ".join(current_texts),
-                )
-            )
-            current_texts = []
-            current_start = seg.start
-
-        current_texts.append(text)
-        current_end = seg.end
-
-    # Don't forget the last phrase
-    if current_texts:
-        merged.append(
-            TranscriptSegment(
-                start=current_start,
-                end=current_end,
-                text=" ".join(current_texts),
-            )
-        )
-
-    return merged
 
 
 def _segments_to_markdown(
@@ -155,7 +60,7 @@ def _segments_to_markdown(
         lines.append("")
 
     # Merge word-level segments into phrases for better readability
-    merged_segments = _merge_word_level_segments(segments)
+    merged_segments = merge_word_level_segments(segments)
 
     if merged_segments:
         for seg in merged_segments:
