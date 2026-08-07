@@ -92,6 +92,32 @@ class EpisodeRepository:
         row = cursor.fetchone()
         return Episode.from_row(row) if row else None
 
+    def get_by_ids(self, episode_ids: list[int]) -> dict[int, Episode]:
+        """Get several episodes in one query, keyed by ID.
+
+        Replaces a get_by_id call per item when a caller already holds a list
+        of episode IDs. Missing IDs are absent from the result rather than
+        mapped to None, so a caller can test with `in`.
+
+        Args:
+            episode_ids: IDs to look up; duplicates and an empty list are fine.
+
+        Returns:
+            Dict of episode ID to episode, for the IDs that exist.
+        """
+        if not episode_ids:
+            return {}
+
+        unique_ids = list(set(episode_ids))
+        placeholders = ", ".join(["%s"] * len(unique_ids))
+        cursor = execute(
+            self.conn,
+            f"SELECT {self.EPISODE_COLUMNS} FROM episode WHERE id IN ({placeholders})",
+            tuple(unique_ids),
+        )
+        episodes = [Episode.from_row(row) for row in cursor.fetchall()]
+        return {ep.id: ep for ep in episodes}
+
     def get_by_guid(self, feed_id: int, guid: str) -> Episode | None:
         """Get episode by feed ID and GUID."""
         cursor = execute(
