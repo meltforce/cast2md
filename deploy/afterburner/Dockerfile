@@ -54,8 +54,13 @@ RUN pip install --no-cache-dir \
     torchaudio==2.4.0 \
     --index-url https://download.pytorch.org/whl/cu124
 
-# Install NeMo toolkit for Parakeet transcription
-RUN pip install --no-cache-dir 'nemo_toolkit[asr]'
+# Install NeMo toolkit for Parakeet transcription.
+# Pinned to the version the running image was built with (2026-01-29, commit
+# d79faa6). Unpinned, a rebuild would pull NeMo 3.0.0 (2026-08-07) into a pod
+# whose torch is fixed at 2.4.0, and the major bump would reach production
+# without a commit that names it. Raising this pin is a deliberate step: rebuild
+# via workflow_dispatch and transcribe a test episode before merging.
+RUN pip install --no-cache-dir 'nemo_toolkit[asr]==2.6.1'
 
 # Pre-download Parakeet model (~600MB) to avoid download at runtime
 RUN python -c "import nemo.collections.asr as nemo_asr; \
