@@ -275,6 +275,13 @@ def update_settings(request: UpdateSettingsRequest):
 
             repo.set(key, str(value))
 
+    # The write above only reaches the database. get_settings() serves a cached
+    # instance, so without this reload a running process keeps the old value
+    # until something else happens to reload -- and settings that worker threads
+    # re-read each pass, such as server_transcription_always, would look applied
+    # in the UI while the worker still acts on the previous value.
+    reload_settings()
+
     return MessageResponse(message="Settings updated. Some changes require a restart.")
 
 

@@ -79,3 +79,36 @@ class TestDefaults:
         assert _DEFAULTS["whisper_device"] == "auto"
         assert _DEFAULTS["whisper_compute_type"] == "int8"
         assert _DEFAULTS["whisper_backend"] == "auto"
+
+
+class TestUpdateReachesTheRunningProcess:
+    """PUT /api/settings must reload, not only write to the database.
+
+    get_settings() serves a cached instance. A write that skips the reload is
+    visible on the settings page, which re-reads from the database, while every
+    worker thread keeps acting on the value from process start -- the kind of
+    divergence that reads as "the setting does nothing".
+    """
+
+    def test_put_makes_the_new_value_visible_to_get_settings(self, db_conn):
+        from fastapi.testclient import TestClient
+
+        from cast2md.config.settings import get_settings, reload_settings
+        from cast2md.db.repository import SettingsRepository
+        from cast2md.main import app
+
+        client = TestClient(app)
+        assert get_settings().server_transcription_always is False
+
+        try:
+            response = client.put(
+                "/api/settings",
+                json={"settings": {"server_transcription_always": "true"}},
+            )
+            assert response.status_code == 200
+
+            assert get_settings().server_transcription_always is True
+        finally:
+            SettingsRepository(db_conn).delete("server_transcription_always")
+            db_conn.commit()
+            reload_settings()
