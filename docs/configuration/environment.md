@@ -71,8 +71,16 @@ All settings use uppercase environment variable names. They can be set in a `.en
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `DISTRIBUTED_TRANSCRIPTION_ENABLED` | `false` | Enable remote transcription nodes |
+| `SERVER_TRANSCRIPTION_ALWAYS` | `false` | Keep the server transcribing while nodes or pods are available |
 | `NODE_HEARTBEAT_TIMEOUT_SECONDS` | `60` | Seconds before marking a node offline |
 | `REMOTE_JOB_TIMEOUT_MINUTES` | `30` | Maximum time for remote transcription jobs |
+
+With `DISTRIBUTED_TRANSCRIPTION_ENABLED=true`, the server's transcription worker
+stays in standby whenever a node or RunPod pod is available and only processes
+embedding jobs. `SERVER_TRANSCRIPTION_ALWAYS=true` removes that deferral, so the
+server competes for transcription jobs alongside the external workers. It also
+skips the 30-second startup grace period, which exists only to let nodes announce
+themselves first. The setting is also togglable on the settings page.
 
 ## RunPod GPU Workers
 

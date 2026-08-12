@@ -227,7 +227,8 @@ class WorkerManager:
 
         This allows single-server users to transcribe out of the box while
         users with dedicated nodes/pods get better performance without
-        server CPU overhead.
+        server CPU overhead. Setting `server_transcription_always` opts out of
+        the deferral and keeps this worker claiming transcription jobs.
         """
         while not self._stop_event.is_set():
             try:
@@ -268,8 +269,17 @@ class WorkerManager:
         Returns True if:
         - Within startup grace period (30s) when distributed transcription is enabled
         - External workers (nodes or RunPod pods) are available
+
+        Returns False regardless of external workers when
+        `server_transcription_always` is set, including during the grace period --
+        the grace period exists only to keep the server from claiming jobs before
+        nodes announce themselves, and that reason does not apply when the server
+        is meant to claim jobs alongside them.
         """
         if not _is_distributed_enabled():
+            return False
+
+        if get_settings().server_transcription_always:
             return False
 
         # Grace period after startup to let nodes send their first heartbeat

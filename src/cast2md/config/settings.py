@@ -79,6 +79,10 @@ class Settings(BaseSettings):
     distributed_transcription_enabled: bool = False
     node_heartbeat_timeout_seconds: int = 60
     remote_job_timeout_minutes: int = 30
+    # With distributed transcription on, the server's transcribe worker stays in
+    # standby while a node or pod is available. Set this to keep it claiming
+    # transcription jobs alongside them -- it adds server CPU load.
+    server_transcription_always: bool = False
 
     # RunPod configuration (requires both tokens to be enabled)
     runpod_enabled: bool = False  # Master switch - must be True to use RunPod
@@ -148,6 +152,7 @@ _DEFAULTS = {
     "distributed_transcription_enabled": False,
     "node_heartbeat_timeout_seconds": 60,
     "remote_job_timeout_minutes": 30,
+    "server_transcription_always": False,
     # RunPod settings
     "runpod_enabled": False,
     "runpod_max_pods": 3,

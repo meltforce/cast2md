@@ -113,6 +113,15 @@ def _get_configurable_settings() -> dict:
             "description": "Allow remote nodes to process transcription jobs",
             "full_width": True,
         },
+        "server_transcription_always": {
+            "type": "bool",
+            "label": "Server Transcribes Alongside Nodes",
+            "description": (
+                "Keep the server's transcription worker running while nodes or pods "
+                "are available (adds server CPU load)"
+            ),
+            "full_width": True,
+        },
         "node_heartbeat_timeout_seconds": {
             "type": "int",
             "label": "Node Heartbeat Timeout (seconds)",

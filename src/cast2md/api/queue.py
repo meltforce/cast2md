@@ -205,7 +205,7 @@ def get_queue_status():
         from cast2md.config.settings import get_settings
 
         settings = get_settings()
-        if settings.distributed_transcription_enabled:
+        if settings.distributed_transcription_enabled and not settings.server_transcription_always:
             from cast2md.distributed.coordinator import get_coordinator
 
             coordinator = get_coordinator()
