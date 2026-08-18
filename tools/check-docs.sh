@@ -183,9 +183,13 @@ sweep() {
     #
     # µ and ° appear legitimately in sensor and metric strings.
     # Dependency trees fetched by a tool are not repo artifacts — without the
-    # prune, one `uv pip install` buries the real findings.
+    # prune, one `uv pip install` buries the real findings. ./data holds the
+    # transcripts a dev instance downloads, which are podcast speech in whatever
+    # language the show uses, and is gitignored for the same reason. Keep
+    # apostrophes out of this block: bash parses it while reading the process
+    # substitution, where a lone quote in a comment breaks the parse.
     find . \
-      \( -path ./.git -o -path ./.archive \
+      \( -path ./.git -o -path ./.archive -o -path ./data \
          -o -path ./tools/check-docs.sh -o -path ./tools/check-docs.allow \
          -o -name node_modules -o -name vendor \
          -o -name .venv -o -name venv -o -name site-packages \
