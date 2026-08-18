@@ -12,6 +12,7 @@ class TranscriptSegment:
     text: str
     start: float  # Start time in seconds
     end: float  # End time in seconds
+    speaker: str | None = None  # Speaker name, when the source names one
 
 
 def format_timestamp_mmss(seconds: float) -> str:
@@ -41,7 +42,11 @@ def format_segments(segments: list["TranscriptSegment"]) -> str:
     Returns:
         Newline-separated lines, empty string for no segments.
     """
-    return "\n".join(f"[{format_timestamp_mmss(seg.start)}] {seg.text}" for seg in segments)
+    return "\n".join(
+        f"[{format_timestamp_mmss(seg.start)}] "
+        + (f"{seg.speaker}: {seg.text}" if seg.speaker else seg.text)
+        for seg in segments
+    )
 
 
 def format_time_range(segments: list["TranscriptSegment"]) -> str | None:
@@ -95,8 +100,10 @@ def parse_transcript_segments(content: str) -> list[TranscriptSegment]:
 
     **[00:00]** First segment text
 
-    **[00:05]** Second segment text
+    **[00:05]** **Chris:** Second segment text
     ```
+
+    The speaker prefix is optional; transcripts without diarisation omit it.
 
     Args:
         content: Markdown transcript content.
@@ -107,12 +114,16 @@ def parse_transcript_segments(content: str) -> list[TranscriptSegment]:
     segments = []
 
     # Pattern to match timestamp lines: **[MM:SS]** or **[HH:MM:SS]**
-    # Captures timestamp and following text
-    pattern = r"\*\*\[(\d{1,2}:\d{2}(?::\d{2})?)\]\*\*\s*(.+?)(?=\*\*\[|\Z)"
+    # Captures timestamp, optional **Speaker:** prefix, and following text
+    pattern = (
+        r"\*\*\[(\d{1,2}:\d{2}(?::\d{2})?)\]\*\*\s*"
+        r"(?:\*\*([^*\n]{1,60}?):\*\*\s*)?"
+        r"(.+?)(?=\*\*\[|\Z)"
+    )
 
     matches = re.findall(pattern, content, re.DOTALL)
 
-    for i, (timestamp, text) in enumerate(matches):
+    for i, (timestamp, speaker, text) in enumerate(matches):
         start = parse_timestamp(timestamp)
 
         # End time is start of next segment, or start + 30s for last segment
@@ -130,6 +141,7 @@ def parse_transcript_segments(content: str) -> list[TranscriptSegment]:
                     text=cleaned_text,
                     start=start,
                     end=end,
+                    speaker=speaker.strip() or None,
                 )
             )
 
@@ -156,6 +168,7 @@ def merge_word_level_segments(
     - The phrase reaches max_phrase_chars
     - There's a pause (gap) of pause_threshold seconds between segments
     - The next segment is already long enough (>= min_phrase_chars)
+    - The speaker changes, so a merged phrase never spans two speakers
 
     Args:
         segments: List of transcript segments (potentially word-level).
@@ -173,6 +186,7 @@ def merge_word_level_segments(
     current_texts: list[str] = []
     current_start = segments[0].start
     current_end = segments[0].end
+    current_speaker: str | None = None
 
     for seg in segments:
         text = seg.text.strip()
@@ -185,6 +199,10 @@ def merge_word_level_segments(
         start_new = False
 
         if current_texts:
+            # A phrase carries one speaker label, so a change always breaks it
+            if seg.speaker != current_speaker:
+                start_new = True
+
             # Check for pause between segments
             gap = seg.start - current_end
             if gap > pause_threshold:
@@ -212,10 +230,16 @@ def merge_word_level_segments(
                     text=" ".join(current_texts),
                     start=current_start,
                     end=current_end,
+                    speaker=current_speaker,
                 )
             )
             current_texts = []
+
+        # A fresh phrase takes its start and speaker from the segment opening it,
+        # which is not necessarily segments[0] — leading empty segments are skipped.
+        if not current_texts:
             current_start = seg.start
+            current_speaker = seg.speaker
 
         current_texts.append(text)
         current_end = seg.end
@@ -227,6 +251,7 @@ def merge_word_level_segments(
                 text=" ".join(current_texts),
                 start=current_start,
                 end=current_end,
+                speaker=current_speaker,
             )
         )
 

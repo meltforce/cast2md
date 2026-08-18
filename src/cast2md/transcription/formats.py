@@ -21,6 +21,7 @@ class TranscriptSegment:
     start: float  # Start time in seconds
     end: float  # End time in seconds
     text: str
+    speaker: str | None = None  # Speaker name, when the source names one
 
 
 def _format_timestamp(seconds: float) -> str:
@@ -65,7 +66,8 @@ def _segments_to_markdown(
     if merged_segments:
         for seg in merged_segments:
             timestamp = _format_timestamp(seg.start)
-            lines.append(f"**[{timestamp}]** {seg.text.strip()}")
+            prefix = f"**{seg.speaker}:** " if seg.speaker else ""
+            lines.append(f"**[{timestamp}]** {prefix}{seg.text.strip()}")
             lines.append("")
     else:
         lines.append("*No transcript content available*")
@@ -136,6 +138,7 @@ def parse_vtt(content: str) -> list[TranscriptSegment]:
             # Collect text lines until empty line or next timestamp
             i += 1
             text_lines = []
+            speaker = None
             while i < len(lines):
                 text_line = lines[i].strip()
                 if not text_line:
@@ -144,7 +147,14 @@ def parse_vtt(content: str) -> list[TranscriptSegment]:
                     # Don't advance, let outer loop handle this
                     i -= 1
                     break
-                # Remove VTT tags like <v Speaker>
+                # Read the voice span <v Speaker> before stripping tags. Cue
+                # settings may prefix classes: <v.loud Speaker>.
+                if speaker is None:
+                    voice = re.search(r"<v(?:\.[^\s>]+)*\s+([^>]+)>", text_line)
+                    if voice:
+                        speaker = unescape(voice.group(1)).strip() or None
+
+                # Remove VTT tags like <v Speaker> and inline timings <00:00:01.000>
                 text_line = re.sub(r"<[^>]+>", "", text_line)
                 text_lines.append(text_line)
                 i += 1
@@ -153,7 +163,7 @@ def parse_vtt(content: str) -> list[TranscriptSegment]:
             if text:
                 # Unescape HTML entities
                 text = unescape(text)
-                segments.append(TranscriptSegment(start=start, end=end, text=text))
+                segments.append(TranscriptSegment(start=start, end=end, text=text, speaker=speaker))
 
         i += 1
 
@@ -219,6 +229,8 @@ def parse_podcasting_json(content: str) -> list[TranscriptSegment]:
     Format: {"segments": [{"startTime": 0.0, "endTime": 5.0, "body": "text"}, ...]}
     or: [{"startTime": 0.0, "endTime": 5.0, "body": "text"}, ...]
 
+    An optional "speaker" field per segment is carried through when present.
+
     Args:
         content: Raw JSON content.
 
@@ -249,6 +261,7 @@ def parse_podcasting_json(content: str) -> list[TranscriptSegment]:
         start = item.get("startTime") or item.get("start") or item.get("startMs", 0) / 1000
         end = item.get("endTime") or item.get("end") or item.get("endMs", 0) / 1000
         text = item.get("body") or item.get("text") or item.get("content", "")
+        speaker = item.get("speaker") or item.get("speakerName")
 
         if isinstance(start, str):
             start = float(start)
@@ -257,7 +270,8 @@ def parse_podcasting_json(content: str) -> list[TranscriptSegment]:
 
         text = str(text).strip()
         if text:
-            segments.append(TranscriptSegment(start=start, end=end, text=text))
+            speaker = str(speaker).strip() or None if speaker else None
+            segments.append(TranscriptSegment(start=start, end=end, text=text, speaker=speaker))
 
     return segments
 

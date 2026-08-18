@@ -147,6 +147,7 @@ SCHEMA_STATEMENTS = [
         segment_start REAL NOT NULL,
         segment_end REAL NOT NULL,
         text TEXT NOT NULL,
+        speaker TEXT,
         text_search TSVECTOR GENERATED ALWAYS AS (to_tsvector('english', text)) STORED
     )
     """,

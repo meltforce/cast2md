@@ -49,7 +49,7 @@
             {% if ep.duration_seconds %}<span aria-hidden="true">·</span><span>{{ ep.duration_seconds|duration }}</span>{% endif %}
         </span>
         {% if feed_mode %}<a class="media-title-link" href="{{ row_href }}">{% endif %}<{% if lead %}h2{% else %}h3{% endif %} class="media-title">{{ ep.title }}</{% if lead %}h2{% else %}h3{% endif %}>{% if feed_mode %}</a>{% endif %}
-        {% if summary %}<span class="media-summary">{{ summary|safe if item.summary_safe is defined and item.summary_safe else summary }}</span>
+        {% if summary %}<span class="media-summary">{% if item.speaker is defined and item.speaker %}<b class="transcript-speaker">{{ item.speaker }}:</b> {% endif %}{{ summary|safe if item.summary_safe is defined and item.summary_safe else summary }}</span>
         {% elif status_value == 'transcribing' %}<span class="media-summary">Transcribing on {{ item.worker if item.worker is defined and item.worker else 'a worker' }}{% if item.progress is defined and item.progress is not none %} — {{ item.progress }}%{% if ep.duration_seconds %} of {{ ep.duration_seconds|duration }}{% endif %}{% endif %}</span>
         {% elif status_value == 'audio_ready' %}<span class="media-summary">No external transcript found. Audio downloaded, waiting for a worker.</span>
         {% elif status_value in ['new', 'awaiting_transcript'] %}<span class="media-summary">Checking publisher and Pocket Casts transcript sources.</span>
@@ -57,7 +57,7 @@
         {% elif status_value == 'failed' %}<span class="media-summary">Processing failed. Open the episode for details.</span>
         {% else %}<span class="media-summary">Transcript available.</span>{% endif %}
         {% if status_value == 'transcribing' and item.progress is defined and item.progress is not none %}<span class="media-progress"><progress value="{{ item.progress }}" max="100">{{ item.progress }}%</progress></span>{% endif %}
-        {% if item.more_matches is defined %}{% for match in item.more_matches %}<span class="media-match"><span class="num">{{ match.timestamp }}</span> {{ match.text }}</span>{% endfor %}{% endif %}
+        {% if item.more_matches is defined %}{% for match in item.more_matches %}<span class="media-match"><span class="num">{{ match.timestamp }}</span> {% if match.speaker %}<b class="transcript-speaker">{{ match.speaker }}:</b> {% endif %}{{ match.text }}</span>{% endfor %}{% endif %}
     </span>
     <span class="media-side">
         {% if force_status or lead or status_value != 'completed' %}{{ status_badge(status_value, 'episode-status' if feed_mode else '') }}{% endif %}

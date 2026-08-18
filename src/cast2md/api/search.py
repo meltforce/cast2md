@@ -24,6 +24,7 @@ class SegmentResult(BaseModel):
     segment_end: float
     snippet: str
     rank: float
+    speaker: str | None = None
 
 
 class SearchResponse(BaseModel):
@@ -156,6 +157,7 @@ def search_transcripts(
                 segment_end=r.segment_end,
                 snippet=r.snippet,
                 rank=r.rank,
+                speaker=r.speaker,
             )
             for r in response.results
         ],
@@ -191,6 +193,7 @@ def search_episode_transcript(
             segment_end=r.segment_end,
             snippet=r.snippet,
             rank=r.rank,
+            speaker=r.speaker,
         )
         for r in results
     ]
@@ -240,6 +243,7 @@ class TranscriptMatch(BaseModel):
     segment_start: float
     segment_end: float
     snippet: str
+    speaker: str | None = None
 
 
 class EpisodeDetailResponse(BaseModel):
@@ -292,6 +296,7 @@ def get_episode_detail(
                     segment_start=r.segment_start,
                     segment_end=r.segment_end,
                     snippet=r.snippet,
+                    speaker=r.speaker,
                 )
                 for r in results
             ]
@@ -322,6 +327,7 @@ class SemanticResult(BaseModel):
     score: float
     match_type: str
     result_type: str = "transcript"  # "episode" or "transcript"
+    speaker: str | None = None
 
 
 class SemanticSearchResponse(BaseModel):
@@ -391,6 +397,7 @@ def semantic_search(
                 score=r.score,
                 match_type=r.match_type,
                 result_type=r.result_type,
+                speaker=r.speaker,
             )
             for r in response.results
         ],

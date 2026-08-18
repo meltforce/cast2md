@@ -146,6 +146,13 @@ MIGRATIONS: list[dict] = [
             """,
         ],
     },
+    {
+        "version": 19,
+        "description": "Add speaker column to transcript_segments for diarised transcripts",
+        "sql": [
+            "ALTER TABLE transcript_segments ADD COLUMN IF NOT EXISTS speaker TEXT",
+        ],
+    },
 ]
 
 

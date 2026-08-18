@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 from datetime import datetime
 from email.utils import parsedate_to_datetime
+from xml.etree import ElementTree
 
 import feedparser
 
@@ -111,20 +112,81 @@ def extract_audio_url(entry: dict) -> str | None:
     return None
 
 
-def extract_transcript_url(entry: dict) -> tuple[str | None, str | None]:
+def _local_name(tag: str) -> str:
+    """Strip the namespace from an ElementTree tag name."""
+    return tag.rsplit("}", 1)[-1]
+
+
+def extract_transcripts_from_xml(feed_content: str | bytes) -> dict[str, list[dict]]:
+    """Map each item to every podcast:transcript element it declares.
+
+    feedparser keeps only the *last* podcast:transcript of an entry, because a
+    repeated namespace element overwrites the previous one in its entry dict. A
+    feed that offers VTT and SRT for the same episode therefore reaches
+    extract_transcript_url as SRT alone, and the format preference there never
+    applies. Reading the raw XML restores the full list.
+
+    Args:
+        feed_content: Raw RSS/XML content.
+
+    Returns:
+        Dict keyed by GUID, falling back to the enclosure URL for items without
+        one, holding a list of {"url", "type"} dicts. Empty on a parse error,
+        which leaves the feedparser value in place.
+    """
+    try:
+        root = ElementTree.fromstring(feed_content)
+    except ElementTree.ParseError:
+        return {}
+
+    by_key: dict[str, list[dict]] = {}
+
+    for item in root.iter():
+        if _local_name(item.tag) != "item":
+            continue
+
+        guid = None
+        enclosure_url = None
+        transcripts = []
+
+        for child in item:
+            name = _local_name(child.tag)
+            if name == "guid" and child.text:
+                guid = child.text.strip()
+            elif name == "enclosure" and not enclosure_url:
+                enclosure_url = child.get("url")
+            elif name == "transcript":
+                url = child.get("url")
+                if url:
+                    transcripts.append({"url": url, "type": child.get("type", "")})
+
+        key = guid or enclosure_url
+        if key and transcripts:
+            by_key[key] = transcripts
+
+    return by_key
+
+
+def extract_transcript_url(
+    entry: dict,
+    transcripts: list[dict] | None = None,
+) -> tuple[str | None, str | None]:
     """Extract Podcast 2.0 transcript URL and MIME type from RSS entry.
 
     Looks for podcast:transcript elements. Prefers VTT/SRT formats.
 
     Args:
         entry: Feedparser entry dict.
+        transcripts: All transcript elements of this item, from
+            extract_transcripts_from_xml. When omitted, the entry's own value is
+            used, which holds at most one element — see that function.
 
     Returns:
         Tuple of (transcript URL, MIME type) or (None, None) if not found.
     """
-    # Check for podcast:transcript namespace
-    # Feedparser returns a dict for single transcript, list for multiple
-    transcripts = entry.get("podcast_transcript")
+    if transcripts is None:
+        transcripts = entry.get("podcast_transcript")
+
     if transcripts is None:
         return None, None
 
@@ -136,7 +198,8 @@ def extract_transcript_url(entry: dict) -> tuple[str | None, str | None]:
         return None, None
 
     # Preference order for transcript formats
-    # VTT and SRT have timestamps which we can use
+    # VTT and SRT have timestamps which we can use; VTT comes first because it
+    # also carries speaker names in <v Name> spans, which SRT has no form for
     preferred_types = [
         "text/vtt",
         "application/x-subrip",
@@ -257,6 +320,10 @@ def parse_feed(feed_content: str) -> ParsedFeed:
     if parsed.bozo and not parsed.entries:
         raise ValueError(f"Failed to parse feed: {parsed.bozo_exception}")
 
+    # feedparser drops all but the last podcast:transcript per item, so the full
+    # list comes from the raw XML
+    transcripts_by_key = extract_transcripts_from_xml(feed_content)
+
     feed = parsed.feed
 
     # Extract feed metadata
@@ -293,7 +360,10 @@ def parse_feed(feed_content: str) -> ParsedFeed:
         episode_author = entry.get("itunes_author") or entry.get("author")
 
         # Extract transcript URL and MIME type
-        transcript_url, transcript_type = extract_transcript_url(entry)
+        transcript_url, transcript_type = extract_transcript_url(
+            entry,
+            transcripts_by_key.get(guid) or transcripts_by_key.get(audio_url),
+        )
 
         episode = ParsedEpisode(
             guid=guid,

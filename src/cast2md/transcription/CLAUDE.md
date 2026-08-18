@@ -22,6 +22,38 @@ When a feed is added or refreshed, the system queues `TRANSCRIPT_DOWNLOAD` jobs:
 
 This is storage-efficient - audio is only downloaded when transcripts aren't available externally.
 
+## Speaker Attribution
+
+Two of the three formats publishers ship carry speaker names, and the pipeline
+keeps them from the source through to export:
+
+| Format | Carries speakers | How |
+|---|---|---|
+| VTT | yes | voice span, `<v Chris>Text` |
+| JSON | yes | `speaker` field per segment |
+| SRT | no | the format has no construct for it |
+
+`formats.py:parse_vtt()` reads the voice span before stripping tags;
+`parse_podcasting_json()` reads `speaker`. Both fill
+`TranscriptSegment.speaker`, and `_segments_to_markdown()` writes it as
+`**[00:11]** **Chris:** Text`. The prefix is optional throughout — a transcript
+without diarisation renders and parses exactly as before.
+
+Downstream, `search/parser.py:merge_word_level_segments()` breaks a phrase at a
+speaker change, so a merged segment never spans two speakers, and
+`transcript_segments.speaker` (schema version 19) carries the name into search
+results. Export writes it back as a voice span in VTT, a `speaker` field in
+JSON, and a `Chris: ` paragraph prefix in plain text; SRT drops it.
+
+**Which format gets fetched decides whether speakers survive.**
+`feed/parser.py:extract_transcript_url()` ranks VTT first for that reason. It
+can only rank what it is given, and feedparser keeps just the *last*
+`podcast:transcript` element of an entry — a repeated namespace element
+overwrites the previous one in its entry dict. `extract_transcripts_from_xml()`
+therefore re-reads the raw XML and passes the full list. Without it, a feed that
+lists VTT then SRT (Jupiter Broadcasting does) is fetched as SRT and the speaker
+names are lost before any of the above runs.
+
 ## Provider Priority
 
 1. **Podcast20Provider** - RSS `<podcast:transcript>` tags (authoritative)

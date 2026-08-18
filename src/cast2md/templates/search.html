@@ -127,7 +127,8 @@ async function openEpisodeModal(episodeId, query) {
         document.getElementById('transcriptMatchCount').textContent = matches.length;
         document.getElementById('modalTranscriptMatches').innerHTML = matches.map((match) => {
             const timestamp = `${String(Math.floor(match.segment_start / 60)).padStart(2, '0')}:${String(Math.floor(match.segment_start % 60)).padStart(2, '0')}`;
-            return `<div class="cue"><time>${timestamp}</time><span>${match.snippet}</span></div>`;
+            const speaker = match.speaker ? `<b class="transcript-speaker">${escapeHtml(match.speaker)}:</b> ` : '';
+            return `<div class="cue"><time>${timestamp}</time><span>${speaker}${match.snippet}</span></div>`;
         }).join('');
         document.getElementById('modalLoading').hidden = true;
         document.getElementById('modalBody').hidden = false;
@@ -137,6 +138,12 @@ async function openEpisodeModal(episodeId, query) {
 }
 
 function closeEpisodeModal() { episodeModal.close(); }
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
 
 function sanitizeHtml(html) {
     const allowedTags = ['a', 'p', 'br', 'strong', 'b', 'em', 'i', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4'];

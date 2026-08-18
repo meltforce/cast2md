@@ -36,6 +36,7 @@ class SearchResult:
     segment_end: float
     snippet: str
     rank: float
+    speaker: str | None = None  # Speaker of the matching segment, when known
 
 
 @dataclass
@@ -63,6 +64,7 @@ class HybridSearchResult:
     score: float  # Combined RRF score (higher is better)
     match_type: str  # "keyword", "semantic", or "both"
     result_type: str = "transcript"  # "episode" (title match) or "transcript" (segment match)
+    speaker: str | None = None  # Speaker of the matching segment, when known
 
 
 @dataclass
@@ -107,10 +109,11 @@ class TranscriptSearchRepository:
             execute(
                 self.conn,
                 """
-                INSERT INTO transcript_segments (episode_id, segment_start, segment_end, text)
-                VALUES (%s, %s, %s, %s)
+                INSERT INTO transcript_segments
+                    (episode_id, segment_start, segment_end, text, speaker)
+                VALUES (%s, %s, %s, %s, %s)
                 """,
-                (episode_id, segment.start, segment.end, segment.text),
+                (episode_id, segment.start, segment.end, segment.text, segment.speaker),
             )
 
         self.conn.commit()
@@ -136,7 +139,7 @@ class TranscriptSearchRepository:
             List of segments, empty when the episode is not indexed.
         """
         sql = """
-            SELECT segment_start, segment_end, text
+            SELECT segment_start, segment_end, text, speaker
             FROM transcript_segments
             WHERE episode_id = %s
         """
@@ -153,8 +156,8 @@ class TranscriptSearchRepository:
 
         cursor = execute(self.conn, sql, tuple(params))
         return [
-            TranscriptSegment(text=text, start=seg_start, end=seg_end)
-            for seg_start, seg_end, text in cursor.fetchall()
+            TranscriptSegment(text=text, start=seg_start, end=seg_end, speaker=speaker)
+            for seg_start, seg_end, text, speaker in cursor.fetchall()
         ]
 
     def remove_episode(self, episode_id: int) -> int:
@@ -222,7 +225,8 @@ class TranscriptSearchRepository:
                         t.segment_end,
                         ts_headline('english', t.text, to_tsquery('english', %s),
                                    'StartSel=<mark>, StopSel=</mark>, MaxFragments=1, MaxWords=32') as snippet,
-                        ts_rank(t.text_search, to_tsquery('english', %s)) as rank
+                        ts_rank(t.text_search, to_tsquery('english', %s)) as rank,
+                        t.speaker
                     FROM transcript_segments t
                     JOIN episode e ON t.episode_id = e.id
                     JOIN feed f ON e.feed_id = f.id
@@ -251,7 +255,8 @@ class TranscriptSearchRepository:
                         t.segment_end,
                         ts_headline('english', t.text, to_tsquery('english', %s),
                                    'StartSel=<mark>, StopSel=</mark>, MaxFragments=1, MaxWords=32') as snippet,
-                        ts_rank(t.text_search, to_tsquery('english', %s)) as rank
+                        ts_rank(t.text_search, to_tsquery('english', %s)) as rank,
+                        t.speaker
                     FROM transcript_segments t
                     JOIN episode e ON t.episode_id = e.id
                     JOIN feed f ON e.feed_id = f.id
@@ -277,6 +282,7 @@ class TranscriptSearchRepository:
                     segment_end=row[6],
                     snippet=row[7],
                     rank=row[8],
+                    speaker=row[9],
                 )
                 for row in cursor.fetchall()
             ]
@@ -313,7 +319,8 @@ class TranscriptSearchRepository:
                 t.segment_end,
                 ts_headline('english', t.text, plainto_tsquery('english', %s),
                            'StartSel=<mark>, StopSel=</mark>, MaxFragments=1, MaxWords=32') as snippet,
-                ts_rank(t.text_search, plainto_tsquery('english', %s)) as rank
+                ts_rank(t.text_search, plainto_tsquery('english', %s)) as rank,
+                t.speaker
             FROM transcript_segments t
             JOIN episode e ON t.episode_id = e.id
             JOIN feed f ON e.feed_id = f.id
@@ -336,6 +343,7 @@ class TranscriptSearchRepository:
                     segment_end=row[6],
                     snippet=row[7],
                     rank=row[8],
+                    speaker=row[9],
                 )
                 for row in cursor.fetchall()
             ]
@@ -598,7 +606,8 @@ class TranscriptSearchRepository:
                     se.segment_start,
                     se.segment_end,
                     ts.text,
-                    se.embedding <=> %s as distance
+                    se.embedding <=> %s as distance,
+                    ts.speaker
                 FROM segment_embeddings se
                 JOIN episode e ON se.episode_id = e.id
                 JOIN feed f ON se.feed_id = f.id
@@ -624,7 +633,8 @@ class TranscriptSearchRepository:
                     se.segment_start,
                     se.segment_end,
                     ts.text,
-                    se.embedding <=> %s as distance
+                    se.embedding <=> %s as distance,
+                    ts.speaker
                 FROM segment_embeddings se
                 JOIN episode e ON se.episode_id = e.id
                 JOIN feed f ON se.feed_id = f.id
@@ -750,6 +760,7 @@ class TranscriptSearchRepository:
                             "segment_start": -1,
                             "segment_end": -1,
                             "text": snippet,
+                            "speaker": None,
                             "keyword_rank": rank,
                             "semantic_rank": None,
                             "rrf_score": rrf_score,
@@ -793,6 +804,7 @@ class TranscriptSearchRepository:
                             "segment_start": result.segment_start,
                             "segment_end": result.segment_end,
                             "text": result.snippet,
+                            "speaker": result.speaker,
                             "keyword_rank": rank,
                             "semantic_rank": None,
                             "rrf_score": rrf_score,
@@ -843,6 +855,7 @@ class TranscriptSearchRepository:
                             "segment_start": row[5],
                             "segment_end": row[6],
                             "text": row[7] or "",
+                            "speaker": row[9],
                             "keyword_rank": None,
                             "semantic_rank": rank,
                             "rrf_score": rrf_score,
@@ -875,6 +888,7 @@ class TranscriptSearchRepository:
                 score=r["rrf_score"],
                 match_type=r["match_type"],
                 result_type=r.get("result_type", "transcript"),
+                speaker=r.get("speaker"),
             )
             for r in limited
         ]

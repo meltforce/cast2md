@@ -138,11 +138,17 @@ def render_transcript_html(content: str) -> str:
             seconds = ts_int % 60
             ts_display = f"{minutes:02d}:{seconds:02d}"
 
+            speaker_html = (
+                f'<b class="transcript-speaker">{escape(segment.speaker)}</b> '
+                if segment.speaker
+                else ""
+            )
+
             html_parts.append(
                 f'<div class="transcript-segment" id="ts-{ts_int}" '
                 f'data-start="{segment.start}" data-end="{segment.end}">'
                 f'<a href="#ts-{ts_int}" class="transcript-timestamp">[{ts_display}]</a>'
-                f'<span class="transcript-text">{escape(segment.text)}</span>'
+                f'<span class="transcript-text">{speaker_html}{escape(segment.text)}</span>'
                 f"</div>"
             )
     else:
@@ -1041,6 +1047,7 @@ def transcript_search_page(
                         "feed_image_url": feed_images.get(result.feed_id),
                         "summary": highlight_query(excerpt, q),
                         "summary_safe": True,
+                        "speaker": result.speaker,
                         "source_label": (
                             "title" if result.result_type == "episode" else result.match_type
                         ),
@@ -1053,6 +1060,7 @@ def transcript_search_page(
                         {
                             "timestamp": f"{minutes:02d}:{seconds:02d}",
                             "text": strip_html(excerpt)[:180],
+                            "speaker": result.speaker,
                         }
                     )
             search_items = list(grouped.values())
