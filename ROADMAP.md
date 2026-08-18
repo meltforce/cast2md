@@ -53,6 +53,12 @@ two and fixed with them.
 |---|---|---|---|---|
 | `[open]` | Exercise the endpoints that had never returned a response | `api/queue.py`, `api/nodes.py` | | `GET /api/queue/all`, `GET /api/queue/stuck` and `DELETE /api/nodes/stale` were unreachable from the day they were added until 2026-08-07, so their bodies have only ever run against a local instance with one feed and one job. `/api/queue/all` in particular carries the branch for `status="stuck"` and the N+1 over `episode_repo.get_by_id` per job, neither of which has seen a realistic result set. Check them against production data before anything is built on them. |
 
+## Feeds and transcripts
+
+| Status | Item | Where | Trigger | Notes |
+|---|---|---|---|---|
+| `[open]` | A poll never updates an episode that already exists | `feed/discovery.py:289` | | `discover_new_episodes()` skips every GUID already in the database, so `transcript_url`, `transcript_type`, title, description and duration are written once at discovery and never again. A publisher that adds a transcript later, changes its format or corrects an episode is invisible to the existing rows, and the only way to pick the change up is to delete the feed and re-add it, which loses the episode IDs. This became concrete on 2026-08-18: the VTT-over-SRT selection landed (see `transcription/CLAUDE.md`, Speaker Attribution), and LINUX Unplugged's 83 existing transcripts stayed on their SRT URLs, so the feed was deleted and re-added as ID 58. Decide which fields a poll may overwrite — `transcript_url` and `transcript_type` are the ones with a caller waiting for them, while overwriting a title fights any manual edit — then update in place for those. |
+
 ## Documentation
 
 | Status | Item | Where | Trigger | Notes |
