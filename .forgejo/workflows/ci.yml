@@ -100,7 +100,7 @@ jobs:
     # (The conditions on the ordinary jobs below are unaffected — those run in
     # their own workflow context.)
     if: github.ref == 'refs/heads/main'
-    uses: meltforce.net/ci-workflows/.forgejo/workflows/build-push-deploy.yml@v4
+    uses: meltforce.net/ci-workflows/.forgejo/workflows/build-push-deploy.yml@v5
     with:
       app_name: cast2md
       target_host: cast2md.coydog-fence.ts.net
