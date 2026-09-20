@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block htmltitle %}
+  {% if page.meta and page.meta.title %}
+    <title>{{ config.site_name }} — {{ page.meta.title }}</title>
+  {% elif page.title and page.title != config.site_name %}
+    <title>{{ config.site_name }} — {{ page.title }}</title>
+  {% else %}
+    <title>{{ config.site_name }}</title>
+  {% endif %}
+{% endblock %}
+
+{% block extrahead %}
+  <style>
+    :root,
+    [data-md-color-scheme="default"] {
+      --md-primary-fg-color: #0172AD;
+      --md-primary-fg-color--light: #0189CF;
+      --md-primary-fg-color--dark: #015887;
+      --md-accent-fg-color: #0172AD;
+    }
+    [data-md-color-scheme="slate"] {
+      --md-primary-fg-color: #01AAFF;
+      --md-primary-fg-color--light: #33BBFF;
+      --md-primary-fg-color--dark: #0189CF;
+      --md-accent-fg-color: #01AAFF;
+    }
+  </style>
+  <meta property="og:type" content="website">
+  {% if page.canonical_url %}
+    <meta property="og:url" content="{{ page.canonical_url }}">
+  {% endif %}
+  {% if page.meta and page.meta.og_title %}
+    <meta property="og:title" content="{{ page.meta.og_title }}">
+  {% else %}
+    <meta property="og:title" content="{{ config.site_name }}">
+  {% endif %}
+  {% if page.meta and page.meta.og_description %}
+    <meta property="og:description" content="{{ page.meta.og_description }}">
+  {% elif page.meta and page.meta.description %}
+    <meta property="og:description" content="{{ page.meta.description }}">
+  {% elif config.site_description %}
+    <meta property="og:description" content="{{ config.site_description }}">
+  {% endif %}
+  <meta property="og:image" content="{{ config.site_url }}/assets/images/og-image.png">
+{% endblock %}
