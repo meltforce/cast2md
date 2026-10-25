@@ -1,0 +1,52 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": "Headless Renovate (no PR workflow; preset: homelab/default.json). It watches the Python dependencies in pyproject.toml and uv.lock, the Dockerfile's base images and the workflow's actions. deploy/afterburner/ is excluded: its CUDA base image is pinned for RunPod's drivers, and a change to that Dockerfile starts the CUDA build.",
+  "extends": [
+    "local>meltforce.net/homelab"
+  ],
+  "lockFileMaintenance": {
+    "description": "Transitive dependencies are not pinned in pyproject.toml and move only through uv.lock: one commit a week that relocks it.",
+    "enabled": true,
+    "schedule": [
+      "* 0-5 * * 1"
+    ]
+  },
+  "ignorePaths": [
+    "deploy/afterburner/**"
+  ],
+  "packageRules": [
+    {
+      "description": "A release is three days old before it is taken, so a broken release is usually withdrawn or fixed before it reaches main. Every bump lands on main and deploys through build-push-deploy; the undo is a revert of the commit.",
+      "matchUpdateTypes": [
+        "minor",
+        "patch",
+        "pin",
+        "digest"
+      ],
+      "minimumReleaseAge": "3 days"
+    },
+    {
+      "description": "pyproject.toml and uv.lock are shared by every Python dependency; one branch for all non-major updates relocks once.",
+      "matchManagers": [
+        "pep621"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "patch",
+        "pin",
+        "digest"
+      ],
+      "groupName": "python non-major"
+    },
+    {
+      "description": "requires-python in pyproject.toml is a lower bound, not a pin; Renovate's lookup of it answers no-result and would put a warning on the dashboard every night.",
+      "matchManagers": [
+        "pep621"
+      ],
+      "matchDepNames": [
+        "python"
+      ],
+      "enabled": false
+    }
+  ]
+}
