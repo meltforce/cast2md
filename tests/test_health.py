@@ -41,7 +41,7 @@ def test_health_build_defaults_to_dev(client):
     assert client(None).get("/api/health").json()["build"] == "dev"
 
 
-def test_deploy_gate_extraction_matches(client):
+def test_deploy_gate_extraction_matches(client, tmp_path):
     """The shell extraction in ci.yml's deploy-gate finds the field.
 
     Mirrors the sed expression in .forgejo/workflows/ci.yml. Kept as a test
@@ -53,11 +53,16 @@ def test_deploy_gate_extraction_matches(client):
 
     expected = "edge-deadbeef"
     body = client(expected).get("/api/health").text
+    # Keep the exact CI expression in a script file to avoid platform-specific
+    # command-line quoting of embedded double quotes with Git for Windows sed.
+    script = tmp_path / "deploy-gate.sed"
+    script.write_text(r's/.*"build"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' + "\n")
     extracted = subprocess.run(
-        ["sed", "-n", r's/.*"build"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p'],
+        ["sed", "-n", "-f", str(script)],
         input=body,
         capture_output=True,
         text=True,
+        check=True,
     ).stdout.strip()
 
     assert extracted == expected
