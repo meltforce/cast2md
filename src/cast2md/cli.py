@@ -9,9 +9,11 @@ from pathlib import Path
 
 import click
 
+from cast2md import __version__
+
 
 @click.group()
-@click.version_option(version="0.1.0")
+@click.version_option(version=__version__)
 def cli():
     """cast2md - Podcast transcription service.
 
