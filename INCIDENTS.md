@@ -19,6 +19,7 @@ of CI, the deploy path, the container host or the tailnet go to
 
 | Date | What | Where |
 |---|---|---|
+| 2026-11-06 | The `test` job ran out of disk on bob-01 in 28 of 30 failed scheduled runs since 2026-10-29: the lock carried CUDA torch (36 `nvidia-*` packages) because `[tool.uv.sources]` ignores transitive dependencies, and the schedule ran build, test and a redeploy instead of `deploy-freshness` alone. Fixed in `46f3d23`. | `homelab/INCIDENTS.md` § 2026-11-06 — cast2md's CI ran out of disk on the schedule |
 | 2026-08-01 | `build-deploy` and the image build were skipped for two months while the pipeline reported success; `:edge` was frozen at 2026-05-11. The `if:` on a `uses:` job is evaluated in the *called* workflow, where the event is `workflow_call`, so `github.event_name == 'push'` was never true. Fixed in `c7116cf`. | `homelab/INCIDENTS.md` § 2026-08-01 (evening) — App repo CI built and deployed nothing since June |
 
 ---
