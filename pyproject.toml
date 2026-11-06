@@ -34,6 +34,12 @@ dependencies = [
     "bleach>=6.0",
     "mcp[cli]>=1.2.0,<2",  # mcp 2 renamed FastMCP, which src/cast2md/mcp/server.py imports
     "sentence-transformers>=2.2.0",
+    # Listed although sentence-transformers already pulls it in: uv applies
+    # [tool.uv.sources] to direct dependencies only, so without this line the
+    # lock resolved the CUDA build from PyPI (36 nvidia-* packages) and CI
+    # installed it into every test job. The Dockerfile installs CPU torch
+    # on its own and prunes it from the export, so the image is unaffected.
+    "torch",
     "psycopg2-binary>=2.9.0",
     "pgvector>=0.2.0",
     "runpod>=1.6.0",

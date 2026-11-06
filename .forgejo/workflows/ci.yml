@@ -42,6 +42,11 @@ concurrency:
 
 jobs:
   build:
+    # Not on the four-hourly schedule, which exists for deploy-freshness alone
+    # (see `on:`). Without this guard every scheduled run also installed the
+    # full dependency set and, when the tests passed, rebuilt and redeployed
+    # :edge through build-deploy -- six times a day on an unchanged commit.
+    if: github.event_name != 'schedule'
     runs-on: docker
     steps:
       - uses: actions/checkout@v7
@@ -54,6 +59,11 @@ jobs:
         run: uv build
 
   test:
+    # Not on the four-hourly schedule, which exists for deploy-freshness alone
+    # (see `on:`). Without this guard every scheduled run also installed the
+    # full dependency set and, when the tests passed, rebuilt and redeployed
+    # :edge through build-deploy -- six times a day on an unchanged commit.
+    if: github.event_name != 'schedule'
     runs-on: docker
     # 68 of the 117 tests take a real database: their fixtures open a
     # connection at setup and fail with "DATABASE_URL environment variable is
