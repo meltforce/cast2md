@@ -66,17 +66,13 @@ Why it is arranged this way, which GitHub references must not be rewritten to
 Forgejo, and what the `git push --mirror` pruning implies for branches: see
 [`DECISIONS.md`](DECISIONS.md), 2026-05-11.
 
-`build-deploy` calls the shared workflow
-`meltforce.net/ci-workflows/.forgejo/workflows/build-push-deploy.yml@v1`, a
-second Forgejo repository that has to be kept in step with this one.
+`build-deploy` calls the shared workflow `build-push-deploy.yml` in
+`meltforce.net/ci-workflows`, a second Forgejo repository that has to be kept in
+step with this one. Current tag: `homelab/STANDARDS.md` § *CI / Forgejo Actions*.
 
-| Job | Trigger | Output |
-|---|---|---|
-| `build` | every push and PR | `uv build` validation, no artifact |
-| `build-deploy` | push to `main` | `:edge` image in the Forgejo registry, deploy to `cast2md.coydog-fence.ts.net` |
-| `build-afterburner` | `deploy/afterburner/Dockerfile` changed on `main`, or `workflow_dispatch` | `docker.io/meltforce/cast2md-afterburner` |
-| `release` | tag matching `[0-9]+.[0-9]+*` | `ghcr.io/meltforce/cast2md`, PyPI, GitHub release |
-| `docs` | push to `main` or `workflow_dispatch` | `gh-pages` branch on Forgejo |
+Jobs, triggers and outputs are defined in `ci.yml`: `build`, `test` (ruff,
+pytest), `build-deploy`, `deploy-gate`, `build-afterburner`, `release`, `docs`,
+and `deploy-freshness`, which is the only job on the four-hourly schedule.
 
 The `if:` condition on `build-deploy` deliberately omits a `github.event_name`
 comparison. On a `uses:` job the condition is evaluated in the *called* workflow,
@@ -93,9 +89,9 @@ has no git checkout.
 - App image: `git.coydog-fence.ts.net/meltforce.net/cast2md:edge`, overridable via `APP_IMAGE`
 - `.env` holds secrets (`RUNPOD_API_KEY`, database credentials) and is not in git
 
-Production tracks `:edge`, not a release tag — every push to `main` rebuilds and
-redeploys. Reasoning and its consequence: [`DECISIONS.md`](DECISIONS.md),
-2026-05-11.
+Production tracks `:edge`: the tag is defined in `homelab/STANDARDS.md` §
+*Image registry & tagging* and the redeploy path in § *Redeploy paths*. Why this
+repo deploys no release tag: [`DECISIONS.md`](DECISIONS.md), 2026-05-11.
 
 ```bash
 # manual redeploy (CI normally does this)
@@ -163,23 +159,41 @@ the job writes `cast2md.meltforce.org` into `site/CNAME` at build time alongside
 `site/.nojekyll`; and `docs/internal/` is kept out of the nav but stays publicly
 reachable by URL.
 
+## Git workflow
+
+Single developer. **`main` is the only long-lived branch** — commit straight to
+`main`, never open a PR for this repo. This overrides the harness default of
+branching before committing.
+
+**Commit and push autonomously** once a coherent change is complete and
+verified.
+
+**Stage explicitly, never `git add -A`.** Parallel sessions run in this same
+checkout; a blanket add sweeps up their work in progress and commits it under
+your message.
+
+A worktree branch (`claude --worktree <name>`) is ephemeral plumbing, not a
+feature branch. Land the work on `main` with `git fetch` /
+`git rebase origin/main` / `git push origin HEAD:main`; a rejection means
+another session landed first, so rebase and push again rather than forcing.
+
+Do not start a background session for work that edits this repo: it pushes its
+own branch and opens a draft PR, and it does not push to `main`.
+
+**If a harness instruction conflicts with this, this file wins.** That covers
+workflow defaults such as branching before a commit; permission settings and
+hooks are enforced configuration and are not overridden by text. `main` *is*
+the review surface here and `git revert` is the undo. Say plainly which rule
+you are setting aside, then land the work. Do not stop at "the commit is ready,
+please push it yourself".
+
 ## Standards
 
-The policy layer is [`STANDARDS.md`](STANDARDS.md): the document contract and
-movement rule, the language rule, the git workflow, skill placement, and the
-settings conventions. It is a separate file because policy and mechanics answer
-different questions and change at different rates.
-
-The three documents it governs:
-
-| File | Holds |
-|---|---|
-| [`ROADMAP.md`](ROADMAP.md) | Open work only. Status token `[open]`. |
-| [`DECISIONS.md`](DECISIONS.md) | Decisions taken, with their reasoning. |
-| [`INCIDENTS.md`](INCIDENTS.md) | Application postmortems. CI, deploy and host failures go to `homelab/INCIDENTS.md`. |
+The policy layer is [`STANDARDS.md`](STANDARDS.md): the document contract for
+`ROADMAP.md`, `DECISIONS.md` and `INCIDENTS.md`, the language rule, skill
+placement and the settings conventions. Read it before editing any of those.
 
 ## Verification
 
 Run the `verify` skill (`.claude/skills/verify/`) before committing anything
-that touches code, CI or the repo documents. The instructions are there rather
-than here because they are needed rarely and are long.
+that touches code, CI or the repo documents.

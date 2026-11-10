@@ -11,8 +11,7 @@ import re
 # fmt: off
 # One line per thematic group, not one word per line: this is search data,
 # and the grouping is what makes it reviewable. The formatter would explode
-# it to ~340 single-word lines, which also breaks the per-line suppressions
-# in tools/check-docs.allow that mark it as German language data.
+# it to ~340 single-word lines.
 STOP_WORDS = {
     # German pronouns and possessives (with inflections)
     "ich", "du", "er", "sie", "es", "wir", "ihr", "uns", "euch", "ihnen",

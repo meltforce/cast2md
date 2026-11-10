@@ -1,6 +1,6 @@
 ---
 name: verify
-description: Verify a change to cast2md before committing — test suite, linter, package build, document contract, language sweep, and where applicable a live check against the running instance. Triggers — "verify", "prüf das", "läuft das durch", "kann ich das committen", "run the checks", "before committing". Also reach for it after editing CI, the repo documents, or anything under src/cast2md/. Not for a docs-only typo fix.
+description: Verify a change to cast2md before committing — test suite, linter, package build, document contract, and where applicable a live check against the running instance. Triggers — "verify", "prüf das", "läuft das durch", "kann ich das committen", "run the checks", "before committing". Also reach for it after editing CI, the repo documents, or anything under src/cast2md/. Not for a docs-only typo fix.
 ---
 
 # Verify a cast2md change
@@ -12,21 +12,14 @@ passed.
 ## Always
 
 ```bash
-tools/check-docs.sh --all
+tools/check-docs.sh
 ```
 
-Two passes: the document contract (struck-through roadmap rows, closed items
-left on the roadmap, unknown status tokens, non-ISO dates, decimal commas in
-figures) and a repo-wide German-language sweep.
-
-The sweep reports a file and line. When a hit is a legitimate verbatim quote or
-German language *data* rather than prose, add the specific line to
-`tools/check-docs.allow` in the form `<path>%%<substring>`. Do not weaken the
-pattern in `check-docs.sh` — that stops the guard catching the case it exists
-for.
-
-Known-allowed today: the German stopword list in `src/cast2md/search/repository.py`
-and the German example query in `src/cast2md/mcp/tools.py`.
+The script takes no arguments and exits 2 when given one. It checks the
+document contract: struck-through roadmap rows, closed items left on the
+roadmap, unknown status tokens, non-ISO dates, decimal commas in figures. A
+finding is fixed in the document. The language rule in `STANDARDS.md` has no
+mechanical check.
 
 ## When the change touched `src/`, `tests/`, or `pyproject.toml`
 
@@ -59,9 +52,10 @@ the binary lives in `/Applications/Docker.app/Contents/Resources/bin/`.
 exist, run `uv sync --extra dev` first; if that also fails, say the suite was
 not exercised.
 
-**None of these run in CI.** The `build` job runs `uv build` only, so `pytest`
-and `ruff` are local-only controls until the open roadmap item lands. Say so
-when reporting a pass — a green local run is not a green pipeline.
+**A green local run is not a green pipeline.** CI runs `uv build` in the
+`build` job and `ruff check`, `ruff format --check` and `pytest` in the `test`
+job, on every push and pull request. `tools/check-docs.sh` runs in no CI job.
+Say which of the two was observed when reporting a pass.
 
 ## When the change touched the transcription pipeline or workers
 
@@ -93,8 +87,10 @@ comparison there is never true, the job is skipped, and the caller still reports
 success. Check any `if:` you added or moved against that, and verify the run in
 Forgejo actually executed the job rather than trusting the green mark.
 
-`build-deploy` calls `meltforce.net/ci-workflows/...@v1`, a second repository. A
-change that depends on a change there is not verified until both are in place.
+`build-deploy` calls `build-push-deploy.yml` in `meltforce.net/ci-workflows`, a
+second repository, at the tag pinned in `ci.yml`. The current tag is recorded in
+`homelab/STANDARDS.md` § *CI / Forgejo Actions*. A change that depends on a
+change there is not verified until both are in place.
 
 ## When the change touched the production stack
 

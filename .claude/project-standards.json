@@ -1,5 +1,6 @@
 {
-  "standard": "2026-08-06",
+  "standard": "2026-11-10",
+  "commit": "160316889d2c539addeae1eebe53450806252bed",
   "type": "code, ops",
   "modules": [
     "doc-contract",
@@ -17,6 +18,6 @@
   },
   "notes": {
     "skills": "Project skills are in .claude/skills/, committed via the !.claude/skills/ negation in .gitignore. This was a deviation when it was written, because the skill-placement block still named a repo-root skills/ source and a generation step that exists nowhere; the block was corrected on 2026-08-06 and this is now the standard reading. See the standards repo's DECISIONS.md under that date.",
-    "check-docs": "tools/check-docs.sh is copied unchanged from the standards repo and reads this file for the module selection. Project exceptions live in tools/check-docs.allow. It runs from the verify skill; no pre-commit hook and no CI job yet."
+    "check-docs": "tools/check-docs.sh is copied unchanged from the standards repo and reads this file for the module selection. It takes no arguments and checks the document contract only; the language sweep and tools/check-docs.allow were removed from this project on 2026-11-10. It runs from the verify skill; no pre-commit hook and no CI job yet."
   }
 }

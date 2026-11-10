@@ -59,9 +59,8 @@ that a real static check is worth the setup.
 **Decided:** 2026-08-07
 
 **Decision.** `build_flexible_tsquery`, its helper `_split_word` and the
-`STOP_WORDS` set they read live in `src/cast2md/db/tsquery.py`. The 16 per-line
-suppressions in `tools/check-docs.allow` that mark the list as German language
-data point at that path. `search/repository.py` imports the builder from there.
+`STOP_WORDS` set they read live in `src/cast2md/db/tsquery.py`.
+`search/repository.py` imports the builder from there.
 
 **Reasoning.** The function was the sole `db → search` import edge: it sat in
 `search/repository.py` and `db/repository.py:search_episodes_fts` pulled it
@@ -83,13 +82,18 @@ from `db/sql.py`, so the direction was established either way.
 
 The consequence worth stating plainly: a reader looking for German language data
 will not expect it under `db/`. The comment above the list and this entry are
-what make it findable. `tools/check-docs.allow` carries the second pointer,
-because the language sweep would otherwise fire on all 51 lines.
+what make it findable.
 
 **Trigger to re-open.** A second database backend appears, which would make
 `tsquery` syntax one dialect among several rather than the only one; or the
 stopword list grows into something the search layer tunes per language, at which
 point it is search configuration rather than query syntax.
+
+**Revisions.** 2026-11-10: the entry originally named a second pointer, 16
+per-line suppressions in `tools/check-docs.allow` that exempted the list from
+the repo-wide language sweep. The standard removed the sweep on 2026-10-13, and
+the allow file was deleted here on 2026-11-10. The comment above the list in
+`src/cast2md/db/tsquery.py` and this entry are the remaining pointers.
 
 ---
 
@@ -282,6 +286,22 @@ and a correction to one of them reaches none of the others.
 
 **Trigger to re-open.** cast2md leaving the homelab — a deployment whose CI and
 hosts are not covered by that repo would have nowhere else to put them.
+
+## 2026-08-06 — repo artifacts are English
+
+**Decided:** 2026-08-06 (recorded here on 2026-11-10, moved from
+`STANDARDS.md` § Language)
+
+**Decision.** English is the only language used inside this repo. The rule and
+its scope are in [`STANDARDS.md`](STANDARDS.md) § Language.
+
+**Reasoning.** The drift the rule answers is on record in this repo: commit
+messages were written in German from 2026-05 to 2026-08-06, one of them
+(`8874f4a`) with an ASCII substitution for an umlaut, and
+`.forgejo/workflows/ci.yml` carried a German comment.
+
+**Trigger to re-open.** A contributor or a published artifact requires a second
+language in the repo itself, as opposed to in language data.
 
 ## 2026-08-01 — releases go to ghcr.io and GitHub; Codeberg is dropped, Docker Hub keeps only the afterburner
 
