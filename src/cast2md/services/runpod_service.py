@@ -9,7 +9,7 @@ import threading
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 from urllib.parse import urlparse
 
@@ -29,7 +29,7 @@ except ImportError:
     RUNPOD_AVAILABLE = False
 
 
-class PodSetupPhase(str, Enum):
+class PodSetupPhase(StrEnum):
     """Phases of pod setup."""
 
     CREATING = "creating"  # Creating pod on RunPod

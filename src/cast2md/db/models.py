@@ -3,7 +3,7 @@
 import json
 from dataclasses import dataclass
 from datetime import datetime, timedelta
-from enum import Enum
+from enum import StrEnum
 
 
 def parse_datetime(value) -> datetime | None:
@@ -26,7 +26,7 @@ def parse_datetime(value) -> datetime | None:
     return None
 
 
-class EpisodeStatus(str, Enum):
+class EpisodeStatus(StrEnum):
     """Episode processing status."""
 
     NEW = "new"  # Just discovered, ready to process
@@ -39,7 +39,7 @@ class EpisodeStatus(str, Enum):
     FAILED = "failed"
 
 
-class JobType(str, Enum):
+class JobType(StrEnum):
     """Job type for queue."""
 
     DOWNLOAD = "download"
@@ -48,7 +48,7 @@ class JobType(str, Enum):
     EMBED = "embed"
 
 
-class JobStatus(str, Enum):
+class JobStatus(StrEnum):
     """Job status in queue."""
 
     QUEUED = "queued"
@@ -57,7 +57,7 @@ class JobStatus(str, Enum):
     FAILED = "failed"
 
 
-class NodeStatus(str, Enum):
+class NodeStatus(StrEnum):
     """Transcriber node status."""
 
     ONLINE = "online"
