@@ -15,6 +15,20 @@ from cast2md.db.repository import EpisodeRepository, FeedRepository
 
 router = APIRouter(prefix="/api", tags=["system"])
 
+# `/healthz` sits at the root, outside `/api`: the path every meltforce app
+# answers on (homelab STANDARDS.md § Image registry & tagging).
+healthz_router = APIRouter(tags=["system"])
+
+
+@healthz_router.get("/healthz", include_in_schema=False)
+def healthz():
+    """Liveness and the commit the image was built from.
+
+    `sha` is the BUILD_SHA build argument, "dev" outside a CI-built image.
+    Database and storage state are reported by `/api/health`.
+    """
+    return {"status": "ok", "sha": os.environ.get("BUILD_SHA") or "dev"}
+
 
 class StatusCounts(BaseModel):
     """Episode counts by status."""

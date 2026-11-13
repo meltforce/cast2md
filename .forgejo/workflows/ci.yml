@@ -110,7 +110,7 @@ jobs:
     # (The conditions on the ordinary jobs below are unaffected — those run in
     # their own workflow context.)
     if: github.ref == 'refs/heads/main'
-    uses: meltforce.net/ci-workflows/.forgejo/workflows/build-push-deploy.yml@v8
+    uses: meltforce.net/ci-workflows/.forgejo/workflows/build-push-deploy.yml@v9
     with:
       app_name: cast2md
       target_host: cast2md.coydog-fence.ts.net
@@ -266,6 +266,7 @@ jobs:
             ghcr.io/meltforce/cast2md:${{ github.ref_name }}
           build-args: |
             VERSION=${{ github.ref_name }}
+            BUILD_SHA=${{ github.sha }}
 
       - name: Build + publish to PyPI
         env:

@@ -20,6 +20,7 @@ from cast2md.api.queue import router as queue_router
 from cast2md.api.runpod import router as runpod_router
 from cast2md.api.search import router as search_router
 from cast2md.api.settings import router as settings_router
+from cast2md.api.system import healthz_router
 from cast2md.api.system import router as system_router
 from cast2md.config.settings import get_settings
 from cast2md.db.connection import close_pool, init_db
@@ -223,6 +224,7 @@ app.include_router(runpod_router)
 app.include_router(search_router)
 app.include_router(settings_router)
 app.include_router(system_router)
+app.include_router(healthz_router)
 app.include_router(web_router)
 
 # Mount MCP server (Streamable HTTP) at /mcp. The call stays here rather than

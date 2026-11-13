@@ -63,3 +63,19 @@ def test_deploy_gate_extraction_matches(client):
     assert extracted == expected
     # And the same expression survives a pretty-printed body.
     assert re.search(r'"build"\s*:\s*"([^"]*)"', body).group(1) == expected
+
+
+def test_healthz_reports_status_and_build_sha(client, monkeypatch):
+    """`/healthz` answers the meltforce convention: status and the commit SHA."""
+    sha = "0123456789abcdef0123456789abcdef01234567"
+    monkeypatch.setenv("BUILD_SHA", sha)
+    response = client(None).get("/healthz")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/json"
+    assert response.json() == {"status": "ok", "sha": sha}
+
+
+def test_healthz_sha_defaults_to_dev(client, monkeypatch):
+    monkeypatch.delenv("BUILD_SHA", raising=False)
+    assert client(None).get("/healthz").json() == {"status": "ok", "sha": "dev"}

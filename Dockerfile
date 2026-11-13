@@ -96,6 +96,9 @@ ENV PYTHONPATH=/app/src
 # deploy through /api/health over HTTPS and has no SSH there.
 ARG VERSION=dev
 ENV CAST2MD_BUILD_VERSION="${VERSION}"
+# The full commit SHA, reported by /healthz.
+ARG BUILD_SHA=dev
+ENV BUILD_SHA="${BUILD_SHA}"
 LABEL org.opencontainers.image.version="${VERSION}"
 LABEL org.opencontainers.image.source="https://github.com/meltforce/cast2md"
 
