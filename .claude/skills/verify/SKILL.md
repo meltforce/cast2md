@@ -9,18 +9,6 @@ Run the checks that match what the change touched. Report what passed, what
 failed, and what was **not** run — a check that was skipped is not a check that
 passed.
 
-## Always
-
-```bash
-tools/check-docs.sh
-```
-
-The script takes no arguments and exits 2 when given one. It checks the
-document contract: struck-through roadmap rows, closed items left on the
-roadmap, unknown status tokens, non-ISO dates, decimal commas in figures. A
-finding is fixed in the document. The language rule in `STANDARDS.md` has no
-mechanical check.
-
 ## When the change touched `src/`, `tests/`, or `pyproject.toml`
 
 ```bash
@@ -42,7 +30,7 @@ not a passing run. If you cannot start Postgres, report the numbers rather than
 the word "passed".
 
 **`ruff format --check` is part of the gate, not optional.** The formatter owns
-line length here and E501 is in `ignore` — see `DECISIONS.md`, 2026-08-06. Run
+line length here and E501 is in `ignore` — see `archive/DECISIONS.md`, 2026-08-06. Run
 `ruff format src tests` to fix, never re-enable E501 to work around it.
 
 **On a Mac, `docker` may not be on `PATH`** even with Docker Desktop installed:
@@ -54,7 +42,7 @@ not exercised.
 
 **A green local run is not a green pipeline.** CI runs `uv build` in the
 `build` job and `ruff check`, `ruff format --check` and `pytest` in the `test`
-job, on every push and pull request. `tools/check-docs.sh` runs in no CI job.
+job, on every push and pull request.
 Say which of the two was observed when reporting a pass.
 
 ## When the change touched the transcription pipeline or workers

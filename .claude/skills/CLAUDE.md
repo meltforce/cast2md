@@ -1,8 +1,5 @@
 # Writing a skill in this repo
 
-Where a skill lives is decided in the root `STANDARDS.md` § Skills. This file
-covers what applies once the home is `.claude/skills/<name>/`.
-
 A `description` carries the literal trigger phrases that should invoke the
 skill, in the languages they are spoken in, plus the cases that should *not*
 invoke it. The description is the only part loaded into every session, so it

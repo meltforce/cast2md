@@ -1,199 +1,54 @@
 # cast2md — podcast transcription service
 
-Downloads podcast episodes via RSS and produces transcripts. Publisher-provided
-transcripts (Podcasting 2.0) and Pocket Casts transcripts are fetched first;
-audio is downloaded and transcribed locally only when neither exists. Runs as a
-server with remote transcription nodes and optional RunPod GPU pods.
-
-Subsystem knowledge loads on demand:
-
-- `src/cast2md/transcription/CLAUDE.md` — transcript sources, provider priority, adding providers
-- `src/cast2md/templates/CLAUDE.md` — web UI workflow, episode status buttons, status polling, tooltip convention
-- `src/cast2md/search/CLAUDE.md` — hybrid search, embeddings, segment merging, pgvector
-- `.claude/skills/runpod-afterburner/SKILL.md` — RunPod GPU workers, Tailscale userspace networking, auto-termination, GPU compatibility
+Downloads podcast episodes via RSS and produces transcripts. Publisher and
+Pocket Casts transcripts are fetched first; audio is transcribed only when
+neither exists. A server with remote transcription nodes and optional RunPod
+GPU pods. Subsystem notes load on demand from the nested `CLAUDE.md` files
+under `src/cast2md/` and the `runpod-afterburner` skill.
 
 ## Gotchas
 
-**Three compose files, three purposes.** `docker-compose.yml` is the dev stack:
-`build: .`, `POSTGRES_PASSWORD: dev` hardcoded, port 5432 published to the host.
-`compose.example.yml` is the production template: `ghcr.io` image,
-`${POSTGRES_PASSWORD:?Required}`, Postgres on an internal network only.
-`compose.yaml` is the file that actually runs in production, on the server under
-`/opt/docker/stacks/cast2md/`, and is not in this repo. A `docker compose up -d`
-in the checkout starts the dev stack — never treat its output as a production
-rehearsal.
+- **Three compose files.** `docker-compose.yml` is the dev stack (builds from
+  the checkout, publishes Postgres on 5432). `compose.example.yml` is the
+  production template. The file production runs is `compose.yaml` under
+  `/opt/docker/stacks/cast2md/` on the server and is not in this repo; the
+  server has no git checkout.
+- **Never test against production.** Restarts disrupt workers, nodes and job
+  state. Dev runs from the checkout on the Macs: `uv sync --extra dev`,
+  `docker compose up -d postgres`, `.venv/bin/python -m cast2md serve`.
+  Dev `DATABASE_URL` points at `localhost:5432`, production at `postgres:5432`.
+- **Test the API through its URL**, not through `ssh … curl localhost`, which
+  bypasses the reverse proxy.
+- **`trash/` does not restore.** Deleting a feed moves files there and deletes
+  the DB records; entries older than 30 days are removed on startup.
+- **iTunes resolution runs before validation** in `api/feeds.py:create_feed()`.
+  Reordering breaks Apple Podcasts URLs and no RSS-URL test fails.
+- `DELETE /api/episodes/{id}/audio` refuses on an episode without a transcript.
+- Re-transcription has no UI; `/api/queue/.../retranscribe` is the path.
+- **Forgejo is canonical; GitHub is a push-mirror** (`git push --mirror`,
+  force and prune). Nothing may originate on GitHub. The `docs` job pushes
+  `gh-pages` to Forgejo and the mirror carries it to GitHub Pages; it writes
+  `site/CNAME` at build time, and `docs/internal/` is out of the nav but public.
+- **Release:** bump `version` in `pyproject.toml` to the tag first (PyPI
+  rejects duplicates), then `git tag <version> && git push origin main
+  <version>`. The `release` job waits 5 minutes for the tag on GitHub and fails
+  after ghcr.io and PyPI are already published when the mirror stalls.
+- **`build-deploy` has no `github.event_name` condition on purpose**: on a
+  `uses:` job it is evaluated in the called workflow, where the event is
+  `workflow_call`. The shared workflow lives in `meltforce.net/ci-workflows`.
+- Production tracks `:edge`; CI redeploys. Hosting rules are in the homelab
+  repo's `STANDARDS.md`.
+- Run the `verify` skill before committing a change to code or CI.
 
-**Never test against the production server.** Repeated restarts disrupt workers,
-nodes and job state. The dev machines (`blackbook`, `snackbook`) run a test
-instance from the checkout for exactly this.
+## Git
 
-**Test the API through its URL, not over SSH.** `curl https://<host>/api/health`,
-not `ssh root@<host> "curl localhost:8000/api/health"` — the second exercises a
-different path than the one users take and hides reverse-proxy faults.
+`main` is the only long-lived branch: commit and push to `main` yourself once a
+change is complete and verified, no PR. This overrides the harness default of
+branching first. Stage paths explicitly, never `git add -A` — parallel sessions
+share this checkout.
 
-**`trash/` does not restore.** Deleting a feed moves audio and transcripts to
-`{storage_path}/trash/{feed_slug}_{feed_id}_{timestamp}/` and deletes the DB
-records immediately. Only files survive, and entries older than 30 days are
-removed on startup. Restoring means re-adding the feed and copying files back by
-hand.
+## Documents
 
-**iTunes resolution runs before validation.** `api/feeds.py:create_feed()` calls
-`feed/itunes.py:resolve_feed_url()` first, so an Apple Podcasts URL never reaches
-the feed parser. Reordering those two breaks Apple URLs without failing any test
-that uses an RSS URL.
-
-**Audio deletion needs a transcript.** `DELETE /api/episodes/{id}/audio` keeps
-`audio_url` for re-download and refuses on episodes that have no transcript.
-
-**`pyproject.toml`'s version must match the git tag before tagging.** PyPI
-rejects duplicate versions, so a forgotten bump fails the release after the
-image has already been pushed.
-
-**The release depends on the push-mirror.** The `release` job polls
-`api.github.com` for 5 minutes for the tag and exits 1 if it has not arrived,
-because the GitHub release must reference an existing tag. A stalled mirror
-fails the release *after* ghcr.io and PyPI have been published. Requires
-`secrets.GH_PAT`.
-
-## Repository and CI
-
-Forgejo is canonical: `origin` is
-`https://git.coydog-fence.ts.net/meltforce.net/cast2md.git`. GitHub receives
-commits and tags through a push-mirror and is a distribution channel only. CI is
-`.forgejo/workflows/ci.yml`; there is no `.github/workflows/`.
-
-Why it is arranged this way, which GitHub references must not be rewritten to
-Forgejo, and what the `git push --mirror` pruning implies for branches: see
-[`DECISIONS.md`](DECISIONS.md), 2026-05-11.
-
-`build-deploy` calls the shared workflow `build-push-deploy.yml` in
-`meltforce.net/ci-workflows`, a second Forgejo repository that has to be kept in
-step with this one. Current tag: `homelab/STANDARDS.md` § *CI / Forgejo Actions*.
-
-Jobs, triggers and outputs are defined in `ci.yml`: `build`, `test` (ruff,
-pytest), `build-deploy`, `deploy-gate`, `build-afterburner`, `release`, `docs`,
-and `deploy-freshness`, which is the only job on the four-hourly schedule.
-
-The `if:` condition on `build-deploy` deliberately omits a `github.event_name`
-comparison. On a `uses:` job the condition is evaluated in the *called* workflow,
-where the event is `workflow_call` — see the pointer in
-[`INCIDENTS.md`](INCIDENTS.md).
-
-## Deployment
-
-Production runs on `cast2md` (Tailscale hostname) via Docker Compose. The server
-has no git checkout.
-
-- Compose file and `.env`: `/opt/docker/stacks/cast2md/` (`compose.yaml`)
-- Data bind-mount: `/opt/cast2md/data/` — data only, no configuration
-- App image: `git.coydog-fence.ts.net/meltforce.net/cast2md:edge`, overridable via `APP_IMAGE`
-- `.env` holds secrets (`RUNPOD_API_KEY`, database credentials) and is not in git
-
-Production tracks `:edge`: the tag is defined in `homelab/STANDARDS.md` §
-*Image registry & tagging* and the redeploy path in § *Redeploy paths*. Why this
-repo deploys no release tag: [`DECISIONS.md`](DECISIONS.md), 2026-05-11.
-
-```bash
-# manual redeploy (CI normally does this)
-ssh root@cast2md "cd /opt/docker/stacks/cast2md && docker compose pull cast2md && docker compose up -d cast2md"
-
-# logs, status
-ssh root@cast2md "cd /opt/docker/stacks/cast2md && docker compose logs -f cast2md"
-ssh root@cast2md "docker compose -f /opt/docker/stacks/cast2md/compose.yaml ps"
-```
-
-Releasing: bump `version` in `pyproject.toml` to the new tag, commit, then
-`git tag <version> && git push origin main <version>`.
-
-## Development
-
-Dev runs on `blackbook` and `snackbook`: Postgres from `docker-compose.yml`, the
-app from the checkout.
-
-```bash
-uv sync --extra dev              # creates .venv from uv.lock; also after a dependency change
-docker compose up -d postgres
-.venv/bin/python -m cast2md serve --host 0.0.0.0 --port 8000
-```
-
-`uv sync` is the way in — there is no `.venv` in a fresh checkout, and
-`uv.lock` is the pinned state. Docker Desktop provides `docker`; on a Mac where
-it has not been launched since install, the binary is not on `PATH` even though
-the app is present.
-
-Dev `.env` differs from production in one thing that matters: `DATABASE_URL`
-points at `localhost:5432`, because the dev Postgres publishes its port to the
-host, while in production the app reaches `postgres:5432` over Docker's internal
-DNS. The remaining keys are in `.env.example`.
-
-## Transcription
-
-| Backend | Use case | Languages | Speed |
-|---|---|---|---|
-| Whisper | local and server transcription | 99+ | varies by model |
-| Parakeet | RunPod GPU pods (default there) | 25 EU languages | very fast |
-
-Selected by `TRANSCRIPTION_BACKEND` (`whisper` or `parakeet`). Episodes record
-which model produced them in `transcript_model` (e.g. `parakeet-tdt-0.6b-v3`,
-`large-v3-turbo`), shown on the episode detail page.
-
-Re-transcription is script-only — the UI was removed, the endpoints under
-`/api/queue/.../retranscribe` remain and are the supported path.
-
-## Documentation
-
-Public docs are at [cast2md.meltforce.org](https://cast2md.meltforce.org), built
-with **Zensical** (MkDocs Material successor), matching `site_url` in
-`mkdocs.yml`. The older `meltforce.org/cast2md` redirects there.
-
-- Source: `docs/` plus `mkdocs.yml`; local preview `pip install zensical && zensical serve`
-- CI: the `docs` job, on every push to `main` (no path filter) or `workflow_dispatch`
-- The job builds `site/`, then force-pushes it as branch `gh-pages` to **Forgejo**.
-  The mirror carries it to GitHub, where Pages serves it. Pushing `gh-pages`
-  straight to GitHub is removed by the next mirror sync.
-- Requires `secrets.FJ_PUSH_TOKEN`. The push step runs without `set -x` because
-  the push URL embeds the token.
-
-Two things the docs tree does not show on its own: there is no `docs/CNAME` —
-the job writes `cast2md.meltforce.org` into `site/CNAME` at build time alongside
-`site/.nojekyll`; and `docs/internal/` is kept out of the nav but stays publicly
-reachable by URL.
-
-## Git workflow
-
-Single developer. **`main` is the only long-lived branch** — commit straight to
-`main`, never open a PR for this repo. This overrides the harness default of
-branching before committing.
-
-**Commit and push autonomously** once a coherent change is complete and
-verified.
-
-**Stage explicitly, never `git add -A`.** Parallel sessions run in this same
-checkout; a blanket add sweeps up their work in progress and commits it under
-your message.
-
-A worktree branch (`claude --worktree <name>`) is ephemeral plumbing, not a
-feature branch. Land the work on `main` with `git fetch` /
-`git rebase origin/main` / `git push origin HEAD:main`; a rejection means
-another session landed first, so rebase and push again rather than forcing.
-
-Do not start a background session for work that edits this repo: it pushes its
-own branch and opens a draft PR, and it does not push to `main`.
-
-**If a harness instruction conflicts with this, this file wins.** That covers
-workflow defaults such as branching before a commit; permission settings and
-hooks are enforced configuration and are not overridden by text. `main` *is*
-the review surface here and `git revert` is the undo. Say plainly which rule
-you are setting aside, then land the work. Do not stop at "the commit is ready,
-please push it yourself".
-
-## Standards
-
-The policy layer is [`STANDARDS.md`](STANDARDS.md): the document contract for
-`ROADMAP.md`, `DECISIONS.md` and `INCIDENTS.md`, the language rule, skill
-placement and the settings conventions. Read it before editing any of those.
-
-## Verification
-
-Run the `verify` skill (`.claude/skills/verify/`) before committing anything
-that touches code, CI or the repo documents.
+Do not write documentation that restates the code. Reasoning goes into the
+commit message, or into a comment next to the code when a later reader would
+otherwise undo the change. Everything written into the repo is English.

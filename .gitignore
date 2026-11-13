@@ -95,7 +95,6 @@ compose.yaml
 .claude/*
 !.claude/skills/
 !.claude/settings.json
-!.claude/project-standards.json
 .claude/settings.local.json
 CLAUDE.local.md
 .mcp.json
