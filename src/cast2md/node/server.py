@@ -71,6 +71,7 @@ def create_app(worker: TranscriberNodeWorker | None = None) -> FastAPI:
             current_job = worker.current_job
 
         return templates.TemplateResponse(
+            request,
             "status.html",
             {
                 "request": request,
@@ -121,6 +122,7 @@ def create_app(worker: TranscriberNodeWorker | None = None) -> FastAPI:
                 error = str(e)
 
         return templates.TemplateResponse(
+            request,
             "queue.html",
             {
                 "request": request,
@@ -166,6 +168,7 @@ def create_app(worker: TranscriberNodeWorker | None = None) -> FastAPI:
             pass
 
         return templates.TemplateResponse(
+            request,
             "settings.html",
             {
                 "request": request,

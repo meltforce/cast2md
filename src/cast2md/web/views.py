@@ -384,6 +384,7 @@ def episodes_index(
 
     last_polled = max((feed.last_polled for feed in feeds if feed.last_polled), default=None)
     return templates.TemplateResponse(
+        request,
         "episodes.html",
         {
             "request": request,
@@ -444,6 +445,7 @@ def feeds_index(request: Request, sort: str = "recent"):
     total_episodes = sum(status_counts.values())
 
     return templates.TemplateResponse(
+        request,
         "index.html",
         {
             "request": request,
@@ -490,6 +492,7 @@ def feed_detail(
         feed = feed_repo.get_by_id(feed_id)
         if not feed:
             return templates.TemplateResponse(
+                request,
                 "error.html",
                 {"request": request, "message": "Feed not found"},
                 status_code=404,
@@ -590,6 +593,7 @@ def feed_detail(
             )
 
     return templates.TemplateResponse(
+        request,
         "feed_detail.html",
         {
             "request": request,
@@ -638,6 +642,7 @@ def episode_detail(
         episode = episode_repo.get_by_id(episode_id)
         if not episode:
             return templates.TemplateResponse(
+                request,
                 "error.html",
                 {"request": request, "message": "Episode not found"},
                 status_code=404,
@@ -684,6 +689,7 @@ def episode_detail(
             back_href = f"/feeds/{feed.id}?{'&'.join(back_params)}"
 
     return templates.TemplateResponse(
+        request,
         "episode_detail.html",
         {
             "request": request,
@@ -715,7 +721,7 @@ def admin_status_page(request: Request):
         data = collect_status_data(conn)
 
     context = build_status_context(data, get_worker_manager().get_status())
-    return templates.TemplateResponse("status.html", {"request": request, **context})
+    return templates.TemplateResponse(request, "status.html", {"request": request, **context})
 
 
 @router.get("/settings", response_class=HTMLResponse)
@@ -733,6 +739,7 @@ def admin_settings_page(request: Request, tab: str = "general"):
     if tab not in valid_tabs:
         tab = "general"
     return templates.TemplateResponse(
+        request,
         "settings.html",
         {"request": request, "settings_tab": tab},
     )
@@ -805,6 +812,7 @@ def admin_queue_page(request: Request, status: str | None = None):
             )
 
     return templates.TemplateResponse(
+        request,
         "queue.html",
         {
             "request": request,
@@ -941,6 +949,7 @@ def admin_runpod_page(request: Request):
     ]
 
     return templates.TemplateResponse(
+        request,
         "runpod.html",
         {
             "request": request,
@@ -1070,6 +1079,7 @@ def transcript_search_page(
             recent_transcripts = episode_repo.get_recent_transcribed_episodes(limit=10)
 
     return templates.TemplateResponse(
+        request,
         "search.html",
         {
             "request": request,
